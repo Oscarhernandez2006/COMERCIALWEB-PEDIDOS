@@ -1,0 +1,424 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import type {
+  AdminDashboardStats,
+  AdminUser,
+  Order,
+  Product,
+  UploadBatchResult,
+} from '@/types';
+
+/** KPIs consolidados de ambas compañías para el panel de administración. */
+export function useAdminDashboard() {
+  return useQuery({
+    queryKey: ['admin', 'dashboard'],
+    queryFn: async () => {
+      const res = await api.get<AdminDashboardStats>('/admin/dashboard');
+      return res.data;
+    },
+  });
+}
+
+/* ---- Usuarios ---- */
+
+export function useAdminUsers() {
+  return useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
+      const res = await api.get<AdminUser[]>('/admin/users');
+      return res.data;
+    },
+  });
+}
+
+interface CreateUserInput {
+  documentId: string;
+  name: string;
+  password: string;
+  email?: string;
+  role: 'admin' | 'seller';
+  siesaSellerCode?: string;
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateUserInput) => {
+      const res = await api.post<AdminUser>('/admin/users', input);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+export function useSetUserActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; active: boolean }) => {
+      const res = await api.patch<AdminUser>(
+        `/admin/users/${input.id}/active`,
+        { active: input.active },
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+export function useAssignCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      companyId: string;
+      siesaSellerCode?: string;
+    }) => {
+      const res = await api.post<AdminUser>(
+        `/admin/users/${input.id}/companies`,
+        { companyId: input.companyId, siesaSellerCode: input.siesaSellerCode },
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+export function useRemoveCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; companyId: string }) => {
+      const res = await api.delete<AdminUser>(
+        `/admin/users/${input.id}/companies/${input.companyId}`,
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+/* ---- Inventario por compañía (header explícito, el admin no fija compañía) ---- */
+
+export function useCompanyProducts(companyId: string, search: string) {
+  return useQuery({
+    queryKey: ['admin', 'products', companyId, search],
+    queryFn: async () => {
+      const res = await api.get<Product[]>('/products', {
+        params: search ? { search } : undefined,
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+  });
+}
+
+export function useSyncCompanyProducts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await api.post<{ synced: number }>(
+        '/products/sync',
+        {},
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+    },
+  });
+}
+
+export function useSyncCompanyCustomers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await api.post<{ synced: number }>(
+        '/customers/sync',
+        {},
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+    },
+  });
+}
+
+/* ---- Inventario por Excel ---- */
+
+export interface ImportInventoryResult {
+  total: number;
+  created: number;
+  updated: number;
+  removed: number;
+}
+
+/** Carga diaria del inventario desde Excel (reemplaza el inventario). */
+export function useImportInventory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { companyId: string; file: File }) => {
+      const form = new FormData();
+      form.append('file', input.file);
+      const res = await api.post<ImportInventoryResult>(
+        '/products/import',
+        form,
+        { headers: { 'X-Company-Id': input.companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+    },
+  });
+}
+
+/** Edita únicamente el stock de un producto. */
+export function useUpdateStock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      companyId: string;
+      id: string;
+      stock: number;
+    }) => {
+      const res = await api.patch<Product>(
+        `/products/${input.id}/stock`,
+        { stock: input.stock },
+        { headers: { 'X-Company-Id': input.companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+    },
+  });
+}
+
+/* ---- Reportes (PDF) ---- */
+
+/**
+ * Descarga el reporte PDF de resumen de inventario por día de una compañía.
+ * Si no se indica fecha, el backend usa el día actual (hora de Colombia).
+ */
+export async function downloadInventoryReport(
+  companyId: string,
+  date?: string,
+) {
+  const res = await api.get('/admin/reports/inventory', {
+    params: { companyId, ...(date ? { date } : {}) },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `inventario-${companyId}-${date || 'hoy'}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga la plantilla de inventario (.xlsx). */
+export async function downloadInventoryTemplate() {
+  const res = await api.get('/products/template', {
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'plantilla_inventario.xlsx';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/* ---- Listas de precios ---- */
+
+export interface PriceListSummary {
+  listCode: string;
+  listName: string;
+  itemCount: number;
+}
+
+export interface PriceListItem {
+  id: string;
+  listCode: string;
+  listName: string;
+  reference: string;
+  productName: string;
+  unitOfMeasure?: string;
+  price: number;
+}
+
+export interface SyncPriceListsResult {
+  lists: number;
+  created: number;
+  updated: number;
+  removed: number;
+  total: number;
+}
+
+/** Listas de precios disponibles de una compañía. */
+export function usePriceLists(companyId: string) {
+  return useQuery({
+    queryKey: ['admin', 'price-lists', companyId],
+    queryFn: async () => {
+      const res = await api.get<PriceListSummary[]>('/price-lists', {
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+  });
+}
+
+/** Ítems (referencias y precios) de una lista. */
+export function usePriceListItems(
+  companyId: string,
+  listCode: string | null,
+  search: string,
+) {
+  return useQuery({
+    queryKey: ['admin', 'price-list-items', companyId, listCode, search],
+    enabled: Boolean(listCode),
+    queryFn: async () => {
+      const res = await api.get<PriceListItem[]>(
+        `/price-lists/${listCode}/items`,
+        {
+          params: search ? { search } : undefined,
+          headers: { 'X-Company-Id': companyId },
+        },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Sincroniza las listas de precios desde Siesa (solo admin). */
+export function useSyncPriceLists() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await api.post<SyncPriceListsResult>(
+        '/price-lists/sync',
+        {},
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'price-lists'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'price-list-items'] });
+    },
+  });
+}
+
+/* ---- Clientes ---- */
+
+export interface ClientRecord {
+  id: string;
+  code: string;
+  name: string;
+  branch: string;
+  branchName?: string;
+  priceList?: string;
+  priceListName?: string;
+  paymentTerm?: string;
+  sellerCode?: string;
+  sellerName?: string;
+  address?: string;
+  neighborhood?: string;
+  city?: string;
+  department?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface SyncClientsResult {
+  created: number;
+  updated: number;
+  removed: number;
+  total: number;
+}
+
+/** Clientes de una compañía, con búsqueda opcional. */
+export function useClients(companyId: string, search: string) {
+  return useQuery({
+    queryKey: ['admin', 'clients', companyId, search],
+    queryFn: async () => {
+      const res = await api.get<ClientRecord[]>('/clients', {
+        params: search ? { search } : undefined,
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+  });
+}
+
+/** Sincroniza los clientes desde Siesa (solo admin). */
+export function useSyncClients() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await api.post<SyncClientsResult>(
+        '/clients/sync',
+        {},
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'clients'] });
+    },
+  });
+}
+
+/* ---- Carga de pedidos a Siesa (cortes) ---- */
+
+/** Previsualiza los pedidos pendientes por envío de un corte/fecha. */
+export function useUploadPreview(
+  companyId: string,
+  corte: string,
+  date: string,
+) {
+  return useQuery({
+    queryKey: ['admin', 'siesa-preview', companyId, corte, date],
+    queryFn: async () => {
+      const res = await api.get<Order[]>('/admin/orders/upload-preview', {
+        params: { corte, date },
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+  });
+}
+
+/** Sube a Siesa los pedidos pendientes por envío de un corte/fecha. */
+export function useUploadBatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      companyId: string;
+      corte: string;
+      date: string;
+    }) => {
+      const res = await api.post<UploadBatchResult>(
+        '/admin/orders/upload',
+        {},
+        {
+          params: { corte: input.corte, date: input.date },
+          headers: { 'X-Company-Id': input.companyId },
+        },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'siesa-preview'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+    },
+  });
+}
