@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useCompany } from '@/company/useCompany';
-import type { Client, Customer, Order, Product, SellableProduct } from '@/types';
+import type { Client, Customer, Order, Product, Quote, SellableProduct } from '@/types';
 
 export function useProducts(search: string) {
   const { company } = useCompany();
@@ -107,6 +107,7 @@ export function useOrders() {
 interface CreateOrderInput {
   customerId: string;
   notes?: string;
+  deliverySchedule?: string;
   items: { sku: string; quantity: number; discountPct: number }[];
 }
 
@@ -187,6 +188,35 @@ export function useCancelOrder() {
   });
 }
 
+/**
+ * Avisos para el vendedor sobre decisiones de cartera (pedidos aprobados o
+ * desaprobados). Se consulta periódicamente para mostrar el modal.
+ */
+export function useOrderNotifications() {
+  return useQuery({
+    queryKey: ['orders', 'notifications'],
+    queryFn: async () => {
+      const res = await api.get<Order[]>('/orders/notifications');
+      return res.data;
+    },
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** Marca como visto un aviso de cartera (deja de aparecer en el modal). */
+export function useAcknowledgeNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const res = await api.post(`/orders/${orderId}/acknowledge`, {});
+      return res.data;
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['orders', 'notifications'] }),
+  });
+}
+
 /** Descarga el PDF (documento) de un pedido y lo abre como archivo. */
 export async function downloadOrderPdf(
   orderId: string,
@@ -199,6 +229,55 @@ export async function downloadOrderPdf(
   const link = document.createElement('a');
   link.href = url;
   link.download = `pedido-${orderNumber}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Cotizaciones del vendedor en la compañía activa. */
+export function useQuotes() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['quotes', company?.id],
+    queryFn: async () => {
+      const res = await api.get<Quote[]>('/quotes');
+      return res.data;
+    },
+  });
+}
+
+interface CreateQuoteInput {
+  customerId: string;
+  notes?: string;
+  validityDays?: number;
+  items: { sku: string; quantity: number; discountPct: number }[];
+}
+
+/** Crea una cotización (no afecta el inventario). */
+export function useCreateQuote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateQuoteInput) => {
+      const res = await api.post<Quote>('/quotes', input);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['quotes'] }),
+  });
+}
+
+/** Descarga el PDF (documento) de una cotización y lo abre como archivo. */
+export async function downloadQuotePdf(
+  quoteId: string,
+  quoteNumber: string,
+): Promise<void> {
+  const res = await api.get(`/quotes/${quoteId}/pdf`, {
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `cotizacion-${quoteNumber}.pdf`;
   document.body.appendChild(link);
   link.click();
   link.remove();

@@ -23,6 +23,7 @@ import {
   PackageOpen,
   Boxes,
   StickyNote,
+  Clock,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
@@ -32,6 +33,8 @@ import {
   downloadOrderPdf,
 } from '@/hooks/useApi';
 import { formatCurrency, cn } from '@/lib/utils';
+import { getMinOrderTotal } from '@/lib/companies';
+import { useCompany } from '@/company/useCompany';
 import type { CartLine, Client, Order, SellableProduct } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -60,6 +63,7 @@ export function NewOrderPage() {
   const [productSearch, setProductSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [notes, setNotes] = useState('');
+  const [deliverySchedule, setDeliverySchedule] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [submitError, setSubmitError] = useState('');
 
@@ -82,6 +86,11 @@ export function NewOrderPage() {
       total: subtotal,
     };
   }, [cart]);
+
+  // Tope mínimo de pedido según la compañía activa.
+  const { company } = useCompany();
+  const minOrderTotal = getMinOrderTotal(company?.id);
+  const belowMinimum = minOrderTotal > 0 && totals.total < minOrderTotal;
 
   const totalUnits = useMemo(
     () => cart.reduce((acc, l) => acc + l.quantity, 0),
@@ -143,6 +152,7 @@ export function NewOrderPage() {
       order = await createOrder.mutateAsync({
         customerId: customer.id,
         notes: notes || undefined,
+        deliverySchedule: deliverySchedule || undefined,
         items: cart.map((l) => ({
           sku: l.product.sku,
           quantity: l.quantity,
@@ -799,11 +809,29 @@ export function NewOrderPage() {
                 />
               </div>
 
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Horario de recibido de pedidos
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Días y horas en que el cliente puede recibir la mercancía.
+                </p>
+                <Input
+                  value={deliverySchedule}
+                  onChange={(e) => setDeliverySchedule(e.target.value)}
+                  placeholder="Ej: Lunes a viernes de 7 am a 5 pm"
+                />
+              </div>
+
               <Button
                 className="w-full"
                 size="lg"
                 disabled={
-                  !customer || cart.length === 0 || createOrder.isPending
+                  !customer ||
+                  cart.length === 0 ||
+                  belowMinimum ||
+                  createOrder.isPending
                 }
                 onClick={handleSubmit}
               >
@@ -820,6 +848,15 @@ export function NewOrderPage() {
                 <p className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-center text-xs text-destructive">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>{submitError}</span>
+                </p>
+              ) : belowMinimum ? (
+                <p className="flex items-start gap-1.5 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-center text-xs text-[var(--warning)]">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    El pedido mínimo para esta compañía es{' '}
+                    {formatCurrency(minOrderTotal)}. Te faltan{' '}
+                    {formatCurrency(minOrderTotal - totals.total)}.
+                  </span>
                 </p>
               ) : (
                 cart.length > 0 && (
@@ -850,6 +887,17 @@ export function NewOrderPage() {
                 {formatCurrency(Number(createdOrder.total))}
               </p>
             </div>
+
+            {createdOrder.status === 'pending_approval' && (
+              <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+                <p className="font-medium">Pendiente por aprobación en cartera</p>
+                <p className="mt-1 text-xs">
+                  El cliente registra cartera pendiente, por lo que el pedido
+                  quedó retenido. Cartera tiene 2 horas para aprobarlo o será
+                  desaprobado automáticamente.
+                </p>
+              </div>
+            )}
 
             <div className="mt-6 flex flex-col gap-2">
               <Button

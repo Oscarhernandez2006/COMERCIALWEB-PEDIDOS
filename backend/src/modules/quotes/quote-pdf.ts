@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { Order } from './entities/order.entity';
+import { Quote } from './entities/quote.entity';
 
 const COMPANY_NAMES: Record<string, string> = {
   '3': 'AGROPECUARIA SANTACRUZ',
@@ -7,7 +7,6 @@ const COMPANY_NAMES: Record<string, string> = {
   '4': 'CARNES SANTACRUZ',
 };
 
-/** Formatea un valor numérico como moneda colombiana. */
 function money(value: number | string): string {
   const n = Number(value) || 0;
   return new Intl.NumberFormat('es-CO', {
@@ -18,13 +17,7 @@ function money(value: number | string): string {
   }).format(n);
 }
 
-/**
- * Genera el PDF de un pedido (sin mostrar el estado: solo la información del
- * cliente, el detalle de productos y los totales).
- *
- * Devuelve una promesa con el contenido binario del PDF.
- */
-export function buildOrderPdf(order: Order): Promise<Buffer> {
+export function buildQuotePdf(quote: Quote): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 48 });
     const chunks: Buffer[] = [];
@@ -33,8 +26,9 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const companyName = COMPANY_NAMES[order.companyId] ?? 'Compañía';
-    const created = order.createdAt ? new Date(order.createdAt) : new Date();
+    const companyName = COMPANY_NAMES[quote.companyId] ?? 'Compañía';
+    const created = quote.createdAt ? new Date(quote.createdAt) : new Date();
+    const validUntil = quote.validUntil ? new Date(quote.validUntil) : null;
 
     // Encabezado.
     doc
@@ -45,26 +39,29 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
       .fontSize(10)
       .font('Helvetica')
       .fillColor('#555')
-      .text('Pedido de venta', { align: 'left' });
+      .text('Cotización de venta', { align: 'left' });
     doc.moveDown(0.5);
 
     doc
       .fontSize(14)
       .font('Helvetica-Bold')
       .fillColor('#000')
-      .text(`Pedido N° ${order.orderNumber}`, { align: 'right' });
+      .text(`Cotización N° ${quote.quoteNumber}`, { align: 'right' });
     doc
       .fontSize(10)
       .font('Helvetica')
       .fillColor('#555')
       .text(`Fecha: ${created.toLocaleString('es-CO')}`, { align: 'right' });
+    if (validUntil) {
+      doc.text(
+        `Válida hasta: ${validUntil.toLocaleDateString('es-CO')} ` +
+          `(${quote.validityDays} días)`,
+        { align: 'right' },
+      );
+    }
 
     doc.moveDown(1);
-    doc
-      .strokeColor('#ddd')
-      .moveTo(48, doc.y)
-      .lineTo(547, doc.y)
-      .stroke();
+    doc.strokeColor('#ddd').moveTo(48, doc.y).lineTo(547, doc.y).stroke();
     doc.moveDown(1);
 
     // Datos del cliente.
@@ -76,7 +73,7 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
     doc.moveDown(0.3);
     doc.fontSize(10).font('Helvetica').fillColor('#222');
 
-    const c = order.customer;
+    const c = quote.customer;
     const line = (label: string, value?: string | null) => {
       if (!value) return;
       doc
@@ -87,15 +84,10 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
     };
     line('Nombre', c.name);
     line('NIT', c.code);
-    line(
-      'Sucursal',
-      c.branchName ? `${c.branchName} (${c.branch})` : c.branch,
-    );
+    line('Sucursal', c.branchName ? `${c.branchName} (${c.branch})` : c.branch);
     line(
       'Lista de precios',
-      c.priceListName
-        ? `${c.priceListName} (${c.priceList})`
-        : c.priceList,
+      c.priceListName ? `${c.priceListName} (${c.priceList})` : c.priceList,
     );
     line('Condición de pago', c.paymentTerm);
     line(
@@ -103,9 +95,7 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
       c.sellerName ? `${c.sellerName} (${c.sellerCode})` : c.sellerCode,
     );
     line('Dirección', c.address);
-    line('Barrio', c.neighborhood);
     line('Ciudad', c.city);
-    line('Departamento', c.department);
     line('Teléfono', c.phone);
     line('Email', c.email);
 
@@ -139,8 +129,7 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
     let y = tableTop + 20;
     doc.font('Helvetica').fillColor('#222');
 
-    for (const item of order.items) {
-      // Salto de página si se acaba el espacio.
+    for (const item of quote.items) {
       if (y > 760) {
         doc.addPage();
         y = 48;
@@ -155,51 +144,45 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
       y += 18;
     }
 
-    doc
-      .strokeColor('#ddd')
-      .moveTo(48, y)
-      .lineTo(547, y)
-      .stroke();
+    doc.strokeColor('#ddd').moveTo(48, y).lineTo(547, y).stroke();
     y += 12;
 
     // Totales.
     doc.fontSize(10).font('Helvetica');
     doc.text('Subtotal:', cols.price, y, { width: 70 });
-    doc.text(money(order.subtotal), cols.total, y, { width: 67 });
+    doc.text(money(quote.subtotal), cols.total, y, { width: 67 });
     y += 16;
     doc.text('Impuestos:', cols.price, y, { width: 70 });
-    doc.text(money(order.taxes), cols.total, y, { width: 67 });
+    doc.text(money(quote.taxes), cols.total, y, { width: 67 });
     y += 16;
     doc.font('Helvetica-Bold').fillColor('#000');
     doc.text('Total:', cols.price, y, { width: 70 });
-    doc.text(money(order.total), cols.total, y, { width: 67 });
+    doc.text(money(quote.total), cols.total, y, { width: 67 });
 
     // Notas.
-    if (order.notes) {
+    if (quote.notes) {
       y += 30;
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(10)
-        .text('Notas', 48, y);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000').text('Notas', 48, y);
       doc
         .font('Helvetica')
         .fillColor('#222')
-        .text(order.notes, 48, y + 14, { width: 499 });
+        .text(quote.notes, 48, y + 14, { width: 499 });
+      y += 44;
     }
 
-    // Horario de recibido de pedidos.
-    if (order.deliverySchedule) {
-      y += order.notes ? 44 : 30;
-      doc
-        .font('Helvetica-Bold')
-        .fillColor('#000')
-        .fontSize(10)
-        .text('Horario de recibido de pedidos', 48, y);
-      doc
-        .font('Helvetica')
-        .fillColor('#222')
-        .text(order.deliverySchedule, 48, y + 14, { width: 499 });
-    }
+    // Aviso de cotización.
+    y += quote.notes ? 6 : 30;
+    doc
+      .font('Helvetica-Oblique')
+      .fontSize(8)
+      .fillColor('#888')
+      .text(
+        'Este documento es una cotización y no constituye una factura de venta. ' +
+          'Los precios están sujetos a cambios una vez vencida su vigencia.',
+        48,
+        y,
+        { width: 499 },
+      );
 
     doc.end();
   });

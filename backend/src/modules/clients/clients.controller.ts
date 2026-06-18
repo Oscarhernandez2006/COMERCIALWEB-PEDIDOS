@@ -45,6 +45,18 @@ export class ClientsController {
     return this.clientsService.findAll(companyId, search, sellerCode);
   }
 
+  /**
+   * Cartera (documentos por cobrar) de un cliente por su NIT/código.
+   * Se consulta en vivo a Siesa; no se almacena.
+   */
+  @Get('portfolio')
+  getPortfolio(
+    @CompanyId() companyId: string,
+    @Query('nit') nit: string,
+  ) {
+    return this.clientsService.getPortfolio(companyId, nit);
+  }
+
   /** Sincroniza los clientes desde Siesa (solo admin). */
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)

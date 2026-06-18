@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ShoppingCart, ClipboardList, Users, Package } from 'lucide-react';
+import { ShoppingCart, ClipboardList, Package } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { useOrders } from '@/hooks/useApi';
 import { formatCurrency } from '@/lib/utils';
@@ -71,12 +71,6 @@ export function DashboardPage() {
           <Link to="/pedidos/nuevo">
             <ShoppingCart className="h-4 w-4" />
             Nuevo pedido
-          </Link>
-        </Button>
-        <Button variant="outline" asChild>
-          <Link to="/clientes">
-            <Users className="h-4 w-4" />
-            Ver clientes
           </Link>
         </Button>
       </div>

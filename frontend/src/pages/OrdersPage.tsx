@@ -9,10 +9,22 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { OrderStatusBadge } from '@/components/OrderStatusBadge';
+import { ApprovalCountdown } from '@/components/ApprovalCountdown';
 import { EditOrderModal } from '@/components/EditOrderModal';
 import type { Order } from '@/types';
+
+/** Motivos de anulación más frecuentes para seleccionar sin digitar. */
+const CANCEL_REASONS = [
+  'El cliente canceló el pedido',
+  'Error al digitar el pedido',
+  'Producto sin disponibilidad',
+  'El cliente no recibe en este momento',
+  'Pedido duplicado',
+  'Cambio en la lista de precios',
+] as const;
+
+const OTHER_REASON = 'Otro';
 
 export function OrdersPage() {
   const { data: orders = [], isLoading } = useOrders();
@@ -22,6 +34,7 @@ export function OrdersPage() {
   const [detailTarget, setDetailTarget] = useState<Order | null>(null);
   const [editTarget, setEditTarget] = useState<Order | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
+  const [cancelOption, setCancelOption] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelError, setCancelError] = useState('');
 
@@ -36,20 +49,27 @@ export function OrdersPage() {
 
   const openCancel = (order: Order) => {
     setCancelTarget(order);
+    setCancelOption('');
     setCancelReason('');
     setCancelError('');
   };
 
   const confirmCancel = async () => {
     if (!cancelTarget) return;
-    if (!cancelReason.trim()) {
-      setCancelError('Debe indicar el motivo de la anulación.');
+    if (!cancelOption) {
+      setCancelError('Selecciona un motivo de la anulación.');
+      return;
+    }
+    const reason =
+      cancelOption === OTHER_REASON ? cancelReason.trim() : cancelOption;
+    if (!reason) {
+      setCancelError('Redacta lo sucedido para anular el pedido.');
       return;
     }
     try {
       await cancelMutation.mutateAsync({
         orderId: cancelTarget.id,
-        reason: cancelReason.trim(),
+        reason,
       });
       setCancelTarget(null);
     } catch {
@@ -106,6 +126,25 @@ export function OrdersPage() {
                     {order.syncError && (
                       <p className="mt-1 text-xs text-destructive">
                         {order.syncError}
+                      </p>
+                    )}
+                    {order.status === 'pending_approval' && (
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          Retenido por cartera. Tiempo restante:
+                        </span>
+                        <ApprovalCountdown deadline={order.approvalDeadline} />
+                      </div>
+                    )}
+                    {order.status === 'disapproved' && order.disapprovalReason && (
+                      <p className="mt-1 text-xs text-destructive">
+                        Desaprobado: {order.disapprovalReason}
+                      </p>
+                    )}
+                    {order.status === 'expired' && (
+                      <p className="mt-1 text-xs text-destructive">
+                        Vencido: {order.disapprovalReason ??
+                          'No se aprobó dentro de las 2 horas. El inventario fue devuelto.'}
                       </p>
                     )}
                     {order.status === 'cancelled' && order.cancelReason && (
@@ -341,6 +380,15 @@ export function OrdersPage() {
                 </div>
               )}
 
+              {detailTarget.deliverySchedule && (
+                <div className="rounded-lg border border-border p-3 text-sm">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Horario de recibido de pedidos
+                  </p>
+                  <p className="mt-1">{detailTarget.deliverySchedule}</p>
+                </div>
+              )}
+
               {detailTarget.status === 'cancelled' &&
                 detailTarget.cancelReason && (
                   <p className="text-sm text-destructive">
@@ -400,20 +448,84 @@ export function OrdersPage() {
               Indica el motivo de la anulación.
             </p>
 
-            <div className="mt-4">
-              <Input
-                autoFocus
-                value={cancelReason}
-                onChange={(e) => {
-                  setCancelReason(e.target.value);
+            <div className="mt-4 space-y-2">
+              {CANCEL_REASONS.map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() => {
+                    setCancelOption(reason);
+                    setCancelError('');
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                    cancelOption === reason
+                      ? 'border-primary bg-primary/5 text-foreground'
+                      : 'border-input hover:bg-muted'
+                  }`}
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                      cancelOption === reason
+                        ? 'border-primary'
+                        : 'border-muted-foreground/40'
+                    }`}
+                  >
+                    {cancelOption === reason && (
+                      <span className="h-2 w-2 rounded-full bg-primary" />
+                    )}
+                  </span>
+                  {reason}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setCancelOption(OTHER_REASON);
                   setCancelError('');
                 }}
-                placeholder="Motivo de la anulación..."
-              />
-              {cancelError && (
-                <p className="mt-1 text-xs text-destructive">{cancelError}</p>
-              )}
+                className={`flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  cancelOption === OTHER_REASON
+                    ? 'border-primary bg-primary/5 text-foreground'
+                    : 'border-input hover:bg-muted'
+                }`}
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                    cancelOption === OTHER_REASON
+                      ? 'border-primary'
+                      : 'border-muted-foreground/40'
+                  }`}
+                >
+                  {cancelOption === OTHER_REASON && (
+                    <span className="h-2 w-2 rounded-full bg-primary" />
+                  )}
+                </span>
+                Otro
+              </button>
             </div>
+
+            {cancelOption === OTHER_REASON && (
+              <div className="mt-3">
+                <label className="mb-1 block text-sm font-medium">
+                  Redacta lo sucedido
+                </label>
+                <textarea
+                  autoFocus
+                  value={cancelReason}
+                  onChange={(e) => {
+                    setCancelReason(e.target.value);
+                    setCancelError('');
+                  }}
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Describe lo que sucedió..."
+                />
+              </div>
+            )}
+
+            {cancelError && (
+              <p className="mt-2 text-xs text-destructive">{cancelError}</p>
+            )}
 
             <div className="mt-6 flex justify-end gap-2">
               <Button

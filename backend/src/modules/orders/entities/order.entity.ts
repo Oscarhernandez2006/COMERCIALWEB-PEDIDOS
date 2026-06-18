@@ -14,11 +14,14 @@ import { OrderItem } from './order-item.entity';
 
 export enum OrderStatus {
   DRAFT = 'draft',
+  PENDING_APPROVAL = 'pending_approval',
   CONFIRMED = 'confirmed',
   SYNCING = 'syncing',
   SYNCED = 'synced',
   FAILED = 'failed',
   CANCELLED = 'cancelled',
+  DISAPPROVED = 'disapproved',
+  EXPIRED = 'expired',
 }
 
 @Entity('orders')
@@ -62,9 +65,56 @@ export class Order extends BaseEntity {
   @Column({ nullable: true })
   notes?: string;
 
+  /**
+   * Horario y días en que el cliente puede recibir la mercancía
+   * (p. ej. "Lunes a viernes de 7 am a 5 pm").
+   */
+  @Column({ name: 'delivery_schedule', nullable: true })
+  deliverySchedule?: string;
+
   /** Motivo de la anulación (obligatorio al anular el pedido). */
   @Column({ name: 'cancel_reason', nullable: true })
   cancelReason?: string;
+
+  /**
+   * Saldo de cartera del cliente al momento de crear el pedido. Si es mayor a
+   * 0, el pedido queda PENDING_APPROVAL (retenido para aprobación en cartera).
+   */
+  @Column({
+    name: 'cartera_balance',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+  })
+  carteraBalance?: number;
+
+  /**
+   * Fecha límite para aprobar/desaprobar el pedido retenido por cartera.
+   * Si se vence sin decisión, el pedido pasa a DISAPPROVED y se libera el stock.
+   */
+  @Column({ name: 'approval_deadline', type: 'timestamptz', nullable: true })
+  approvalDeadline?: Date;
+
+  /** Fecha en que cartera aprobó el pedido. */
+  @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
+  approvedAt?: Date;
+
+  /** Nombre de quien aprobó/desaprobó desde cartera. */
+  @Column({ name: 'approved_by', nullable: true })
+  approvedBy?: string;
+
+  /** Motivo de la desaprobación (manual o por vencimiento del tiempo). */
+  @Column({ name: 'disapproval_reason', nullable: true })
+  disapprovalReason?: string;
+
+  /**
+   * Indica que cartera tomó una decisión (aprobó/desaprobó) sobre el pedido y
+   * que el vendedor aún no ha sido notificado. El front lo consulta para
+   * mostrar el aviso y luego lo marca como notificado.
+   */
+  @Column({ name: 'seller_notification_pending', default: false })
+  sellerNotificationPending: boolean;
 
   /** Numero del documento generado en Siesa tras la sincronizacion. */
   @Column({ name: 'siesa_document_id', nullable: true })

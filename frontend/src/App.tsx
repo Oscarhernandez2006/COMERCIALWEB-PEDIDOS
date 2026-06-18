@@ -8,6 +8,8 @@ import { CompanySelectPage } from '@/pages/CompanySelectPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { NewOrderPage } from '@/pages/NewOrderPage';
 import { OrdersPage } from '@/pages/OrdersPage';
+import { NewQuotePage } from '@/pages/NewQuotePage';
+import { QuotesPage } from '@/pages/QuotesPage';
 import { StockPage } from '@/pages/StockPage';
 import { CustomersPage } from '@/pages/CustomersPage';
 import { ProductsPage } from '@/pages/ProductsPage';
@@ -18,6 +20,7 @@ import { PriceListsPage } from '@/pages/PriceListsPage';
 import { ClientsPage } from '@/pages/ClientsPage';
 import { SiesaUploadPage } from '@/pages/SiesaUploadPage';
 import { UsersPage } from '@/pages/UsersPage';
+import { CarteraPage } from '@/pages/CarteraPage';
 
 function App() {
   return (
@@ -57,7 +60,20 @@ function App() {
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="cargar-siesa" element={<SiesaUploadPage />} />
+        <Route path="cartera" element={<CarteraPage />} />
         <Route path="usuarios" element={<UsersPage />} />
+      </Route>
+
+      {/* Área de aprobación de cartera (solo rol cartera) */}
+      <Route
+        path="/cartera"
+        element={
+          <ProtectedRoute role="cartera">
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<CarteraPage />} />
       </Route>
 
       {/* Área de vendedor / toma de pedidos (requiere compañía) */}
@@ -74,6 +90,8 @@ function App() {
         <Route index element={<DashboardPage />} />
         <Route path="pedidos/nuevo" element={<NewOrderPage />} />
         <Route path="pedidos" element={<OrdersPage />} />
+        <Route path="cotizaciones/nueva" element={<NewQuotePage />} />
+        <Route path="cotizaciones" element={<QuotesPage />} />
         <Route path="disponibilidad" element={<StockPage />} />
         <Route path="clientes" element={<CustomersPage />} />
         <Route path="productos" element={<ProductsPage />} />

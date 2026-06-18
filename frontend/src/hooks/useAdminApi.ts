@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import type {
   AdminDashboardStats,
   AdminUser,
+  ClientPortfolio,
   Order,
   Product,
   UploadBatchResult,
@@ -36,7 +37,7 @@ interface CreateUserInput {
   name: string;
   password: string;
   email?: string;
-  role: 'admin' | 'seller';
+  role: 'admin' | 'seller' | 'cartera';
   siesaSellerCode?: string;
 }
 
@@ -377,6 +378,24 @@ export function useSyncClients() {
   });
 }
 
+/** Cartera (documentos por cobrar) de un cliente, consultada en vivo. */
+export function useClientPortfolio(
+  companyId: string,
+  nit: string | null,
+) {
+  return useQuery({
+    queryKey: ['admin', 'portfolio', companyId, nit],
+    enabled: !!nit,
+    queryFn: async () => {
+      const res = await api.get<ClientPortfolio>('/clients/portfolio', {
+        params: { nit },
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+  });
+}
+
 /* ---- Carga de pedidos a Siesa (cortes) ---- */
 
 /** Previsualiza los pedidos pendientes por envío de un corte/fecha. */
@@ -420,5 +439,46 @@ export function useUploadBatch() {
       qc.invalidateQueries({ queryKey: ['admin', 'siesa-preview'] });
       qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     },
+  });
+}
+
+/* ---- Aprobación de pedidos en cartera ---- */
+
+/** Pedidos retenidos pendientes de aprobación en cartera (todas las compañías). */
+export function useCarteraOrders() {
+  return useQuery({
+    queryKey: ['cartera', 'orders'],
+    queryFn: async () => {
+      const res = await api.get<Order[]>('/cartera/orders');
+      return res.data;
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+/** Aprueba un pedido retenido: pasa a "pendiente por envío" a Siesa. */
+export function useApproveOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post<Order>(`/cartera/orders/${id}/approve`, {});
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cartera', 'orders'] }),
+  });
+}
+
+/** Desaprueba un pedido retenido: se libera el inventario reservado. */
+export function useDisapproveOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; reason?: string }) => {
+      const res = await api.post<Order>(
+        `/cartera/orders/${input.id}/disapprove`,
+        { reason: input.reason },
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cartera', 'orders'] }),
   });
 }

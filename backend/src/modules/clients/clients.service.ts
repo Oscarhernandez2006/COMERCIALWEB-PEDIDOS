@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, ILike, Repository } from 'typeorm';
 import { ClientRecord } from './entities/client-record.entity';
-import { ClientsClient, ClientRaw } from './clients.client';
+import { ClientsClient, ClientRaw, PortfolioRaw } from './clients.client';
 import { PriceListsService } from '../price-lists/price-lists.service';
 import { UsersService } from '../users/users.service';
 
@@ -21,6 +21,27 @@ interface NormalizedClient {
   department?: string;
   phone?: string;
   email?: string;
+}
+
+/** Documento de cartera (factura pendiente por cobrar) ya normalizado. */
+export interface PortfolioDocument {
+  branch: string;
+  costCenter?: string;
+  docType?: string;
+  description?: string;
+  documentNumber: number;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+/** Resumen de la cartera de un cliente. */
+export interface ClientPortfolio {
+  nit: string;
+  name?: string;
+  count: number;
+  totalBalance: number;
+  documents: PortfolioDocument[];
 }
 
 @Injectable()
@@ -278,5 +299,43 @@ export class ClientsService {
   private clean(value?: string | null): string | undefined {
     const trimmed = (value ?? '').trim();
     return trimmed === '' ? undefined : trimmed;
+  }
+
+  /**
+   * Consulta la cartera (documentos por cobrar) de un cliente por su NIT/código
+   * en una compañía. Devuelve los documentos y el saldo total pendiente.
+   */
+  async getPortfolio(companyId: string, nit: string): Promise<ClientPortfolio> {
+    const code = nit?.trim();
+    if (!code) {
+      throw new NotFoundException('Debe indicar el NIT del cliente.');
+    }
+
+    const raws = await this.client.fetchPortfolio(companyId, code);
+    const documents = raws.map((r) => this.normalizePortfolio(r));
+    const totalBalance = documents.reduce((sum, d) => sum + d.balance, 0);
+    const name = this.clean(raws.find((r) => r.RAZON_SOCIAL)?.RAZON_SOCIAL);
+
+    return {
+      nit: code,
+      name,
+      count: documents.length,
+      totalBalance: Number(totalBalance.toFixed(2)),
+      documents,
+    };
+  }
+
+  /** Normaliza una fila cruda de cartera (recorta cadenas y asegura números). */
+  private normalizePortfolio(raw: PortfolioRaw): PortfolioDocument {
+    return {
+      branch: this.clean(raw.SUCURSAL) ?? '001',
+      costCenter: this.clean(raw.CO),
+      docType: this.clean(raw.TIPO_DOC_CRUCE),
+      description: this.clean(raw.DESCRIPCION),
+      documentNumber: Number(raw.CONS_DOC_CRUCE) || 0,
+      debit: Number(raw.DEBITO) || 0,
+      credit: Number(raw.CREDITO) || 0,
+      balance: Number(raw.SALDO) || 0,
+    };
   }
 }

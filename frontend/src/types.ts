@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'seller';
+export type UserRole = 'admin' | 'seller' | 'cartera';
 
 export interface Company {
   id: string;
@@ -48,6 +48,25 @@ export interface Client {
   email?: string;
 }
 
+export interface PortfolioDocument {
+  branch: string;
+  costCenter?: string;
+  docType?: string;
+  description?: string;
+  documentNumber: number;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface ClientPortfolio {
+  nit: string;
+  name?: string;
+  count: number;
+  totalBalance: number;
+  documents: PortfolioDocument[];
+}
+
 export interface Product {
   id: string;
   siesaId: string;
@@ -78,11 +97,14 @@ export interface SellableProduct {
 
 export type OrderStatus =
   | 'draft'
+  | 'pending_approval'
   | 'confirmed'
   | 'syncing'
   | 'synced'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'disapproved'
+  | 'expired';
 
 export interface OrderItem {
   id: string;
@@ -108,9 +130,47 @@ export interface Order {
   taxes: number;
   total: number;
   notes?: string;
+  deliverySchedule?: string;
   cancelReason?: string;
+  carteraBalance?: number;
+  approvalDeadline?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  disapprovalReason?: string;
+  sellerNotificationPending?: boolean;
+  companyId?: string;
   siesaDocumentId?: string;
   syncError?: string;
+  createdAt: string;
+}
+
+/** Línea de un ítem dentro de una cotización. */
+export interface QuoteItem {
+  id: string;
+  sku: string;
+  productName: string;
+  unitOfMeasure?: string;
+  quantity: number;
+  unitPrice: number;
+  discountPct: number;
+  taxRate: number;
+  lineTotal: number;
+}
+
+/** Cotización de venta (informativa, no afecta el inventario). */
+export interface Quote {
+  id: string;
+  quoteNumber: string;
+  customer: Client;
+  seller: User;
+  items: QuoteItem[];
+  subtotal: number;
+  taxes: number;
+  total: number;
+  notes?: string;
+  validityDays: number;
+  validUntil?: string;
+  companyId?: string;
   createdAt: string;
 }
 

@@ -7,23 +7,27 @@ import {
   LogOut,
   Moon,
   Sun,
-  ShoppingCart,
   RefreshCw,
   Building2,
   Tags,
   UploadCloud,
   FileBarChart,
   Boxes,
+  Wallet,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { useCompany } from '@/company/useCompany';
 import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { CarteraNotifications } from '@/components/CarteraNotifications';
 
 const sellerNav = [
   { to: '/', label: 'Inicio', icon: LayoutDashboard, end: true },
   { to: '/pedidos', label: 'Pedidos', icon: ClipboardList },
+  { to: '/cotizaciones', label: 'Cotizaciones', icon: FileText },
+  { to: '/clientes', label: 'Clientes', icon: Users },
   { to: '/disponibilidad', label: 'Disponibilidad', icon: Boxes },
 ];
 
@@ -33,23 +37,36 @@ const adminNav = [
   { to: '/admin/reportes', label: 'Reportes', icon: FileBarChart },
   { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
   { to: '/admin/clientes', label: 'Clientes', icon: Users },
+  { to: '/admin/cartera', label: 'Aprobación de cartera', icon: Wallet },
   { to: '/admin/cargar-siesa', label: 'Subir a Siesa', icon: UploadCloud },
   { to: '/admin/usuarios', label: 'Usuarios', icon: Users },
 ];
 
+const carteraNav = [
+  { to: '/cartera', label: 'Aprobación de cartera', icon: Wallet, end: true },
+];
+
 export function AppLayout() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { company, clearCompany } = useCompany();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
   const isAdminArea = location.pathname.startsWith('/admin');
-  const navItems = isAdminArea ? adminNav : sellerNav;
+  const isCarteraArea = location.pathname.startsWith('/cartera');
+  const navItems = isAdminArea
+    ? adminNav
+    : isCarteraArea
+      ? carteraNav
+      : sellerNav;
 
   const handleExit = () => {
     if (user?.role === 'admin') {
       navigate('/seleccionar');
+    } else if (user?.role === 'cartera') {
+      logout();
+      navigate('/login');
     } else {
       // El vendedor vuelve a elegir compañía (ahi puede cerrar sesion).
       clearCompany();
@@ -66,15 +83,17 @@ export function AppLayout() {
     <div className="flex min-h-screen bg-background">
       <aside className="hidden w-64 flex-col border-r border-border bg-card md:flex">
         <div className="flex h-16 items-center gap-2 border-b border-border px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShoppingCart className="h-4 w-4" />
-          </div>
+          <img
+            src="/SIGCOM.png"
+            alt="SIGCOM"
+            className="h-10 w-10 object-contain"
+          />
           <span className="text-lg font-semibold tracking-tight">
-            Comercial
+            SIGCOM
           </span>
         </div>
 
-        {!isAdminArea && company && (
+        {!isAdminArea && !isCarteraArea && company && (
           <button
             onClick={handleChangeCompany}
             className="group mx-3 mt-3 flex items-center gap-3 rounded-lg border border-border bg-accent/40 px-3 py-2 text-left transition-colors hover:bg-accent"
@@ -122,7 +141,11 @@ export function AppLayout() {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{user?.name}</p>
               <p className="truncate text-xs text-muted-foreground">
-                {user?.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                {user?.role === 'admin'
+                  ? 'Administrador'
+                  : user?.role === 'cartera'
+                    ? 'Cartera'
+                    : 'Vendedor'}
               </p>
             </div>
           </div>
@@ -135,9 +158,11 @@ export function AppLayout() {
             <h1 className="text-sm font-medium text-muted-foreground">
               {isAdminArea
                 ? 'Panel de administración'
-                : 'Sistema de toma de pedidos'}
+                : isCarteraArea
+                  ? 'Aprobación de cartera'
+                  : 'Sistema de toma de pedidos'}
             </h1>
-            {!isAdminArea && company && (
+            {!isAdminArea && !isCarteraArea && company && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                 <Building2 className="h-3.5 w-3.5" />
                 {company.name}
@@ -159,6 +184,8 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {user?.role === 'seller' && <CarteraNotifications />}
     </div>
   );
 }

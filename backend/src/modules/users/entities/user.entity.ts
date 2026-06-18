@@ -4,6 +4,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 export enum UserRole {
   ADMIN = 'admin',
   SELLER = 'seller',
+  CARTERA = 'cartera',
 }
 
 @Entity('users')

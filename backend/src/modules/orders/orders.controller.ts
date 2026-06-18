@@ -43,6 +43,21 @@ export class OrdersController {
     return this.ordersService.findAllForSeller(companyId, sellerId);
   }
 
+  /** Avisos pendientes para el vendedor (decisiones de cartera). */
+  @Get('notifications')
+  notifications(@CurrentUser('id') sellerId: string) {
+    return this.ordersService.findSellerNotifications(sellerId);
+  }
+
+  /** Marca como visto un aviso de cartera del vendedor. */
+  @Post(':id/acknowledge')
+  acknowledge(
+    @CurrentUser('id') sellerId: string,
+    @Param('id') id: string,
+  ) {
+    return this.ordersService.acknowledgeNotification(sellerId, id);
+  }
+
   @Get(':id')
   findOne(@CompanyId() companyId: string, @Param('id') id: string) {
     return this.ordersService.findOne(companyId, id);

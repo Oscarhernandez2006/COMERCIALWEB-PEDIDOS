@@ -7,16 +7,17 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
 
-export class CreateOrderItemDto {
+export class CreateQuoteItemDto {
   /** Referencia/SKU del producto en la lista de precios del cliente. */
   @IsString()
   sku: string;
 
-  /** Cantidad: se vende de uno en uno (unidades enteras), mínimo 1. */
+  /** Cantidad cotizada (unidades enteras), mínimo 1. */
   @IsInt()
   @Min(1)
   quantity: number;
@@ -27,22 +28,24 @@ export class CreateOrderItemDto {
   discountPct?: number = 0;
 }
 
-export class CreateOrderDto {
+export class CreateQuoteDto {
   @IsUUID()
   customerId: string;
 
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => CreateOrderItemDto)
-  items: CreateOrderItemDto[];
+  @Type(() => CreateQuoteItemDto)
+  items: CreateQuoteItemDto[];
 
   @IsString()
   @IsOptional()
   notes?: string;
 
-  /** Horario/días en que el cliente puede recibir la mercancía. */
-  @IsString()
+  /** Días de vigencia de la cotización (por defecto 15). */
+  @IsInt()
+  @Min(1)
+  @Max(365)
   @IsOptional()
-  deliverySchedule?: string;
+  validityDays?: number;
 }

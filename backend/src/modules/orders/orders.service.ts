@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
@@ -17,6 +17,7 @@ import { SiesaService } from '../siesa/siesa.service';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Product } from '../products/entities/product.entity';
+import { getMinOrderTotal } from '../../common/companies';
 import { buildOrderPdf } from './order-pdf';
 import {
   bogotaParts,
@@ -27,6 +28,7 @@ import {
   isOrderUploadOpen,
   ORDER_OPEN_HOUR,
   ORDER_UPLOAD_CLOSE_HOUR,
+  APPROVAL_WINDOW_HOURS,
 } from './order-cortes';
 
 /** Resultado de subir un lote de pedidos (un corte) a Siesa. */
@@ -75,6 +77,7 @@ export class OrdersService {
     return this.dataSource.transaction(async (manager) => {
       const ordersRepo = manager.getRepository(Order);
 
+      // 1) Se valida y descuenta el stock (si no alcanza, aquí se lanza error).
       const { items, subtotal, taxes } = await this.buildItemsAndAdjustStock(
         manager,
         companyId,
@@ -82,23 +85,252 @@ export class OrdersService {
         dto.items,
       );
 
+      // Tope mínimo de pedido por compañía: si el total no lo alcanza, no se
+      // permite crear el pedido (la transacción se revierte y el stock no se
+      // descuenta).
+      const total = Number((subtotal + taxes).toFixed(2));
+      const minTotal = getMinOrderTotal(companyId);
+      if (minTotal > 0 && total < minTotal) {
+        throw new BadRequestException(
+          `El pedido no alcanza el monto mínimo de ` +
+            `${this.formatCurrency(minTotal)} para esta compañía. ` +
+            `Total actual: ${this.formatCurrency(total)}.`,
+        );
+      }
+
+      // 2) Con el stock ya confirmado, se valida la cartera del cliente. Si el
+      // endpoint devuelve documentos (saldo pendiente), el pedido queda
+      // retenido para aprobación en cartera; si no aparece (o el servicio
+      // falla), se procesa con normalidad.
+      const carteraBalance = await this.resolveCarteraBalance(
+        companyId,
+        customer.code,
+      );
+      const needsApproval = carteraBalance > 0;
+
       const order = ordersRepo.create({
         companyId,
         orderNumber: await this.nextOrderNumber(companyId, manager),
         customer,
         seller,
         items,
-        // Los pedidos se crean listos para enviar a Siesa ("pendiente por envío").
-        status: OrderStatus.CONFIRMED,
+        // Si el cliente debe cartera, el pedido queda "pendiente por aprobación
+        // en cartera"; de lo contrario, "pendiente por envío" a Siesa.
+        status: needsApproval
+          ? OrderStatus.PENDING_APPROVAL
+          : OrderStatus.CONFIRMED,
+        carteraBalance: needsApproval ? carteraBalance : undefined,
+        approvalDeadline: needsApproval
+          ? new Date(Date.now() + APPROVAL_WINDOW_HOURS * 60 * 60 * 1000)
+          : undefined,
         subtotal: Number(subtotal.toFixed(2)),
         taxes: Number(taxes.toFixed(2)),
-        total: Number((subtotal + taxes).toFixed(2)),
+        total,
         notes: dto.notes,
+        deliverySchedule: dto.deliverySchedule,
       });
 
       return ordersRepo.save(order);
     });
   }
+
+  /** Formatea un valor en pesos colombianos para los mensajes al usuario. */
+  private formatCurrency(value: number): string {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      maximumFractionDigits: 0,
+    }).format(value);
+  }
+
+  /**
+   * Consulta el saldo de cartera del cliente. Devuelve 0 si no debe o si el
+   * servicio externo no está disponible (para no bloquear la venta por una
+   * caída del endpoint de cartera).
+   */
+  private async resolveCarteraBalance(
+    companyId: string,
+    code: string,
+  ): Promise<number> {
+    try {
+      const portfolio = await this.clientsService.getPortfolio(companyId, code);
+      return portfolio.totalBalance > 0 ? portfolio.totalBalance : 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudo consultar la cartera del cliente ${code} ` +
+          `(compañía ${companyId}): ${message}. El pedido se crea sin retención.`,
+      );
+      return 0;
+    }
+  }
+
+  /**
+   * Lista los pedidos pendientes de aprobación en cartera (de todas las
+   * compañías), ordenados por la fecha límite más próxima a vencer.
+   */
+  async findPendingApproval(): Promise<Order[]> {
+    return this.ordersRepository.find({
+      where: { status: OrderStatus.PENDING_APPROVAL },
+      order: { approvalDeadline: 'ASC' },
+    });
+  }
+
+  /**
+   * Aprueba un pedido retenido por cartera: pasa a "pendiente por envío"
+   * (CONFIRMED) y queda listo para subirse a Siesa.
+   */
+  async approveOrder(id: string, approvedBy: string): Promise<Order> {
+    const order = await this.ordersRepository.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+    if (order.status !== OrderStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        'El pedido no está pendiente de aprobación en cartera.',
+      );
+    }
+    order.status = OrderStatus.CONFIRMED;
+    order.approvedAt = new Date();
+    order.approvedBy = approvedBy;
+    order.sellerNotificationPending = true;
+    return this.ordersRepository.save(order);
+  }
+
+  /**
+   * Desaprueba un pedido retenido por cartera: pasa a DISAPPROVED y devuelve el
+   * inventario reservado. Se usa tanto en el rechazo manual como en el
+   * vencimiento automático del tiempo de aprobación.
+   */
+  async disapproveOrder(
+    id: string,
+    reason: string | undefined,
+    approvedBy: string,
+  ): Promise<Order> {
+    return this.dataSource.transaction(async (manager) => {
+      const ordersRepo = manager.getRepository(Order);
+      const order = await ordersRepo.findOne({ where: { id } });
+      if (!order) throw new NotFoundException('Pedido no encontrado');
+      if (order.status !== OrderStatus.PENDING_APPROVAL) {
+        throw new BadRequestException(
+          'El pedido no está pendiente de aprobación en cartera.',
+        );
+      }
+      await this.releaseStock(manager, order);
+      order.status = OrderStatus.DISAPPROVED;
+      order.disapprovalReason = reason?.trim() || 'Desaprobado en cartera.';
+      order.approvedBy = approvedBy;
+      order.approvedAt = new Date();
+      order.sellerNotificationPending = true;
+      return ordersRepo.save(order);
+    });
+  }
+
+  /**
+   * Vence automáticamente los pedidos cuya ventana de aprobación (2 horas) ya
+   * terminó: pasan a EXPIRED (vencido) y se devuelve su inventario (lo digitado
+   * vuelve al stock). Devuelve cuántos se procesaron.
+   */
+  async expireOverdueApprovals(): Promise<number> {
+    const overdue = await this.ordersRepository.find({
+      where: {
+        status: OrderStatus.PENDING_APPROVAL,
+        approvalDeadline: LessThan(new Date()),
+      },
+    });
+    let processed = 0;
+    for (const order of overdue) {
+      try {
+        await this.expireOrder(order.id);
+        processed += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `No se pudo vencer el pedido ${order.orderNumber}: ${message}`,
+        );
+      }
+    }
+    if (processed > 0) {
+      this.logger.log(
+        `Pedidos vencidos por tiempo de aprobación de cartera: ${processed}`,
+      );
+    }
+    return processed;
+  }
+
+  /**
+   * Marca un pedido como EXPIRED (vencido) por agotarse el tiempo de aprobación
+   * en cartera y devuelve su inventario reservado al stock disponible.
+   */
+  private async expireOrder(id: string): Promise<Order> {
+    return this.dataSource.transaction(async (manager) => {
+      const ordersRepo = manager.getRepository(Order);
+      const order = await ordersRepo.findOne({ where: { id } });
+      if (!order) throw new NotFoundException('Pedido no encontrado');
+      if (order.status !== OrderStatus.PENDING_APPROVAL) {
+        throw new BadRequestException(
+          'El pedido no está pendiente de aprobación en cartera.',
+        );
+      }
+      await this.releaseStock(manager, order);
+      order.status = OrderStatus.EXPIRED;
+      order.disapprovalReason =
+        'Tiempo de aprobación en cartera vencido (2 horas).';
+      order.approvedBy = 'Sistema';
+      order.approvedAt = new Date();
+      order.sellerNotificationPending = true;
+      return ordersRepo.save(order);
+    });
+  }
+
+  /**
+   * Devuelve al inventario el stock de las líneas de un pedido (con bloqueo
+   * pesimista para evitar condiciones de carrera).
+   */
+  private async releaseStock(
+    manager: EntityManager,
+    order: Order,
+  ): Promise<void> {    const productsRepo = manager.getRepository(Product);
+    for (const item of order.items ?? []) {
+      if (!item.product) continue;
+      const product = await productsRepo.findOne({
+        where: { id: item.product.id, companyId: order.companyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (product) {
+        product.stock = Number(product.stock) + Number(item.quantity);
+        await productsRepo.save(product);
+      }
+    }
+  }
+
+  /**
+   * Pedidos del vendedor sobre los que cartera tomó una decisión
+   * (aprobado/desaprobado) y que aún no han sido notificados al vendedor.
+   * Se consultan en todas las compañías.
+   */
+  async findSellerNotifications(sellerId: string): Promise<Order[]> {
+    return this.ordersRepository.find({
+      where: { seller: { id: sellerId }, sellerNotificationPending: true },
+      order: { approvedAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Marca como notificado un pedido del vendedor (después de mostrarle el
+   * aviso de aprobación/desaprobación de cartera).
+   */
+  async acknowledgeNotification(
+    sellerId: string,
+    id: string,
+  ): Promise<{ ok: true }> {
+    const order = await this.ordersRepository.findOne({
+      where: { id, seller: { id: sellerId } },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+    order.sellerNotificationPending = false;
+    await this.ordersRepository.save(order);
+    return { ok: true };
+  }
+
 
   /**
    * Edita un pedido pendiente por envío (CONFIRMED o FAILED): reemplaza sus
@@ -160,6 +392,8 @@ export class OrdersService {
       order.taxes = Number(taxes.toFixed(2));
       order.total = Number((subtotal + taxes).toFixed(2));
       if (dto.notes !== undefined) order.notes = dto.notes;
+      if (dto.deliverySchedule !== undefined)
+        order.deliverySchedule = dto.deliverySchedule;
       // Tras editar, vuelve a quedar pendiente por envío y se limpia el error.
       order.status = OrderStatus.CONFIRMED;
       order.syncError = undefined;

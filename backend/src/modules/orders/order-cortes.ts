@@ -81,6 +81,12 @@ export function bogotaToday(): string {
 export const ORDER_OPEN_HOUR = 7;
 export const ORDER_UPLOAD_CLOSE_HOUR = 16;
 
+/**
+ * Horas que tiene un pedido retenido por cartera para ser aprobado o
+ * desaprobado. Al vencer, se libera el inventario y queda DISAPPROVED.
+ */
+export const APPROVAL_WINDOW_HOURS = 2;
+
 /** Hora actual (0-23) en horario de Colombia. */
 export function bogotaCurrentHour(): number {
   return bogotaParts(new Date()).hour;

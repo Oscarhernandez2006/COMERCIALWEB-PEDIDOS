@@ -23,4 +23,9 @@ export class UpdateOrderDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  /** Horario/días en que el cliente puede recibir la mercancía. */
+  @IsString()
+  @IsOptional()
+  deliverySchedule?: string;
 }

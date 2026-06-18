@@ -5,6 +5,8 @@ import { OrderItem } from './entities/order-item.entity';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { AdminOrdersController } from './admin-orders.controller';
+import { CarteraOrdersController } from './cartera-orders.controller';
+import { OrderApprovalScheduler } from './order-approval.scheduler';
 import { ClientsModule } from '../clients/clients.module';
 import { ProductsModule } from '../products/products.module';
 import { SiesaModule } from '../siesa/siesa.module';
@@ -20,8 +22,12 @@ import { PriceListsModule } from '../price-lists/price-lists.module';
     UsersModule,
     PriceListsModule,
   ],
-  controllers: [OrdersController, AdminOrdersController],
-  providers: [OrdersService],
+  controllers: [
+    OrdersController,
+    AdminOrdersController,
+    CarteraOrdersController,
+  ],
+  providers: [OrdersService, OrderApprovalScheduler],
   exports: [OrdersService],
 })
 export class OrdersModule {}

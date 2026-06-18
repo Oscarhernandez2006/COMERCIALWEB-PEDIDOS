@@ -30,6 +30,28 @@ interface ClientsResponse {
   data: ClientRaw[];
 }
 
+/** Fila cruda devuelta por el endpoint de cartera (un documento por cobrar). */
+export interface PortfolioRaw {
+  CIA?: number;
+  CODIGO?: string;
+  RAZON_SOCIAL?: string;
+  SUCURSAL?: string;
+  CO?: string;
+  TIPO_DOC_CRUCE?: string;
+  DESCRIPCION?: string;
+  CONS_DOC_CRUCE?: number;
+  DEBITO?: number;
+  CREDITO?: number;
+  SALDO?: number;
+}
+
+interface PortfolioResponse {
+  cia: number;
+  nit: string;
+  count: number;
+  data: PortfolioRaw[];
+}
+
 /**
  * Cliente del endpoint de clientes del Grupo Santacruz.
  *
@@ -71,6 +93,41 @@ export class ClientsClient {
       );
       throw new InternalServerErrorException(
         'Error consultando los clientes en Siesa.',
+      );
+    }
+  }
+
+  /**
+   * Trae la cartera (documentos por cobrar) de un cliente.
+   *
+   * GET {baseUrl}/cartera?cia={companyId}&nit={nit}&token={token}
+   */
+  async fetchPortfolio(
+    companyId: string,
+    nit: string,
+  ): Promise<PortfolioRaw[]> {
+    const baseUrl = this.config.get<string>('priceLists.baseUrl');
+    const token = this.config.get<string>('priceLists.token');
+    const timeout = this.config.get<number>('priceLists.timeoutMs');
+
+    try {
+      const response = await firstValueFrom(
+        this.http.get<PortfolioResponse>(`${baseUrl}/cartera`, {
+          params: { cia: companyId, nit, token },
+          timeout,
+        }),
+      );
+      return response.data?.data ?? [];
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? (error as { message: string }).message
+          : 'Error desconocido';
+      this.logger.error(
+        `Error consultando cartera (compañía ${companyId}, nit ${nit}): ${message}`,
+      );
+      throw new InternalServerErrorException(
+        'Error consultando la cartera del cliente en Siesa.',
       );
     }
   }

@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShoppingCart } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +26,13 @@ export function LoginPage() {
     setLoading(true);
     try {
       const loggedUser = await login(username, password);
-      navigate(loggedUser.role === 'admin' ? '/seleccionar' : '/');
+      const home =
+        loggedUser.role === 'admin'
+          ? '/seleccionar'
+          : loggedUser.role === 'cartera'
+            ? '/cartera'
+            : '/';
+      navigate(home);
     } catch {
       setError('Credenciales invalidas. Verifica tu cedula y contrasena.');
     } finally {
@@ -39,10 +44,12 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background to-accent/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <ShoppingCart className="h-6 w-6" />
-          </div>
-          <CardTitle className="text-2xl">Comercial</CardTitle>
+          <img
+            src="/SIGCOM.png"
+            alt="SIGCOM"
+            className="mb-2 h-24 w-24 object-contain"
+          />
+          <CardTitle className="text-2xl">SIGCOM</CardTitle>
           <CardDescription>
             Ingresa para tomar pedidos
           </CardDescription>
