@@ -17,5 +17,35 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: ./backend
+    container_name: comercial_backend
+    restart: unless-stopped
+    # Toma la configuración de backend/.env (DB externa, JWT, Siesa, etc.).
+    # Para usar la base de datos local de este compose, edita backend/.env:
+    #   DB_HOST=db  DB_PORT=5432  DB_USERNAME=postgres
+    #   DB_PASSWORD=postgres  DB_NAME=comercial
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: comercial_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - '8080:80'
+
 volumes:
   comercial_pgdata:
