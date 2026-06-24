@@ -1,0 +1,55 @@
+# ============================================================================
+# Stack de Docker Swarm para desplegar SIGCOM detrás del Traefik de Dokploy.
+#
+# Traefik (en swarm) lee los labels desde "deploy.labels". El contenedor se
+# une a la red overlay externa "dokploy-network" para que Traefik lo alcance.
+#
+# Se despliega con (ver deploy.sh):
+#   docker build -t sigcom-app:latest .
+#   docker stack deploy -c docker-stack.yml sigcom
+# ============================================================================
+
+version: '3.8'
+
+services:
+  app:
+    image: sigcom-app:latest
+    # Variables de entorno de producción (crea backend/.env en el servidor).
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      # Nginx (frontend + proxy /api) escucha en este puerto; Traefik enruta aquí.
+      PORT: '80'
+    networks:
+      - dokploy-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=dokploy-network
+
+        # Router HTTP -> redirige a HTTPS
+        - traefik.http.routers.sigcom-web.rule=Host(`sigcom.grupo-santacruz.com`)
+        - traefik.http.routers.sigcom-web.entrypoints=web
+        - traefik.http.routers.sigcom-web.service=sigcom-service
+        - traefik.http.routers.sigcom-web.middlewares=sigcom-redirect
+
+        # Router HTTPS
+        - traefik.http.routers.sigcom-secure.rule=Host(`sigcom.grupo-santacruz.com`)
+        - traefik.http.routers.sigcom-secure.entrypoints=websecure
+        - traefik.http.routers.sigcom-secure.service=sigcom-service
+        - traefik.http.routers.sigcom-secure.tls=true
+        - traefik.http.routers.sigcom-secure.tls.certresolver=letsencrypt
+
+        # Servicio: puerto interno del contenedor (Nginx en 80)
+        - traefik.http.services.sigcom-service.loadbalancer.server.port=80
+
+        # Middleware de redirección a HTTPS
+        - traefik.http.middlewares.sigcom-redirect.redirectscheme.scheme=https
+
+networks:
+  dokploy-network:
+    external: true
