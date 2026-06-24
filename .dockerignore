@@ -1,0 +1,22 @@
+# Dependencias y artefactos que NO deben entrar al contexto de build
+**/node_modules
+**/dist
+**/build
+
+# Secretos
+**/.env
+**/.env.*
+
+# Git / editor / OS
+.git
+.gitignore
+.vscode
+.idea
+**/*.log
+**/npm-debug.log*
+.DS_Store
+
+# Docker (no se necesitan dentro del contexto)
+docker-compose.yml
+backend/Dockerfile
+frontend/Dockerfile
