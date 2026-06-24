@@ -23,7 +23,9 @@ import {
   PackageOpen,
   Boxes,
   StickyNote,
+  Truck,
   Clock,
+  CalendarDays,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
@@ -33,9 +35,18 @@ import {
   downloadOrderPdf,
 } from '@/hooks/useApi';
 import { formatCurrency, cn } from '@/lib/utils';
+import { DeliverySchedulePicker } from '@/components/DeliverySchedulePicker';
+import { isScheduleComplete, formatDeliverySchedule } from '@/lib/delivery-schedule';
 import { getMinOrderTotal } from '@/lib/companies';
 import { useCompany } from '@/company/useCompany';
-import type { CartLine, Client, Order, SellableProduct } from '@/types';
+import type {
+  CartLine,
+  Client,
+  DeliverySchedule,
+  DeliveryType,
+  Order,
+  SellableProduct,
+} from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -63,7 +74,11 @@ export function NewOrderPage() {
   const [productSearch, setProductSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [notes, setNotes] = useState('');
-  const [deliverySchedule, setDeliverySchedule] = useState('');
+  const [logisticsNote, setLogisticsNote] = useState('');
+  const [deliveryType, setDeliveryType] = useState<DeliveryType>('despacho');
+  const [deliverySchedule, setDeliverySchedule] =
+    useState<DeliverySchedule | null>(null);
+  const [deliveryDate, setDeliveryDate] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [submitError, setSubmitError] = useState('');
 
@@ -146,13 +161,23 @@ export function NewOrderPage() {
 
   const handleSubmit = async () => {
     if (!customer || cart.length === 0) return;
+    if (!deliveryDate) {
+      setSubmitError('Selecciona la fecha de entrega del pedido.');
+      return;
+    }
     setSubmitError('');
     let order: Order;
     try {
       order = await createOrder.mutateAsync({
         customerId: customer.id,
         notes: notes || undefined,
-        deliverySchedule: deliverySchedule || undefined,
+        logisticsNote: logisticsNote || undefined,
+        deliveryType,
+        deliverySchedule: isScheduleComplete(deliverySchedule)
+          ? formatDeliverySchedule(deliverySchedule)
+          : undefined,
+        deliveryScheduleData: deliverySchedule ?? undefined,
+        deliveryDate,
         items: cart.map((l) => ({
           sku: l.product.sku,
           quantity: l.quantity,
@@ -171,12 +196,8 @@ export function NewOrderPage() {
       }
       return;
     }
-    // Genera/descarga el documento y muestra la confirmación.
-    try {
-      await downloadOrderPdf(order.id, order.orderNumber);
-    } catch {
-      // Si falla la descarga automática, igual se puede descargar desde Pedidos.
-    }
+    // El documento PDF queda disponible para descargarlo manualmente desde
+    // el módulo de Pedidos (no se descarga automáticamente).
     setCreatedOrder(order);
   };
 
@@ -286,6 +307,7 @@ export function NewOrderPage() {
                             setCustomer(null);
                             setCart([]);
                             setProductSearch('');
+                            setDeliverySchedule(null);
                           }}
                         >
                           Cambiar
@@ -440,6 +462,7 @@ export function NewOrderPage() {
                             key={c.id}
                             onClick={() => {
                               setCustomer(c);
+                              setDeliverySchedule(c.deliverySchedule ?? null);
                               setCustomerSearch('');
                             }}
                             className="flex w-full items-start gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left text-sm transition-colors hover:border-border hover:bg-accent"
@@ -799,13 +822,76 @@ export function NewOrderPage() {
                 </div>
               </div>
 
-              <div className="relative">
-                <StickyNote className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <StickyNote className="h-4 w-4 text-muted-foreground" />
+                  Nota producto
+                </label>
                 <Input
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Notas del pedido (opcional)"
-                  className="pl-9"
+                  placeholder="Ej: revisar fechas de vencimiento, fragilidad..."
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <Truck className="h-4 w-4 text-muted-foreground" />
+                  Tipo de entrega
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('despacho')}
+                    className={cn(
+                      'flex items-center justify-center gap-2 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors',
+                      deliveryType === 'despacho'
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-background text-foreground hover:border-primary/50 hover:bg-accent',
+                    )}
+                  >
+                    <Truck className="h-4 w-4" />
+                    Despacho
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('recoge_en_planta')}
+                    className={cn(
+                      'flex items-center justify-center gap-2 rounded-md border px-3 py-2.5 text-sm font-medium transition-colors',
+                      deliveryType === 'recoge_en_planta'
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-background text-foreground hover:border-primary/50 hover:bg-accent',
+                    )}
+                  >
+                    <Building className="h-4 w-4" />
+                    Recoge en planta
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <Truck className="h-4 w-4 text-muted-foreground" />
+                  Nota logística
+                </label>
+                <Input
+                  value={logisticsNote}
+                  onChange={(e) => setLogisticsNote(e.target.value)}
+                  placeholder="Ej: instrucciones de entrega, transporte..."
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  Fecha de entrega
+                  <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={deliveryDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
                 />
               </div>
 
@@ -816,11 +902,11 @@ export function NewOrderPage() {
                 </label>
                 <p className="text-xs text-muted-foreground">
                   Días y horas en que el cliente puede recibir la mercancía.
+                  Queda guardado para este cliente y se podrá modificar.
                 </p>
-                <Input
+                <DeliverySchedulePicker
                   value={deliverySchedule}
-                  onChange={(e) => setDeliverySchedule(e.target.value)}
-                  placeholder="Ej: Lunes a viernes de 7 am a 5 pm"
+                  onChange={setDeliverySchedule}
                 />
               </div>
 
@@ -830,6 +916,7 @@ export function NewOrderPage() {
                 disabled={
                   !customer ||
                   cart.length === 0 ||
+                  !deliveryDate ||
                   belowMinimum ||
                   createOrder.isPending
                 }
@@ -861,7 +948,8 @@ export function NewOrderPage() {
               ) : (
                 cart.length > 0 && (
                   <p className="text-center text-xs text-muted-foreground">
-                    Al crear el pedido se generará el documento PDF.
+                    Al crear el pedido se generará el documento PDF, que podrás
+                    descargar desde Pedidos.
                   </p>
                 )
               )}
@@ -880,8 +968,8 @@ export function NewOrderPage() {
               </div>
               <h3 className="text-lg font-semibold">¡Pedido creado!</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Pedido N° {createdOrder.orderNumber} registrado correctamente.
-                El documento se descargó automáticamente.
+                Pedido #{createdOrder.orderNumber} registrado correctamente.
+                Puedes descargar el documento aquí o desde Pedidos.
               </p>
               <p className="mt-3 text-3xl font-bold tracking-tight">
                 {formatCurrency(Number(createdOrder.total))}

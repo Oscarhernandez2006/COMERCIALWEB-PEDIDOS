@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/auth/useAuth';
 import type { UserRole } from '@/types';
+import { canAccessArea } from '@/lib/modules';
 
 export function ProtectedRoute({
   children,
@@ -25,7 +26,13 @@ export function ProtectedRoute({
   }
 
   if (role && user.role !== role) {
-    return <Navigate to="/" replace />;
+    // El área administrativa también es accesible para usuarios a quienes se
+    // les asignaron módulos administrativos por permisos.
+    const allowedByPermission =
+      role === 'admin' && canAccessArea(user.role, user.permissions, 'admin');
+    if (!allowedByPermission) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;

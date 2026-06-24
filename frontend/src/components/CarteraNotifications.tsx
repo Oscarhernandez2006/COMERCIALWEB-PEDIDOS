@@ -50,7 +50,7 @@ export function CarteraNotifications() {
                 : 'Pedido desaprobado por cartera'}
           </h3>
           <p className="mt-2 text-sm text-muted-foreground">
-            El pedido N° <span className="font-semibold">{order.orderNumber}</span>{' '}
+            El pedido #<span className="font-semibold">{order.orderNumber}</span>{' '}
             del cliente{' '}
             <span className="font-semibold">{order.customer.name}</span>{' '}
             {approved

@@ -1,47 +1,9 @@
 /**
- * Cortes de carga a Siesa.
+ * Utilidades de horario para la subida de pedidos al ERP.
  *
- * Los pedidos se suben al ERP en tres cortes diarios según la HORA DE CREACIÓN
- * del pedido (hora de Colombia):
- *   - Corte 1: 7:00 a 10:00 a.m.
- *   - Corte 2: 10:00 a.m. a 1:00 p.m.
- *   - Corte 3: 1:00 a 4:00 p.m.
- *
- * Para no perder ningún pedido en los bordes:
- *   - Los pedidos creados antes de las 10:00 entran al Corte 1.
- *   - Los pedidos creados después de la hora del último corte (4:00 p.m.)
- *     entran al Corte 3.
+ * Los pedidos se suben automáticamente al ERP al crearse (o al aprobarse en
+ * cartera), siempre dentro de la ventana operativa de Colombia.
  */
-export interface Corte {
-  id: string;
-  label: string;
-  /** Hora de inicio (informativa, formato 24h). */
-  startHour: number;
-  /** Hora de fin (informativa, formato 24h). */
-  endHour: number;
-}
-
-export const CORTES: Corte[] = [
-  { id: '1', label: 'Corte 1 · 7:00 a 10:00 a.m.', startHour: 7, endHour: 10 },
-  { id: '2', label: 'Corte 2 · 10:00 a.m. a 1:00 p.m.', startHour: 10, endHour: 13 },
-  { id: '3', label: 'Corte 3 · 1:00 a 4:00 p.m.', startHour: 13, endHour: 16 },
-];
-
-export function isValidCorte(id: string | undefined): id is string {
-  return !!id && CORTES.some((c) => c.id === id);
-}
-
-/**
- * Devuelve el id del corte al que pertenece una hora (0-23) de Colombia.
- *   - hora < 10  → Corte 1 (incluye lo creado antes de las 7).
- *   - 10 a < 13  → Corte 2.
- *   - hora >= 13 → Corte 3 (incluye lo creado después de las 4 p.m.).
- */
-export function corteForHour(hour: number): string {
-  if (hour < 10) return '1';
-  if (hour < 13) return '2';
-  return '3';
-}
 
 /**
  * Extrae la fecha (YYYY-MM-DD) y la hora (0-23) de una fecha en horario de

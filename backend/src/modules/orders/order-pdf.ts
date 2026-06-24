@@ -25,6 +25,19 @@ function money(value: number | string): string {
  * Devuelve una promesa con el contenido binario del PDF.
  */
 export function buildOrderPdf(order: Order): Promise<Buffer> {
+  return renderOrdersToPdf([order]);
+}
+
+/**
+ * Genera un único PDF con varios pedidos: cada pedido ocupa su(s) propia(s)
+ * página(s). Sirve para la descarga masiva desde el panel de administración.
+ */
+export function buildOrdersPdf(orders: Order[]): Promise<Buffer> {
+  return renderOrdersToPdf(orders);
+}
+
+/** Crea el documento PDF y dibuja cada pedido (uno por página). */
+function renderOrdersToPdf(orders: Order[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 48 });
     const chunks: Buffer[] = [];
@@ -33,6 +46,17 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
+    orders.forEach((order, idx) => {
+      if (idx > 0) doc.addPage();
+      drawOrder(doc, order);
+    });
+
+    doc.end();
+  });
+}
+
+/** Dibuja un pedido en el documento, empezando en la posición actual. */
+function drawOrder(doc: PDFKit.PDFDocument, order: Order): void {
     const companyName = COMPANY_NAMES[order.companyId] ?? 'Compañía';
     const created = order.createdAt ? new Date(order.createdAt) : new Date();
 
@@ -174,22 +198,57 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
     doc.text('Total:', cols.price, y, { width: 70 });
     doc.text(money(order.total), cols.total, y, { width: 67 });
 
-    // Notas.
+    // Nota producto.
     if (order.notes) {
       y += 30;
       doc
         .font('Helvetica-Bold')
         .fontSize(10)
-        .text('Notas', 48, y);
+        .text('Nota producto', 48, y);
       doc
         .font('Helvetica')
         .fillColor('#222')
         .text(order.notes, 48, y + 14, { width: 499 });
     }
 
+    // Nota logística.
+    if (order.logisticsNote) {
+      y += order.notes ? 44 : 30;
+      doc
+        .font('Helvetica-Bold')
+        .fillColor('#000')
+        .fontSize(10)
+        .text('Nota logística', 48, y);
+      doc
+        .font('Helvetica')
+        .fillColor('#222')
+        .text(order.logisticsNote, 48, y + 14, { width: 499 });
+    }
+
+    // Tipo de entrega.
+    if (order.deliveryType) {
+      y += order.notes || order.logisticsNote ? 44 : 30;
+      doc
+        .font('Helvetica-Bold')
+        .fillColor('#000')
+        .fontSize(10)
+        .text('Tipo de entrega', 48, y);
+      doc
+        .font('Helvetica')
+        .fillColor('#222')
+        .text(
+          order.deliveryType === 'recoge_en_planta'
+            ? 'Recoge en planta'
+            : 'Despacho',
+          48,
+          y + 14,
+          { width: 499 },
+        );
+    }
+
     // Horario de recibido de pedidos.
     if (order.deliverySchedule) {
-      y += order.notes ? 44 : 30;
+      y += order.notes || order.logisticsNote || order.deliveryType ? 44 : 30;
       doc
         .font('Helvetica-Bold')
         .fillColor('#000')
@@ -200,7 +259,4 @@ export function buildOrderPdf(order: Order): Promise<Buffer> {
         .fillColor('#222')
         .text(order.deliverySchedule, 48, y + 14, { width: 499 });
     }
-
-    doc.end();
-  });
 }

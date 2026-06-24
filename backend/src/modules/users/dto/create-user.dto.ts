@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -31,4 +32,10 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   siesaSellerCode?: string;
+
+  /** Módulos visibles para el usuario (rutas del front). Vacío = todos. */
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  permissions?: string[];
 }

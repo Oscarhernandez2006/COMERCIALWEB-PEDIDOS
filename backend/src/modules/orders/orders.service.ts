@@ -13,31 +13,40 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { ClientsService } from '../clients/clients.service';
 import { ClientRecord } from '../clients/entities/client-record.entity';
 import { PriceListsService } from '../price-lists/price-lists.service';
-import { SiesaService } from '../siesa/siesa.service';
+import { OrdersErpClient, ErpOrderRegistro, ErpOrderState } from './orders-erp.client';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { Product } from '../products/entities/product.entity';
-import { getMinOrderTotal } from '../../common/companies';
+import { getMinOrderTotal, getWarehouse, COMPANIES } from '../../common/companies';
 import { buildOrderPdf } from './order-pdf';
 import {
-  bogotaParts,
   bogotaToday,
-  corteForHour,
-  isValidCorte,
-  isOrderCreationOpen,
-  isOrderUploadOpen,
-  ORDER_OPEN_HOUR,
-  ORDER_UPLOAD_CLOSE_HOUR,
+  // [TEMPORAL] Restricciones de horario desactivadas (imports en pausa).
+  // isOrderCreationOpen,
+  // isOrderUploadOpen,
+  // ORDER_OPEN_HOUR,
+  // ORDER_UPLOAD_CLOSE_HOUR,
   APPROVAL_WINDOW_HOURS,
 } from './order-cortes';
 
-/** Resultado de subir un lote de pedidos (un corte) a Siesa. */
-export interface UploadBatchResult {
-  total: number;
-  uploaded: number;
-  failed: number;
-  errors: { orderNumber: string; message: string }[];
+/** Trazabilidad de un pedido en Siesa para mostrar al vendedor. */
+export interface SiesaOrderState {
+  /** Descripción del estado en Siesa (En elaboración, Aprobado, Cumplido, Anulado, Retenido). */
+  estado: string;
+  /** El pedido ya fue facturado en Siesa. */
+  facturado: boolean;
+  /** El pedido ya fue despachado (remisionado) en Siesa. */
+  despachado: boolean;
 }
+
+/**
+ * Margen de asentamiento tras enviar un pedido a Siesa. En Siesa la decisión es
+ * inmediata: el pedido entra (aparece su consecutivo) o rebota (no aparece). Solo
+ * se espera este pequeño margen para garantizar que la consulta sea posterior al
+ * envío (el caché del ERP dura ~5s) y dar tiempo a que Siesa lo indexe; pasado
+ * esto, si el consecutivo no aparece, el pedido se considera REBOTADO.
+ */
+const BOUNCE_SETTLE_MS = 15_000;
 
 @Injectable()
 export class OrdersService {
@@ -48,7 +57,7 @@ export class OrdersService {
     private readonly ordersRepository: Repository<Order>,
     private readonly clientsService: ClientsService,
     private readonly priceListsService: PriceListsService,
-    private readonly siesaService: SiesaService,
+    private readonly erpClient: OrdersErpClient,
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
   ) {}
@@ -58,14 +67,15 @@ export class OrdersService {
     dto: CreateOrderDto,
     seller: User,
   ): Promise<Order> {
+    // [TEMPORAL] Restricción de horario de creación desactivada.
     // Los pedidos solo se pueden crear a partir de las 7:00 a.m. (Colombia).
-    if (!isOrderCreationOpen()) {
-      throw new BadRequestException(
-        `El pedido no se pudo realizar porque está fuera del horario de ` +
-          `atención. La toma de pedidos está disponible a partir de las ` +
-          `${ORDER_OPEN_HOUR}:00 a.m.`,
-      );
-    }
+    // if (!isOrderCreationOpen()) {
+    //   throw new BadRequestException(
+    //     `El pedido no se pudo realizar porque está fuera del horario de ` +
+    //       `atención. La toma de pedidos está disponible a partir de las ` +
+    //       `${ORDER_OPEN_HOUR}:00 a.m.`,
+    //   );
+    // }
 
     const customer = await this.clientsService.findOne(
       companyId,
@@ -73,8 +83,9 @@ export class OrdersService {
     );
 
     // Todo se hace dentro de una transacción para que el descuento de stock y
-    // la creación del pedido sean atómicos.
-    return this.dataSource.transaction(async (manager) => {
+    // la creación del pedido sean atómicos. La subida al ERP se hace después de
+    // confirmar la transacción (no se hace una llamada HTTP con locks abiertos).
+    const created = await this.dataSource.transaction(async (manager) => {
       const ordersRepo = manager.getRepository(Order);
 
       // 1) Se valida y descuenta el stock (si no alcanza, aquí se lanza error).
@@ -127,11 +138,32 @@ export class OrdersService {
         taxes: Number(taxes.toFixed(2)),
         total,
         notes: dto.notes,
+        logisticsNote: dto.logisticsNote,
+        deliveryType: dto.deliveryType,
         deliverySchedule: dto.deliverySchedule,
+        deliveryDate: dto.deliveryDate,
       });
+
+      // Guarda el horario de recibido en el cliente para que quede
+      // predeterminado (editable) en los siguientes pedidos.
+      if (dto.deliveryScheduleData) {
+        await manager
+          .getRepository(ClientRecord)
+          .update(
+            { id: customer.id, companyId },
+            { deliverySchedule: dto.deliveryScheduleData },
+          );
+      }
 
       return ordersRepo.save(order);
     });
+
+    // Si el cliente no debe cartera, el pedido sube de inmediato al ERP y queda
+    // "enviado a Siesa". Si debe, queda retenido hasta la aprobación en cartera.
+    if (created.status === OrderStatus.CONFIRMED) {
+      return this.pushOrder(created);
+    }
+    return created;
   }
 
   /** Formatea un valor en pesos colombianos para los mensajes al usuario. */
@@ -177,8 +209,9 @@ export class OrdersService {
   }
 
   /**
-   * Aprueba un pedido retenido por cartera: pasa a "pendiente por envío"
-   * (CONFIRMED) y queda listo para subirse a Siesa.
+   * Aprueba un pedido retenido por cartera: queda confirmado y se sube de
+   * inmediato al ERP (queda "enviado a Siesa"). Si la subida falla, el pedido
+   * queda en error para reintentar.
    */
   async approveOrder(id: string, approvedBy: string): Promise<Order> {
     const order = await this.ordersRepository.findOne({ where: { id } });
@@ -192,7 +225,9 @@ export class OrdersService {
     order.approvedAt = new Date();
     order.approvedBy = approvedBy;
     order.sellerNotificationPending = true;
-    return this.ordersRepository.save(order);
+    const saved = await this.ordersRepository.save(order);
+    // Tras aprobar, sube de inmediato al ERP.
+    return this.pushOrder(saved);
   }
 
   /**
@@ -331,6 +366,31 @@ export class OrdersService {
     return { ok: true };
   }
 
+  /**
+   * Pedidos del vendedor cuyo estado cambió en Siesa y que aún no se le han
+   * mostrado (modal de cambio de estado). Se consultan en todas las compañías.
+   */
+  async findSiesaStateNotifications(sellerId: string): Promise<Order[]> {
+    return this.ordersRepository.find({
+      where: { seller: { id: sellerId }, siesaStateNotificationPending: true },
+      order: { updatedAt: 'DESC' },
+    });
+  }
+
+  /** Marca como visto el aviso de cambio de estado de Siesa de un pedido. */
+  async acknowledgeSiesaStateNotification(
+    sellerId: string,
+    id: string,
+  ): Promise<{ ok: true }> {
+    const order = await this.ordersRepository.findOne({
+      where: { id, seller: { id: sellerId } },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+    order.siesaStateNotificationPending = false;
+    await this.ordersRepository.save(order);
+    return { ok: true };
+  }
+
 
   /**
    * Edita un pedido pendiente por envío (CONFIRMED o FAILED): reemplaza sus
@@ -343,7 +403,7 @@ export class OrdersService {
     id: string,
     dto: UpdateOrderDto,
   ): Promise<Order> {
-    return this.dataSource.transaction(async (manager) => {
+    const updated = await this.dataSource.transaction(async (manager) => {
       const ordersRepo = manager.getRepository(Order);
       const itemsRepo = manager.getRepository(OrderItem);
       const productsRepo = manager.getRepository(Product);
@@ -392,14 +452,31 @@ export class OrdersService {
       order.taxes = Number(taxes.toFixed(2));
       order.total = Number((subtotal + taxes).toFixed(2));
       if (dto.notes !== undefined) order.notes = dto.notes;
+      if (dto.logisticsNote !== undefined)
+        order.logisticsNote = dto.logisticsNote;
+      if (dto.deliveryType !== undefined)
+        order.deliveryType = dto.deliveryType;
       if (dto.deliverySchedule !== undefined)
         order.deliverySchedule = dto.deliverySchedule;
+      if (dto.deliveryDate !== undefined) order.deliveryDate = dto.deliveryDate;
+      // Actualiza el horario predeterminado del cliente.
+      if (dto.deliveryScheduleData && order.customer) {
+        await manager
+          .getRepository(ClientRecord)
+          .update(
+            { id: order.customer.id, companyId },
+            { deliverySchedule: dto.deliveryScheduleData },
+          );
+      }
       // Tras editar, vuelve a quedar pendiente por envío y se limpia el error.
       order.status = OrderStatus.CONFIRMED;
       order.syncError = undefined;
 
       return ordersRepo.save(order);
     });
+
+    // Tras editar, se reintenta la subida al ERP de inmediato.
+    return this.pushOrder(updated);
   }
 
   /**
@@ -501,6 +578,271 @@ export class OrdersService {
       .then((orders) => this.withCustomerPriceListName(companyId, orders));
   }
 
+  /**
+   * Estado real en Siesa de los pedidos del vendedor. Consulta el ERP y cruza
+   * por `CONSECUTIVO` (que para los documentos de nuestra compañía coincide con
+   * nuestro `orderNumber`), devolviendo solo los pedidos del vendedor en esta
+   * compañía. Mapa: orderNumber -> estado, facturado, despachado.
+   */
+  async getSiesaStates(
+    companyId: string,
+    sellerId: string,
+  ): Promise<Record<string, SiesaOrderState>> {
+    const orders = await this.ordersRepository.find({
+      where: { companyId, seller: { id: sellerId } },
+      select: { id: true, orderNumber: true },
+    });
+    if (orders.length === 0) return {};
+
+    const states = await this.erpClient.getOrderStates(companyId);
+    const byConsecutivo = this.indexStatesByConsecutivo(states);
+
+    const result: Record<string, SiesaOrderState> = {};
+    for (const order of orders) {
+      const consecutivo = parseInt(order.orderNumber, 10);
+      if (Number.isNaN(consecutivo)) continue;
+      const state = byConsecutivo.get(consecutivo);
+      if (!state) continue;
+      result[order.orderNumber] = {
+        estado: state.DESC_ESTADO,
+        facturado: Number(state.FACTURADO) === 1,
+        despachado: Number(state.DESPACHADO) === 1,
+      };
+    }
+    return result;
+  }
+
+  /**
+   * Indexa los estados de Siesa por su `CONSECUTIVO`. Para el tipo de documento
+   * de nuestra compañía (p. ej. PVA) el consecutivo de Siesa coincide con
+   * nuestro `orderNumber`, así que el pedido #1 corresponde al consecutivo 1.
+   */
+  private indexStatesByConsecutivo(
+    states: ErpOrderState[],
+  ): Map<number, ErpOrderState> {
+    const byConsecutivo = new Map<number, ErpOrderState>();
+    for (const state of states) {
+      if (typeof state.CONSECUTIVO !== 'number') continue;
+      byConsecutivo.set(state.CONSECUTIVO, state);
+    }
+    return byConsecutivo;
+  }
+
+  /**
+   * Sincroniza el estado de los pedidos contra Siesa para TODAS las compañías.
+   * Hoy reacciona a las anulaciones: si un pedido que ya subimos al ERP aparece
+   * anulado en Siesa, lo anula también en el sistema (devuelve el stock y deja
+   * de contar en estadísticas). Devuelve cuántos pedidos se anularon.
+   */
+  /**
+   * Sincroniza el estado de los pedidos contra Siesa para TODAS las compañías.
+   * Reacciona a dos casos sobre los pedidos ya enviados al ERP:
+   *  - Anulados en Siesa  -> se anulan en el sistema (CANCELLED).
+   *  - Rebotados (no aparecen en el ERP tras el periodo de gracia) -> REBOTADO.
+   * En ambos casos se devuelve el stock. Devuelve cuántos pedidos cambiaron.
+   */
+  async syncSiesaStatuses(): Promise<number> {
+    let updated = 0;
+    for (const company of COMPANIES) {
+      try {
+        updated += await this.syncSiesaStatusesForCompany(company.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `No se pudo sincronizar estados de Siesa (compañía ${company.id}): ${message}`,
+        );
+      }
+    }
+    if (updated > 0) {
+      this.logger.log(
+        `Pedidos actualizados por sincronización con Siesa (anulados/rebotados): ${updated}`,
+      );
+    }
+    return updated;
+  }
+
+  /** Sincroniza anulaciones y rebotes de Siesa para una compañía. */
+  private async syncSiesaStatusesForCompany(companyId: string): Promise<number> {
+    // Solo los pedidos que ya subimos al ERP y que aún no llegaron a su estado
+    // final (Despachado) pueden cambiar de estado, anularse o rebotar.
+    const syncedOrders = await this.ordersRepository.find({
+      where: {
+        companyId,
+        status: OrderStatus.SYNCED,
+        siesaTrackingDone: false,
+      },
+      relations: { seller: true },
+      select: {
+        id: true,
+        orderNumber: true,
+        syncedAt: true,
+        siesaEstado: true,
+        seller: { id: true },
+      },
+    });
+    if (syncedOrders.length === 0) return 0;
+
+    const states = await this.erpClient.getOrderStates(companyId);
+    const byConsecutivo = this.indexStatesByConsecutivo(states);
+
+    let updated = 0;
+    for (const order of syncedOrders) {
+      // Se cruza por CONSECUTIVO (nuestro orderNumber).
+      const consecutivo = parseInt(order.orderNumber, 10);
+      if (Number.isNaN(consecutivo)) continue;
+      const state = byConsecutivo.get(consecutivo);
+
+      // No apareció en el ERP: en Siesa el rebote es inmediato (o entra o
+      // rebota). Solo se respeta un pequeño margen de asentamiento para que la
+      // consulta sea posterior al envío; pasado eso, se marca REBOTADO.
+      if (!state) {
+        const syncedAt = order.syncedAt ? new Date(order.syncedAt).getTime() : 0;
+        if (!syncedAt || Date.now() - syncedAt < BOUNCE_SETTLE_MS) continue;
+        try {
+          await this.markAsBounced(order.id, companyId);
+          updated += 1;
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `No se pudo marcar como rebotado el pedido ${order.orderNumber}: ${message}`,
+          );
+        }
+        continue;
+      }
+
+      // Estado efectivo: incluye Facturado y Despachado como hitos. Si cambió
+      // respecto al último conocido, se deja un aviso para el vendedor.
+      const eff = this.effectiveSiesaState(state);
+      if (eff.label && eff.label !== (order.siesaEstado ?? '')) {
+        try {
+          await this.recordSiesaStateChange(
+            order.id,
+            companyId,
+            eff.label,
+            eff.final,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `No se pudo registrar el cambio de estado del pedido ${order.orderNumber}: ${message}`,
+          );
+        }
+      }
+
+      // Si quedó anulado, se anula también en el sistema (devuelve el stock).
+      if (eff.anulado) {
+        try {
+          await this.cancelFromSiesa(order.id, companyId);
+          updated += 1;
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `No se pudo anular el pedido ${order.orderNumber} por Siesa: ${message}`,
+          );
+        }
+      }
+    }
+    return updated;
+  }
+
+  /**
+   * Estado efectivo del pedido en Siesa para mostrar al vendedor. Combina el
+   * estado base (DESC_ESTADO) con los hitos de Facturado y Despachado. El orden
+   * de prioridad refleja el avance del pedido; Despachado es el estado final.
+   */
+  private effectiveSiesaState(state: ErpOrderState): {
+    label: string;
+    final: boolean;
+    anulado: boolean;
+  } {
+    const desc = (state.DESC_ESTADO ?? '').trim();
+    const anulado = state.ESTADO === 9 || desc.toLowerCase().includes('anulad');
+    if (anulado) return { label: desc || 'Anulado', final: true, anulado: true };
+    if (Number(state.DESPACHADO) === 1)
+      return { label: 'Despachado', final: true, anulado: false };
+    if (Number(state.FACTURADO) === 1)
+      return { label: 'Facturado', final: false, anulado: false };
+    return { label: desc, final: false, anulado: false };
+  }
+
+  /**
+   * Registra un cambio de estado de Siesa y deja el aviso pendiente para el
+   * vendedor. Guarda el estado anterior (para el mensaje "de X a Y") y el nuevo.
+   * Si el estado es final (Despachado), marca el pedido para no consultarlo más.
+   */
+  private async recordSiesaStateChange(
+    id: string,
+    companyId: string,
+    newEstado: string,
+    final = false,
+  ): Promise<void> {
+    const order = await this.ordersRepository.findOne({
+      where: { id, companyId },
+    });
+    if (!order) return;
+    order.siesaStatePrevious = order.siesaEstado;
+    order.siesaEstado = newEstado;
+    order.siesaStateNotificationPending = true;
+    if (final) order.siesaTrackingDone = true;
+    await this.ordersRepository.save(order);
+    this.logger.log(
+      `Pedido ${order.orderNumber} (compañía ${companyId}) cambió de estado en Siesa a "${newEstado}".`,
+    );
+  }
+
+  /**
+   * Anula un pedido porque Siesa lo reporta anulado: devuelve el stock de cada
+   * línea y lo marca como CANCELLED (con lo que sale de las estadísticas).
+   * A diferencia de la anulación manual, sí opera sobre pedidos ya enviados.
+   */
+  private async cancelFromSiesa(id: string, companyId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const ordersRepo = manager.getRepository(Order);
+      const order = await ordersRepo.findOne({ where: { id, companyId } });
+      if (!order) return;
+      // Si entre la consulta y ahora cambió de estado, no se vuelve a procesar.
+      if (order.status === OrderStatus.CANCELLED) return;
+
+      await this.releaseStock(manager, order);
+      order.status = OrderStatus.CANCELLED;
+      order.cancelReason = 'Anulado en Siesa.';
+      await ordersRepo.save(order);
+      this.logger.log(
+        `Pedido ${order.orderNumber} (compañía ${companyId}) anulado por Siesa; stock devuelto.`,
+      );
+    });
+  }
+
+  /**
+   * Marca un pedido como REBOTADO porque Siesa lo rechazó (no quedó registrado
+   * en el ERP tras el periodo de gracia): devuelve el stock al inventario, igual
+   * que una anulación, pero el pedido queda con estado REBOTADO.
+   */
+  private async markAsBounced(id: string, companyId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const ordersRepo = manager.getRepository(Order);
+      const order = await ordersRepo.findOne({ where: { id, companyId } });
+      if (!order) return;
+      // Solo se rebota si sigue como enviado (evita pisar otro cambio de estado).
+      if (order.status !== OrderStatus.SYNCED) return;
+
+      await this.releaseStock(manager, order);
+      order.status = OrderStatus.BOUNCED;
+      order.cancelReason = 'Rebotado en Siesa (no quedó registrado en el ERP).';
+      // Deja el aviso de cambio de estado para el vendedor.
+      order.siesaStatePrevious = order.siesaEstado;
+      order.siesaEstado = 'Rebotado';
+      order.siesaStateNotificationPending = true;
+      await ordersRepo.save(order);
+      this.logger.log(
+        `Pedido ${order.orderNumber} (compañía ${companyId}) marcado como REBOTADO; stock devuelto.`,
+      );
+    });
+  }
+
   async findOne(companyId: string, id: string): Promise<Order> {
     const order = await this.ordersRepository.findOne({
       where: { id, companyId },
@@ -534,9 +876,19 @@ export class OrdersService {
   }
 
   /** Genera el PDF (documento) de un pedido. */
-  async generatePdf(companyId: string, id: string): Promise<Buffer> {
+  async generatePdf(
+    companyId: string,
+    id: string,
+    downloadedBy?: string,
+  ): Promise<Buffer> {
     const order = await this.findOne(companyId, id);
-    return buildOrderPdf(order);
+    const pdf = await buildOrderPdf(order);
+    await this.ordersRepository.update(order.id, {
+      downloadCount: (order.downloadCount ?? 0) + 1,
+      downloadedAt: new Date(),
+      downloadedBy: downloadedBy ?? order.downloadedBy,
+    });
+    return pdf;
   }
 
   async confirm(companyId: string, id: string): Promise<Order> {
@@ -596,135 +948,94 @@ export class OrdersService {
     });
   }
 
-  /** Envia un pedido individual a Siesa y actualiza su estado segun el resultado. */
+  /**
+   * Reintenta manualmente la subida de un pedido al ERP (por si la subida
+   * automática falló o quedó fuera del horario de carga).
+   */
   async syncToSiesa(companyId: string, id: string): Promise<Order> {
+    // [TEMPORAL] Restricción de horario de carga desactivada.
     // Después de las 4:00 p.m. (Colombia) ya no se pueden subir pedidos.
-    if (!isOrderUploadOpen()) {
-      throw new BadRequestException(
-        `El envío no se pudo realizar porque está fuera del horario de carga. ` +
-          `La subida de pedidos está disponible hasta las ` +
-          `${ORDER_UPLOAD_CLOSE_HOUR - 12}:00 p.m.`,
-      );
-    }
+    // if (!isOrderUploadOpen()) {
+    //   throw new BadRequestException(
+    //     `El envío no se pudo realizar porque está fuera del horario de carga. ` +
+    //       `La subida de pedidos está disponible hasta las ` +
+    //       `${ORDER_UPLOAD_CLOSE_HOUR - 12}:00 p.m.`,
+    //   );
+    // }
     const order = await this.findOne(companyId, id);
-    if (order.status !== OrderStatus.CONFIRMED) {
+    if (
+      order.status !== OrderStatus.CONFIRMED &&
+      order.status !== OrderStatus.FAILED
+    ) {
       throw new BadRequestException(
-        'Solo se sincronizan pedidos confirmados',
+        'Solo se pueden enviar pedidos pendientes por envío o con error.',
       );
     }
     return this.pushOrder(order);
   }
 
   /**
-   * Previsualiza los pedidos pendientes por envío que entran en un corte
-   * (según la hora de creación en Colombia) para una fecha (hoy por defecto).
+   * Construye las líneas (registros) del pedido en el formato del ERP. Una
+   * línea por cada ítem del pedido.
    */
-  async previewUpload(
-    companyId: string,
-    corteId: string,
-    date?: string,
-  ): Promise<Order[]> {
-    return this.collectForCorte(companyId, corteId, date);
+  private async buildErpRegistros(order: Order): Promise<ErpOrderRegistro[]> {
+    // El "vendedor" en el ERP es el documento (cédula) del usuario de la app.
+    const sellerDocument = order.seller.documentId;
+    const warehouse = getWarehouse(order.companyId);
+    const orderDate = bogotaToday();
+    // El ERP espera las fechas como YYYYMMDD (sin guiones).
+    const toErpDate = (date: string) => date.replace(/-/g, '');
+
+    return order.items.map((item) => ({
+      documento_venta: order.orderNumber,
+      fecha: toErpDate(orderDate),
+      cliente: order.customer.code,
+      sucursal: order.customer.branch,
+      vendedor: sellerDocument,
+      fecha_de_entrega: toErpDate(order.deliveryDate ?? orderDate),
+      bodega: warehouse,
+      referencia: item.sku,
+      um: item.unitOfMeasure ?? '',
+      cantidad: String(Number(item.quantity)),
+      precio: String(Number(item.unitPrice)),
+      cond_pago: order.customer.paymentTerm ?? '',
+    }));
   }
 
   /**
-   * Sube a Siesa todos los pedidos pendientes por envío de un corte.
-   * Los que reciben respuesta satisfactoria pasan a "cargado en Siesa"
-   * (SYNCED) y ya no se pueden anular.
+   * Sube un pedido al ERP y persiste el estado resultante. Si está fuera del
+   * horario de carga, el pedido queda "pendiente por envío" sin error.
    */
-  async uploadBatch(
-    companyId: string,
-    corteId: string,
-    date?: string,
-  ): Promise<UploadBatchResult> {
-    // Después de las 4:00 p.m. (Colombia) ya no se pueden subir pedidos.
-    if (!isOrderUploadOpen()) {
-      throw new BadRequestException(
-        `El envío no se pudo realizar porque está fuera del horario de carga. ` +
-          `La subida de pedidos está disponible hasta las ` +
-          `${ORDER_UPLOAD_CLOSE_HOUR - 12}:00 p.m.`,
-      );
-    }
-    const orders = await this.collectForCorte(companyId, corteId, date);
-    const errors: { orderNumber: string; message: string }[] = [];
-
-    for (const order of orders) {
-      const result = await this.pushOrder(order);
-      if (result.status !== OrderStatus.SYNCED) {
-        errors.push({
-          orderNumber: result.orderNumber,
-          message: result.syncError ?? 'Error desconocido',
-        });
-      }
-    }
-
-    return {
-      total: orders.length,
-      uploaded: orders.length - errors.length,
-      failed: errors.length,
-      errors,
-    };
-  }
-
-  /**
-   * Reúne los pedidos CONFIRMED (pendiente por envío) de una compañía que, por
-   * su hora de creación en Colombia, pertenecen al corte y la fecha indicados.
-   */
-  private async collectForCorte(
-    companyId: string,
-    corteId: string,
-    date?: string,
-  ): Promise<Order[]> {
-    if (!isValidCorte(corteId)) {
-      throw new BadRequestException('Corte inválido.');
-    }
-    const targetDate = date?.trim() || bogotaToday();
-
-    const orders = await this.ordersRepository.find({
-      where: { companyId, status: OrderStatus.CONFIRMED },
-      order: { createdAt: 'ASC' },
-    });
-
-    return orders.filter((order) => {
-      const { date: orderDate, hour } = bogotaParts(order.createdAt);
-      return orderDate === targetDate && corteForHour(hour) === corteId;
-    });
-  }
-
-  /** Empuja un pedido a Siesa y persiste el estado resultante. */
   private async pushOrder(order: Order): Promise<Order> {
+    // [TEMPORAL] Restricción de horario de carga desactivada.
+    // Fuera del horario de carga: no se sube, queda pendiente por envío.
+    // if (!isOrderUploadOpen()) {
+    //   order.status = OrderStatus.CONFIRMED;
+    //   return this.ordersRepository.save(order);
+    // }
+
     order.status = OrderStatus.SYNCING;
     await this.ordersRepository.save(order);
 
-    // El codigo de vendedor depende de la compañía (un mismo usuario puede
-    // tener codigos distintos en cada una).
-    const sellerCode =
-      (await this.usersService.getSellerCode(
-        order.seller.id,
-        order.companyId,
-      )) ?? order.seller.siesaSellerCode;
-
     try {
-      const response = await this.siesaService.createOrder({
-        companyId: order.companyId,
-        customerSiesaId: order.customer.code,
-        sellerCode,
-        notes: order.notes,
-        lines: order.items.map((item) => ({
-          itemSiesaId: item.product?.siesaId ?? item.sku,
-          quantity: Number(item.quantity),
-          unitPrice: Number(item.unitPrice),
-          discountPct: Number(item.discountPct),
-        })),
-      });
+      const registros = await this.buildErpRegistros(order);
+      const result = await this.erpClient.uploadOrder(
+        order.companyId,
+        registros,
+      );
 
       order.status = OrderStatus.SYNCED;
-      order.siesaDocumentId = response.documentId;
+      // Marca el momento del envío para el periodo de gracia de "rebotado".
+      order.syncedAt = new Date();
+      // Se guarda el consecutivo REAL que Siesa asignó (no el orderNumber). Es
+      // la única clave fiable para cruzar el estado del pedido con el ERP. Si
+      // no se pudo extraer, queda sin asociar y no se sincroniza su estado.
+      order.siesaDocumentId = result.consecutivo;
       order.syncError = undefined;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Error desconocido';
-      this.logger.error(`Fallo sincronizando pedido ${order.id}: ${message}`);
+      this.logger.error(`Fallo subiendo pedido ${order.id} al ERP: ${message}`);
       order.status = OrderStatus.FAILED;
       order.syncError = message;
     }
@@ -733,8 +1044,8 @@ export class OrdersService {
   }
 
   /**
-   * Consecutivo del pedido por compañía. Empieza en `000001` y avanza de uno
-   * en uno (cada compañía lleva su propia numeración).
+   * Consecutivo del pedido por compañía. Empieza en `1` y avanza de uno en uno
+   * (cada compañía lleva su propia numeración).
    */
   private async nextOrderNumber(
     companyId: string,
@@ -744,6 +1055,6 @@ export class OrdersService {
       ? manager.getRepository(Order)
       : this.ordersRepository;
     const count = await repo.count({ where: { companyId } });
-    return (count + 1).toString().padStart(6, '0');
+    return (count + 1).toString();
   }
 }

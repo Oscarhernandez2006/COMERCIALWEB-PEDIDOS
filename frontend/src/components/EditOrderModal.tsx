@@ -36,6 +36,7 @@ function linesFromOrder(order: Order): CartLine[] {
 export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
   const [lines, setLines] = useState<CartLine[]>(() => linesFromOrder(order));
   const [notes, setNotes] = useState(order.notes ?? '');
+  const [logisticsNote, setLogisticsNote] = useState(order.logisticsNote ?? '');
   const [productSearch, setProductSearch] = useState('');
   const [error, setError] = useState('');
 
@@ -111,6 +112,7 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
       await updateOrder.mutateAsync({
         orderId: order.id,
         notes: notes.trim() || undefined,
+        logisticsNote: logisticsNote.trim() || undefined,
         items: lines.map((l) => ({
           sku: l.product.sku,
           quantity: l.quantity,
@@ -138,7 +140,7 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>
             <h3 className="text-lg font-semibold">
-              Editar pedido {order.orderNumber}
+              Editar pedido #{order.orderNumber}
             </h3>
             <p className="text-sm text-muted-foreground">
               {order.customer.name} · Lista{' '}
@@ -354,7 +356,12 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
           <Input
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Notas del pedido (opcional)"
+            placeholder="Nota producto (opcional)"
+          />
+          <Input
+            value={logisticsNote}
+            onChange={(e) => setLogisticsNote(e.target.value)}
+            placeholder="Nota logística (opcional)"
           />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex items-center justify-between gap-4">

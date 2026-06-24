@@ -23,6 +23,7 @@ export class UsersService {
       name: dto.name,
       role: dto.role,
       siesaSellerCode: dto.siesaSellerCode,
+      permissions: dto.permissions ?? [],
       passwordHash,
     });
     return this.usersRepository.save(user);
@@ -66,6 +67,13 @@ export class UsersService {
   async setActive(id: string, active: boolean): Promise<User> {
     const user = await this.findById(id);
     user.active = active;
+    return this.usersRepository.save(user);
+  }
+
+  /** Define los módulos visibles del usuario (rutas del front). */
+  async setPermissions(id: string, permissions: string[]): Promise<User> {
+    const user = await this.findById(id);
+    user.permissions = Array.isArray(permissions) ? permissions : [];
     return this.usersRepository.save(user);
   }
 

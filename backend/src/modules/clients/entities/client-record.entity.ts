@@ -2,6 +2,20 @@ import { Column, Entity, Index, Unique } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
 /**
+ * Horario de recibido de mercancía configurado para un cliente.
+ * Los días se representan como índices 0=Lunes … 6=Domingo y las horas en
+ * formato de 24 horas "HH:mm".
+ */
+export interface DeliverySchedule {
+  /** Días seleccionados (0=Lunes … 6=Domingo). */
+  days: number[];
+  /** Hora inicial en formato "HH:mm". */
+  hourFrom: string;
+  /** Hora final en formato "HH:mm". */
+  hourTo: string;
+}
+
+/**
  * Cliente sincronizado desde el endpoint `clientes-por-cia` del Grupo Santacruz.
  *
  * Aislado por compañía: cada compañía tiene sus propios clientes.
@@ -70,6 +84,14 @@ export class ClientRecord extends BaseEntity {
   /** Correo electrónico (EMAIL). */
   @Column({ nullable: true })
   email?: string;
+
+  /**
+   * Horario de recibido de mercancía del cliente. Lo configura el vendedor al
+   * crear un pedido y queda predeterminado (editable) para los siguientes.
+   * Se conserva entre sincronizaciones (el upsert no lo sobreescribe).
+   */
+  @Column({ name: 'delivery_schedule', type: 'jsonb', nullable: true })
+  deliverySchedule?: DeliverySchedule;
 
   /**
    * Nombre de la lista de precios (DESC_LISTA), resuelto desde

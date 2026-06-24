@@ -10,6 +10,8 @@ import { AdminStatsController } from './admin-stats.controller';
 import { AdminUsersController } from './admin-users.controller';
 import { AdminReportsService } from './admin-reports.service';
 import { AdminReportsController } from './admin-reports.controller';
+import { AdminOrdersService } from './admin-orders.service';
+import { AdminOrdersController } from './admin-orders.controller';
 
 @Module({
   imports: [
@@ -20,7 +22,8 @@ import { AdminReportsController } from './admin-reports.controller';
     AdminStatsController,
     AdminUsersController,
     AdminReportsController,
+    AdminOrdersController,
   ],
-  providers: [AdminStatsService, AdminReportsService],
+  providers: [AdminStatsService, AdminReportsService, AdminOrdersService],
 })
 export class AdminModule {}

@@ -1,7 +1,23 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useQuery,
+  useQueries,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useCompany } from '@/company/useCompany';
-import type { Client, Customer, Order, Product, Quote, SellableProduct } from '@/types';
+import type {
+  Client,
+  ClientPortfolio,
+  Customer,
+  DeliverySchedule,
+  DeliveryType,
+  Order,
+  Product,
+  Quote,
+  SellableProduct,
+  SiesaState,
+} from '@/types';
 
 export function useProducts(search: string) {
   const { company } = useCompany();
@@ -93,6 +109,53 @@ export function useClients(search: string) {
   });
 }
 
+/**
+ * Cartera (documentos por cobrar) de un cliente del vendedor, consultada en
+ * vivo a Siesa. La compañía activa se inyecta automáticamente en la petición.
+ */
+export function useClientPortfolio(nit: string | null) {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['portfolio', company?.id, nit],
+    enabled: !!nit,
+    queryFn: async () => {
+      const res = await api.get<ClientPortfolio>('/clients/portfolio', {
+        params: { nit },
+      });
+      return res.data;
+    },
+  });
+}
+
+/**
+ * Cartera de varios clientes a la vez (una consulta por NIT, en paralelo).
+ * Devuelve un mapa `nit -> saldo total` y el estado de carga global, útil para
+ * ordenar a los clientes por deuda.
+ */
+export function useClientPortfolios(nits: string[]) {
+  const { company } = useCompany();
+  const results = useQueries({
+    queries: nits.map((nit) => ({
+      queryKey: ['portfolio', company?.id, nit],
+      enabled: !!nit,
+      queryFn: async () => {
+        const res = await api.get<ClientPortfolio>('/clients/portfolio', {
+          params: { nit },
+        });
+        return res.data;
+      },
+    })),
+  });
+
+  const balances: Record<string, number> = {};
+  results.forEach((res, i) => {
+    if (res.data) balances[nits[i]] = res.data.totalBalance;
+  });
+  const isLoading = results.some((res) => res.isLoading);
+
+  return { balances, isLoading };
+}
+
 export function useOrders() {
   const { company } = useCompany();
   return useQuery({
@@ -104,10 +167,37 @@ export function useOrders() {
   });
 }
 
+/**
+ * Estado real en Siesa de los pedidos del vendedor. Devuelve un mapa
+ * `orderNumber -> { estado, facturado, despachado }` para trazabilidad.
+ */
+export function useSiesaStates() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['siesa-states', company?.id],
+    queryFn: async () => {
+      const res = await api.get<Record<string, SiesaState>>(
+        '/orders/siesa-states',
+      );
+      return res.data;
+    },
+    // Refresco casi en vivo. El backend cachea la respuesta del ERP (TTL ~5s)
+    // y deduplica las llamadas, así que este sondeo no golpea el ERP de más.
+    refetchInterval: 5_000,
+    // Solo sondea con la pestaña activa (no consume recursos en segundo plano).
+    refetchIntervalInBackground: false,
+    staleTime: 4_000,
+  });
+}
+
 interface CreateOrderInput {
   customerId: string;
   notes?: string;
+  logisticsNote?: string;
+  deliveryType?: DeliveryType;
   deliverySchedule?: string;
+  deliveryScheduleData?: DeliverySchedule;
+  deliveryDate: string;
   items: { sku: string; quantity: number; discountPct: number }[];
 }
 
@@ -125,6 +215,9 @@ export function useCreateOrder() {
 interface UpdateOrderInput {
   orderId: string;
   notes?: string;
+  logisticsNote?: string;
+  deliveryType?: DeliveryType;
+  deliveryDate?: string;
   items: { sku: string; quantity: number; discountPct: number }[];
 }
 
@@ -217,13 +310,46 @@ export function useAcknowledgeNotification() {
   });
 }
 
+/**
+ * Avisos de cambio de estado en Siesa de los pedidos del vendedor. Se consulta
+ * periódicamente para mostrar el modal cada vez que un pedido cambia de estado.
+ */
+export function useSiesaStateNotifications() {
+  return useQuery({
+    queryKey: ['orders', 'siesa-state-notifications'],
+    queryFn: async () => {
+      const res = await api.get<Order[]>('/orders/siesa-state-notifications');
+      return res.data;
+    },
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** Marca como visto un aviso de cambio de estado en Siesa. */
+export function useAcknowledgeSiesaStateNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const res = await api.post(`/orders/${orderId}/siesa-state-ack`, {});
+      return res.data;
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ['orders', 'siesa-state-notifications'],
+      }),
+  });
+}
+
 /** Descarga el PDF (documento) de un pedido y lo abre como archivo. */
 export async function downloadOrderPdf(
   orderId: string,
   orderNumber: string,
+  companyId?: string,
 ): Promise<void> {
   const res = await api.get(`/orders/${orderId}/pdf`, {
     responseType: 'blob',
+    ...(companyId ? { headers: { 'X-Company-Id': companyId } } : {}),
   });
   const url = window.URL.createObjectURL(res.data as Blob);
   const link = document.createElement('a');

@@ -22,6 +22,16 @@ export enum OrderStatus {
   CANCELLED = 'cancelled',
   DISAPPROVED = 'disapproved',
   EXPIRED = 'expired',
+  /** Siesa lo rechazó (no quedó registrado en el ERP); se devolvió el stock. */
+  BOUNCED = 'bounced',
+}
+
+/** Tipo de entrega del pedido. */
+export enum DeliveryType {
+  /** La mercancía se despacha al cliente. */
+  DESPACHO = 'despacho',
+  /** El cliente recoge la mercancía en la planta. */
+  RECOGE_EN_PLANTA = 'recoge_en_planta',
 }
 
 @Entity('orders')
@@ -65,12 +75,32 @@ export class Order extends BaseEntity {
   @Column({ nullable: true })
   notes?: string;
 
+  /** Nota logística del pedido (instrucciones de entrega/transporte). */
+  @Column({ name: 'logistics_note', nullable: true })
+  logisticsNote?: string;
+
+  /** Tipo de entrega: despacho al cliente o recoge en planta. */
+  @Column({
+    name: 'delivery_type',
+    type: 'enum',
+    enum: DeliveryType,
+    default: DeliveryType.DESPACHO,
+  })
+  deliveryType: DeliveryType;
+
   /**
    * Horario y días en que el cliente puede recibir la mercancía
    * (p. ej. "Lunes a viernes de 7 am a 5 pm").
    */
   @Column({ name: 'delivery_schedule', nullable: true })
   deliverySchedule?: string;
+
+  /**
+   * Fecha de entrega elegida por el vendedor al crear el pedido (YYYY-MM-DD).
+   * Se envía al ERP como `fecha_de_entrega`.
+   */
+  @Column({ name: 'delivery_date', type: 'date', nullable: true })
+  deliveryDate?: string;
 
   /** Motivo de la anulación (obligatorio al anular el pedido). */
   @Column({ name: 'cancel_reason', nullable: true })
@@ -120,6 +150,53 @@ export class Order extends BaseEntity {
   @Column({ name: 'siesa_document_id', nullable: true })
   siesaDocumentId?: string;
 
+  /**
+   * Momento en que el pedido se envió a Siesa (pasó a SYNCED). Sirve para el
+   * periodo de gracia: si tras un tiempo sigue sin aparecer en el ERP, se marca
+   * como REBOTADO.
+   */
+  @Column({ name: 'synced_at', type: 'timestamptz', nullable: true })
+  syncedAt?: Date;
+
+  /** Último estado conocido del pedido en Siesa (DESC_ESTADO), para detectar cambios. */
+  @Column({ name: 'siesa_estado', nullable: true })
+  siesaEstado?: string;
+
+  /** Estado anterior en Siesa (para mostrar "de X a Y" en el aviso al vendedor). */
+  @Column({ name: 'siesa_estado_previo', nullable: true })
+  siesaStatePrevious?: string;
+
+  /**
+   * Indica que el estado del pedido cambió en Siesa y el vendedor aún no ha
+   * sido avisado. El front lo consulta para mostrar el modal y luego lo marca
+   * como visto.
+   */
+  @Column({ name: 'siesa_state_notification_pending', default: false })
+  siesaStateNotificationPending: boolean;
+
+  /**
+   * El pedido llegó a su estado final en Siesa (Despachado): ya no se vuelve a
+   * consultar su estado, porque no cambiará más.
+   */
+  @Column({ name: 'siesa_tracking_done', default: false })
+  siesaTrackingDone: boolean;
+
   @Column({ name: 'sync_error', nullable: true })
   syncError?: string;
+
+  /**
+   * Momento en que el pedido se descargó por última vez desde el módulo de
+   * "Descargar pedidos" del administrador. Es un estado propio de ese módulo:
+   * permite saber qué pedidos ya se descargaron (se puede volver a descargar).
+   */
+  @Column({ name: 'downloaded_at', type: 'timestamptz', nullable: true })
+  downloadedAt?: Date;
+
+  /** Cuántas veces se ha descargado el documento (PDF) del pedido. */
+  @Column({ name: 'download_count', type: 'int', default: 0 })
+  downloadCount: number;
+
+  /** Nombre del último usuario que descargó el documento del pedido. */
+  @Column({ name: 'downloaded_by', nullable: true })
+  downloadedBy?: string;
 }

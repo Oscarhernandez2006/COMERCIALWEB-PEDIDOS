@@ -12,6 +12,7 @@ export interface User {
   name: string;
   role: UserRole;
   siesaSellerCode?: string;
+  permissions?: string[];
 }
 
 export interface Customer {
@@ -46,7 +47,22 @@ export interface Client {
   department?: string;
   phone?: string;
   email?: string;
+  /** Horario de recibido de mercancía predeterminado del cliente. */
+  deliverySchedule?: DeliverySchedule;
 }
+
+/**
+ * Horario de recibido de mercancía: días seleccionados (0=Lunes … 6=Domingo)
+ * y rango de horas en formato "HH:mm".
+ */
+export interface DeliverySchedule {
+  days: number[];
+  hourFrom: string;
+  hourTo: string;
+}
+
+/** Tipo de entrega del pedido. */
+export type DeliveryType = 'despacho' | 'recoge_en_planta';
 
 export interface PortfolioDocument {
   branch: string;
@@ -104,7 +120,8 @@ export type OrderStatus =
   | 'failed'
   | 'cancelled'
   | 'disapproved'
-  | 'expired';
+  | 'expired'
+  | 'bounced';
 
 export interface OrderItem {
   id: string;
@@ -130,7 +147,10 @@ export interface Order {
   taxes: number;
   total: number;
   notes?: string;
+  logisticsNote?: string;
+  deliveryType?: DeliveryType;
   deliverySchedule?: string;
+  deliveryDate?: string;
   cancelReason?: string;
   carteraBalance?: number;
   approvalDeadline?: string;
@@ -140,8 +160,18 @@ export interface Order {
   sellerNotificationPending?: boolean;
   companyId?: string;
   siesaDocumentId?: string;
+  siesaEstado?: string;
+  siesaStatePrevious?: string;
+  siesaStateNotificationPending?: boolean;
   syncError?: string;
   createdAt: string;
+}
+
+/** Trazabilidad de un pedido en Siesa (estado, facturado y despachado). */
+export interface SiesaState {
+  estado: string;
+  facturado: boolean;
+  despachado: boolean;
 }
 
 /** Línea de un ítem dentro de una cotización. */
@@ -172,22 +202,6 @@ export interface Quote {
   validUntil?: string;
   companyId?: string;
   createdAt: string;
-}
-
-/** Corte de carga a Siesa (rango horario según hora de creación del pedido). */
-export interface Corte {
-  id: string;
-  label: string;
-  startHour: number;
-  endHour: number;
-}
-
-/** Resultado de subir un lote de pedidos (un corte) a Siesa. */
-export interface UploadBatchResult {
-  total: number;
-  uploaded: number;
-  failed: number;
-  errors: { orderNumber: string; message: string }[];
 }
 
 export interface CartLine {
@@ -247,4 +261,5 @@ export interface AdminUser {
   active: boolean;
   createdAt: string;
   companies: UserCompanyAccess[];
+  permissions: string[];
 }

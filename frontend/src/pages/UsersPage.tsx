@@ -8,6 +8,8 @@ import {
   X,
   Check,
   Power,
+  KeyRound,
+  LayoutGrid,
 } from 'lucide-react';
 import {
   useAdminUsers,
@@ -15,14 +17,14 @@ import {
   useSetUserActive,
   useAssignCompany,
   useRemoveCompany,
+  useSetUserPermissions,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
+import { MODULE_GROUPS, ALL_MODULES, areaLabel } from '@/lib/modules';
 import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,27 +34,11 @@ import type { AdminUser } from '@/types';
 
 export function UsersPage() {
   const { data: users = [], isLoading } = useAdminUsers();
-  const createUser = useCreateUser();
   const setActive = useSetUserActive();
 
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    documentId: '',
-    name: '',
-    password: '',
-    role: 'seller' as 'admin' | 'seller',
-  });
+  const [showCreate, setShowCreate] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    createUser.mutate(form, {
-      onSuccess: () => {
-        setForm({ documentId: '', name: '', password: '', role: 'seller' });
-        setShowForm(false);
-      },
-    });
-  };
+  const [permsUser, setPermsUser] = useState<AdminUser | null>(null);
 
   return (
     <div className="space-y-6">
@@ -60,104 +46,15 @@ export function UsersPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Usuarios</h2>
           <p className="text-muted-foreground">
-            Vendedores y administradores · acceso por compañía.
+            Vendedores y administradores · acceso por compañía y permisos por
+            módulo.
           </p>
         </div>
-        <Button onClick={() => setShowForm((s) => !s)}>
+        <Button onClick={() => setShowCreate(true)}>
           <UserPlus className="h-4 w-4" />
           Nuevo usuario
         </Button>
       </div>
-
-      {/* Formulario de creación */}
-      {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Crear usuario</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form
-              onSubmit={handleCreate}
-              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-            >
-              <div className="space-y-1.5">
-                <Label htmlFor="documentId">Cédula</Label>
-                <Input
-                  id="documentId"
-                  inputMode="numeric"
-                  required
-                  minLength={4}
-                  value={form.documentId}
-                  onChange={(e) =>
-                    setForm({ ...form, documentId: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="name">Nombre</Label>
-                <Input
-                  id="name"
-                  required
-                  minLength={2}
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Contraseña</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  minLength={4}
-                  value={form.password}
-                  onChange={(e) =>
-                    setForm({ ...form, password: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="role">Rol</Label>
-                <select
-                  id="role"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={form.role}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      role: e.target.value as 'admin' | 'seller',
-                    })
-                  }
-                >
-                  <option value="seller">Vendedor</option>
-                  <option value="admin">Administrador</option>
-                </select>
-              </div>
-
-              <div className="sm:col-span-2 lg:col-span-4">
-                {createUser.isError && (
-                  <p className="mb-2 text-sm text-destructive">
-                    No se pudo crear. ¿La cédula ya existe?
-                  </p>
-                )}
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={createUser.isPending}>
-                    <Check className="h-4 w-4" />
-                    {createUser.isPending ? 'Creando...' : 'Crear usuario'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setShowForm(false)}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Listado de usuarios */}
       <Card>
@@ -198,8 +95,10 @@ export function UsersPage() {
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Cédula {u.documentId} ·{' '}
-                        {u.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                        Cédula {u.documentId} · {areaLabel(u.role)}
+                        {u.permissions.length > 0 && (
+                          <> · {u.permissions.length} módulo(s)</>
+                        )}
                       </p>
                     </div>
 
@@ -220,6 +119,14 @@ export function UsersPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPermsUser(u)}
+                      >
+                        <KeyRound className="h-4 w-4" />
+                        Permisos
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -259,6 +166,321 @@ export function UsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} />}
+      {permsUser && (
+        <PermissionsModal
+          user={permsUser}
+          onClose={() => setPermsUser(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Modal para crear un usuario (área según el rol + módulos visibles). */
+function CreateUserModal({ onClose }: { onClose: () => void }) {
+  const createUser = useCreateUser();
+  const [form, setForm] = useState({
+    documentId: '',
+    name: '',
+    password: '',
+    role: 'seller' as 'admin' | 'seller',
+  });
+  const [permissions, setPermissions] = useState<string[]>([]);
+
+  function setRole(role: 'admin' | 'seller') {
+    setForm((f) => ({ ...f, role }));
+  }
+
+  function toggle(key: string) {
+    setPermissions((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    createUser.mutate({ ...form, permissions }, { onSuccess: onClose });
+  }
+
+  return (
+    <ModalShell title="Crear usuario" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="documentId">Cédula</Label>
+            <Input
+              id="documentId"
+              inputMode="numeric"
+              required
+              minLength={4}
+              value={form.documentId}
+              onChange={(e) =>
+                setForm({ ...form, documentId: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Nombre</Label>
+            <Input
+              id="name"
+              required
+              minLength={2}
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Contraseña</Label>
+            <Input
+              id="password"
+              type="password"
+              required
+              minLength={4}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="role">Área / Rol</Label>
+            <select
+              id="role"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={form.role}
+              onChange={(e) => setRole(e.target.value as 'admin' | 'seller')}
+            >
+              <option value="seller">Vendedor · Toma de pedidos</option>
+              <option value="admin">Administrador · Administrativa</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Módulos visibles (operativo + administrativo) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="flex items-center gap-1.5">
+              <LayoutGrid className="h-4 w-4" />
+              Módulos visibles
+            </Label>
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              onClick={() =>
+                setPermissions(
+                  permissions.length === ALL_MODULES.length
+                    ? []
+                    : ALL_MODULES.map((m) => m.key),
+                )
+              }
+            >
+              {permissions.length === ALL_MODULES.length
+                ? 'Quitar todos'
+                : 'Seleccionar todos'}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Puedes asignar módulos de ambas áreas. Si no marcas ninguno, el
+            usuario verá los módulos por defecto de su rol.
+          </p>
+          <ModuleGroupsPicker selected={permissions} onToggle={toggle} />
+        </div>
+
+        {createUser.isError && (
+          <p className="text-sm text-destructive">
+            No se pudo crear. ¿La cédula ya existe?
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={createUser.isPending}>
+            <Check className="h-4 w-4" />
+            {createUser.isPending ? 'Creando...' : 'Crear usuario'}
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+/** Modal para activar/desactivar los módulos visibles de un usuario. */
+function PermissionsModal({
+  user,
+  onClose,
+}: {
+  user: AdminUser;
+  onClose: () => void;
+}) {
+  const setPermissions = useSetUserPermissions();
+  const [selected, setSelected] = useState<string[]>(user.permissions ?? []);
+
+  function toggle(key: string) {
+    setSelected((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  }
+
+  function handleSave() {
+    setPermissions.mutate(
+      { id: user.id, permissions: selected },
+      { onSuccess: onClose },
+    );
+  }
+
+  return (
+    <ModalShell title={`Permisos · ${user.name}`} onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">Rol principal</span>
+          <Badge variant="secondary">{areaLabel(user.role)}</Badge>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            Marca los módulos que este usuario podrá ver. Puedes combinar
+            módulos operativos y administrativos. Sin ninguno marcado, verá
+            los módulos por defecto de su rol.
+          </p>
+          <button
+            type="button"
+            className="shrink-0 text-xs text-primary hover:underline"
+            onClick={() =>
+              setSelected(
+                selected.length === ALL_MODULES.length
+                  ? []
+                  : ALL_MODULES.map((m) => m.key),
+              )
+            }
+          >
+            {selected.length === ALL_MODULES.length
+              ? 'Quitar todos'
+              : 'Seleccionar todos'}
+          </button>
+        </div>
+
+        <ModuleGroupsPicker selected={selected} onToggle={toggle} />
+
+        {setPermissions.isError && (
+          <p className="text-sm text-destructive">
+            No se pudieron guardar los permisos.
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={setPermissions.isPending}>
+            <Check className="h-4 w-4" />
+            {setPermissions.isPending ? 'Guardando...' : 'Guardar permisos'}
+          </Button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+/** Selector de módulos agrupado por área (operativo + administrativo). */
+function ModuleGroupsPicker({
+  selected,
+  onToggle,
+}: {
+  selected: string[];
+  onToggle: (key: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {MODULE_GROUPS.map((group) => (
+        <div key={group.area} className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {group.label}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {group.modules.map((m) => (
+              <ModuleToggle
+                key={m.key}
+                label={m.label}
+                checked={selected.includes(m.key)}
+                onToggle={() => onToggle(m.key)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Casilla de módulo (toggle visual). */
+function ModuleToggle({
+  label,
+  checked,
+  onToggle,
+}: {
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={cn(
+        'flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors',
+        checked
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-border text-muted-foreground hover:bg-accent',
+      )}
+    >
+      <span className="font-medium">{label}</span>
+      <span
+        className={cn(
+          'flex h-5 w-5 items-center justify-center rounded-md border',
+          checked
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-border',
+        )}
+      >
+        {checked && <Check className="h-3.5 w-3.5" />}
+      </span>
+    </button>
+  );
+}
+
+/** Contenedor genérico de modal. */
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="my-8 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border p-5">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent"
+            aria-label="Cerrar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
     </div>
   );
 }

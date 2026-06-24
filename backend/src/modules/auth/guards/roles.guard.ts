@@ -22,9 +22,25 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest();
-    if (!user || !requiredRoles.includes(user.role)) {
+    if (!user) {
       throw new ForbiddenException('No tienes permisos para esta accion');
     }
-    return true;
+    if (requiredRoles.includes(user.role)) {
+      return true;
+    }
+
+    // Acceso por permisos: un usuario al que se le asignaron módulos de un
+    // área puede usar los endpoints de esa área aunque su rol no coincida.
+    const permissions: string[] = Array.isArray(user.permissions)
+      ? user.permissions
+      : [];
+    if (
+      requiredRoles.includes(UserRole.ADMIN) &&
+      permissions.some((p) => typeof p === 'string' && p.startsWith('/admin'))
+    ) {
+      return true;
+    }
+
+    throw new ForbiddenException('No tienes permisos para esta accion');
   }
 }

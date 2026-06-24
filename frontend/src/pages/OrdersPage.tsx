@@ -4,15 +4,69 @@ import { Plus, ClipboardList, Download, Ban, Eye, X, Pencil } from 'lucide-react
 import {
   useOrders,
   useCancelOrder,
+  useSiesaStates,
   downloadOrderPdf,
 } from '@/hooks/useApi';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { OrderStatusBadge } from '@/components/OrderStatusBadge';
 import { ApprovalCountdown } from '@/components/ApprovalCountdown';
 import { EditOrderModal } from '@/components/EditOrderModal';
-import type { Order } from '@/types';
+import type { Order, SiesaState } from '@/types';
+
+/**
+ * Trazabilidad del pedido en Siesa: estado (Elaborado / Aprobado / Cumplido /
+ * Anulado / Retenido) y, si aplica, si ya fue facturado y/o despachado.
+ */
+function SiesaStateBadge({ state }: { state?: SiesaState }) {
+  if (!state) return null;
+  const normalized = state.estado.toLowerCase();
+
+  let label = state.estado;
+  let className = 'bg-muted text-muted-foreground';
+  if (normalized.includes('elabora')) {
+    label = 'Elaborado';
+    className = 'bg-amber-100 text-amber-700';
+  } else if (normalized.includes('aprobad')) {
+    label = 'Aprobado';
+    className = 'bg-sky-100 text-sky-700';
+  } else if (normalized.includes('cumplid')) {
+    label = 'Cumplido';
+    className = 'bg-[var(--success)]/15 text-[var(--success)]';
+  } else if (normalized.includes('anulad')) {
+    label = 'Anulado';
+    className = 'bg-destructive/10 text-destructive';
+  } else if (normalized.includes('reten')) {
+    label = 'Retenido';
+    className = 'bg-orange-100 text-orange-700';
+  }
+
+  return (
+    <>
+      <Badge variant="secondary" className={cn('border-transparent', className)}>
+        {label}
+      </Badge>
+      {state.facturado && (
+        <Badge
+          variant="secondary"
+          className="border-transparent bg-indigo-100 text-indigo-700"
+        >
+          Facturado
+        </Badge>
+      )}
+      {state.despachado && (
+        <Badge
+          variant="secondary"
+          className="border-transparent bg-teal-100 text-teal-700"
+        >
+          Despachado
+        </Badge>
+      )}
+    </>
+  );
+}
 
 /** Motivos de anulación más frecuentes para seleccionar sin digitar. */
 const CANCEL_REASONS = [
@@ -28,6 +82,7 @@ const OTHER_REASON = 'Otro';
 
 export function OrdersPage() {
   const { data: orders = [], isLoading } = useOrders();
+  const { data: siesaStates = {} } = useSiesaStates();
   const cancelMutation = useCancelOrder();
 
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -117,8 +172,9 @@ export function OrdersPage() {
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold">{order.orderNumber}</p>
+                      <p className="font-semibold">Pedido #{order.orderNumber}</p>
                       <OrderStatusBadge status={order.status} />
+                      <SiesaStateBadge state={siesaStates[order.orderNumber]} />
                     </div>
                     <p className="truncate text-sm text-muted-foreground">
                       {order.customer.name} · {order.items.length} items
@@ -222,7 +278,7 @@ export function OrdersPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-semibold">
-                    Pedido {detailTarget.orderNumber}
+                    Pedido #{detailTarget.orderNumber}
                   </h3>
                   <OrderStatusBadge status={detailTarget.status} />
                 </div>
@@ -374,9 +430,18 @@ export function OrdersPage() {
               {detailTarget.notes && (
                 <div className="rounded-lg border border-border p-3 text-sm">
                   <p className="text-xs font-medium uppercase text-muted-foreground">
-                    Notas
+                    Nota producto
                   </p>
                   <p className="mt-1">{detailTarget.notes}</p>
+                </div>
+              )}
+
+              {detailTarget.logisticsNote && (
+                <div className="rounded-lg border border-border p-3 text-sm">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Nota logística
+                  </p>
+                  <p className="mt-1">{detailTarget.logisticsNote}</p>
                 </div>
               )}
 

@@ -7,7 +7,6 @@ import type { Company } from '@/types';
 export const COMPANIES: Company[] = [
   { id: '3', name: 'AGROPECUARIA' },
   { id: '8', name: 'CARNES FRIAS' },
-  { id: '4', name: 'CARNES SANTACRUZ' },
 ];
 
 /**

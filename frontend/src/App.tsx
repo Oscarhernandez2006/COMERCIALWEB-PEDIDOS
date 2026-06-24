@@ -16,9 +16,10 @@ import { ProductsPage } from '@/pages/ProductsPage';
 import { AdminDashboardPage } from '@/pages/AdminDashboardPage';
 import { InventoryPage } from '@/pages/InventoryPage';
 import { ReportsPage } from '@/pages/ReportsPage';
+import { AdminOrdersPage } from '@/pages/AdminOrdersPage';
+import { DownloadOrdersPage } from '@/pages/DownloadOrdersPage';
 import { PriceListsPage } from '@/pages/PriceListsPage';
 import { ClientsPage } from '@/pages/ClientsPage';
-import { SiesaUploadPage } from '@/pages/SiesaUploadPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { CarteraPage } from '@/pages/CarteraPage';
 
@@ -56,10 +57,11 @@ function App() {
       >
         <Route index element={<AdminDashboardPage />} />
         <Route path="inventario" element={<InventoryPage />} />
+        <Route path="pedidos" element={<AdminOrdersPage />} />
         <Route path="reportes" element={<ReportsPage />} />
+        <Route path="descargar-pedidos" element={<DownloadOrdersPage />} />
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
-        <Route path="cargar-siesa" element={<SiesaUploadPage />} />
         <Route path="cartera" element={<CarteraPage />} />
         <Route path="usuarios" element={<UsersPage />} />
       </Route>

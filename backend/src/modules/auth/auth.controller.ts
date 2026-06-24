@@ -32,6 +32,7 @@ export class AuthController {
       name: user.name,
       role: user.role,
       siesaSellerCode: user.siesaSellerCode,
+      permissions: user.permissions ?? [],
     };
   }
 

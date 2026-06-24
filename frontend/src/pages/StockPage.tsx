@@ -70,29 +70,30 @@ export function StockPage() {
             {products.length} referencia{products.length === 1 ? '' : 's'}{' '}
             disponible{products.length === 1 ? '' : 's'}.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="divide-y rounded-lg border">
             {products.map((product) => (
-              <Card key={product.id}>
-                <CardContent className="space-y-2 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium leading-tight">{product.name}</p>
+              <div
+                key={product.id}
+                className="flex items-center justify-between gap-3 px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium leading-tight">
+                    {product.name}
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
                     <Badge variant="outline">{product.sku}</Badge>
-                  </div>
-                  <div className="flex items-center justify-between pt-1">
                     {product.unitOfMeasure ? (
                       <span className="rounded bg-secondary px-1.5 py-0.5 text-xs font-semibold text-secondary-foreground">
                         {product.unitOfMeasure}
                       </span>
-                    ) : (
-                      <span />
-                    )}
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--success)]">
-                      <Boxes className="h-3 w-3" />
-                      {Number(product.stock)} disp.
-                    </span>
+                    ) : null}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--success)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--success)]">
+                  <Boxes className="h-3 w-3" />
+                  {Number(product.stock)} disp.
+                </span>
+              </div>
             ))}
           </div>
         </>

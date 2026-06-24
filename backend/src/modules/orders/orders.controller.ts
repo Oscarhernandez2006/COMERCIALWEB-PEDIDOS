@@ -49,6 +49,21 @@ export class OrdersController {
     return this.ordersService.findSellerNotifications(sellerId);
   }
 
+  /** Avisos de cambio de estado en Siesa de los pedidos del vendedor. */
+  @Get('siesa-state-notifications')
+  siesaStateNotifications(@CurrentUser('id') sellerId: string) {
+    return this.ordersService.findSiesaStateNotifications(sellerId);
+  }
+
+  /** Estado real en Siesa de los pedidos del vendedor (orderNumber -> estado). */
+  @Get('siesa-states')
+  siesaStates(
+    @CompanyId() companyId: string,
+    @CurrentUser('id') sellerId: string,
+  ) {
+    return this.ordersService.getSiesaStates(companyId, sellerId);
+  }
+
   /** Marca como visto un aviso de cartera del vendedor. */
   @Post(':id/acknowledge')
   acknowledge(
@@ -56,6 +71,15 @@ export class OrdersController {
     @Param('id') id: string,
   ) {
     return this.ordersService.acknowledgeNotification(sellerId, id);
+  }
+
+  /** Marca como visto un aviso de cambio de estado en Siesa. */
+  @Post(':id/siesa-state-ack')
+  acknowledgeSiesaState(
+    @CurrentUser('id') sellerId: string,
+    @Param('id') id: string,
+  ) {
+    return this.ordersService.acknowledgeSiesaStateNotification(sellerId, id);
   }
 
   @Get(':id')
@@ -95,10 +119,15 @@ export class OrdersController {
   async pdf(
     @CompanyId() companyId: string,
     @Param('id') id: string,
+    @CurrentUser() user: User,
     @Res() res: Response,
   ) {
     const order = await this.ordersService.findOne(companyId, id);
-    const buffer = await this.ordersService.generatePdf(companyId, id);
+    const buffer = await this.ordersService.generatePdf(
+      companyId,
+      id,
+      user.name,
+    );
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',

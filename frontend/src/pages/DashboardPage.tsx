@@ -92,7 +92,7 @@ export function DashboardPage() {
                   className="flex items-center justify-between py-3"
                 >
                   <div>
-                    <p className="font-medium">{order.orderNumber}</p>
+                    <p className="font-medium">Pedido #{order.orderNumber}</p>
                     <p className="text-sm text-muted-foreground">
                       {order.customer.name}
                     </p>

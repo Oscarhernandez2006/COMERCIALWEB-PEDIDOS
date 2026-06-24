@@ -10,8 +10,8 @@ import {
   RefreshCw,
   Building2,
   Tags,
-  UploadCloud,
   FileBarChart,
+  FileDown,
   Boxes,
   Wallet,
   FileText,
@@ -22,23 +22,25 @@ import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { CarteraNotifications } from '@/components/CarteraNotifications';
+import { SiesaStateNotifications } from '@/components/SiesaStateNotifications';
 
 const sellerNav = [
   { to: '/', label: 'Inicio', icon: LayoutDashboard, end: true },
   { to: '/pedidos', label: 'Pedidos', icon: ClipboardList },
   { to: '/cotizaciones', label: 'Cotizaciones', icon: FileText },
-  { to: '/clientes', label: 'Clientes', icon: Users },
+  { to: '/clientes', label: 'Cartera de Clientes', icon: Users },
   { to: '/disponibilidad', label: 'Disponibilidad', icon: Boxes },
 ];
 
 const adminNav = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/inventario', label: 'Inventario', icon: Package },
+  { to: '/admin/pedidos', label: 'Administración de pedidos', icon: ClipboardList },
   { to: '/admin/reportes', label: 'Reportes', icon: FileBarChart },
+  { to: '/admin/descargar-pedidos', label: 'Descargar pedidos', icon: FileDown },
   { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
   { to: '/admin/clientes', label: 'Clientes', icon: Users },
   { to: '/admin/cartera', label: 'Aprobación de cartera', icon: Wallet },
-  { to: '/admin/cargar-siesa', label: 'Subir a Siesa', icon: UploadCloud },
   { to: '/admin/usuarios', label: 'Usuarios', icon: Users },
 ];
 
@@ -55,11 +57,22 @@ export function AppLayout() {
 
   const isAdminArea = location.pathname.startsWith('/admin');
   const isCarteraArea = location.pathname.startsWith('/cartera');
-  const navItems = isAdminArea
-    ? adminNav
-    : isCarteraArea
-      ? carteraNav
-      : sellerNav;
+
+  // El menú combina los módulos operativos y administrativos según los
+  // permisos asignados al usuario. Si tiene permisos definidos, se muestran
+  // todos los módulos permitidos (de cualquier área) juntos. Si no tiene
+  // permisos (lista vacía), ve los módulos por defecto de su área actual.
+  const perms = user?.permissions;
+  let navItems: typeof sellerNav;
+  if (isCarteraArea) {
+    navItems = carteraNav;
+  } else if (perms && perms.length > 0) {
+    navItems = [...sellerNav, ...adminNav].filter((item) =>
+      perms.includes(item.to),
+    );
+  } else {
+    navItems = isAdminArea ? adminNav : sellerNav;
+  }
 
   const handleExit = () => {
     if (user?.role === 'admin') {
@@ -186,6 +199,7 @@ export function AppLayout() {
       </div>
 
       {user?.role === 'seller' && <CarteraNotifications />}
+      {user?.role === 'seller' && <SiesaStateNotifications />}
     </div>
   );
 }

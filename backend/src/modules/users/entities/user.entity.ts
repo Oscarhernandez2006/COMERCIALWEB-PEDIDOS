@@ -32,6 +32,14 @@ export class User extends BaseEntity {
   @Column({ name: 'siesa_seller_code', nullable: true })
   siesaSellerCode?: string;
 
+  /**
+   * Módulos que el usuario puede ver dentro de su área (rutas del front, p. ej.
+   * "/pedidos", "/admin/inventario"). Si está vacío, ve todos los módulos de su
+   * rol (compatibilidad con usuarios anteriores).
+   */
+  @Column({ name: 'permissions', type: 'jsonb', default: () => "'[]'" })
+  permissions: string[];
+
   @Column({ default: true })
   active: boolean;
 }

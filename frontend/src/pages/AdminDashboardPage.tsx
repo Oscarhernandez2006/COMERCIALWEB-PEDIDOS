@@ -360,7 +360,7 @@ export function AdminDashboardPage() {
                       key={o.id}
                       className="border-b border-border/60 last:border-0 hover:bg-muted/40"
                     >
-                      <td className="px-6 py-3 font-medium">{o.orderNumber}</td>
+                      <td className="px-6 py-3 font-medium">#{o.orderNumber}</td>
                       <td className="px-6 py-3 text-muted-foreground">
                         {o.customerName}
                       </td>

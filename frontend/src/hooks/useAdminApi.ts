@@ -6,7 +6,6 @@ import type {
   ClientPortfolio,
   Order,
   Product,
-  UploadBatchResult,
 } from '@/types';
 
 /** KPIs consolidados de ambas compañías para el panel de administración. */
@@ -39,6 +38,7 @@ interface CreateUserInput {
   email?: string;
   role: 'admin' | 'seller' | 'cartera';
   siesaSellerCode?: string;
+  permissions?: string[];
 }
 
 export function useCreateUser() {
@@ -59,6 +59,21 @@ export function useSetUserActive() {
       const res = await api.patch<AdminUser>(
         `/admin/users/${input.id}/active`,
         { active: input.active },
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+/** Define los módulos visibles (permisos) de un usuario. */
+export function useSetUserPermissions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; permissions: string[] }) => {
+      const res = await api.patch<AdminUser>(
+        `/admin/users/${input.id}/permissions`,
+        { permissions: input.permissions },
       );
       return res.data;
     },
@@ -238,6 +253,136 @@ export async function downloadInventoryTemplate() {
   window.URL.revokeObjectURL(url);
 }
 
+/* ---- Administración de pedidos (seguimiento completo) ---- */
+
+export interface AdminOrderItem {
+  sku: string;
+  productName: string;
+  unitOfMeasure?: string;
+  quantity: number;
+  unitPrice: number;
+  discountPct: number;
+  lineTotal: number;
+}
+
+export interface AdminOrderDetail {
+  id: string;
+  orderNumber: string;
+  companyId: string;
+  status: string;
+  sellerName: string;
+  sellerDocument?: string;
+  sellerCode?: string;
+  createdAt: string;
+  deliveryDate?: string;
+  customerName: string;
+  customerCode: string;
+  customerCity?: string;
+  subtotal: number;
+  taxes: number;
+  total: number;
+  notes?: string;
+  logisticsNote?: string;
+  deliveryType?: string;
+  deliverySchedule?: string;
+  carteraBalance?: number | null;
+  approvalDeadline?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  disapprovalReason?: string | null;
+  cancelReason?: string | null;
+  siesaEstado?: string | null;
+  siesaStatePrevious?: string | null;
+  syncedAt?: string | null;
+  siesaDocumentId?: string | null;
+  syncError?: string | null;
+  downloadCount: number;
+  downloadedAt?: string | null;
+  downloadedBy?: string | null;
+  items: AdminOrderItem[];
+}
+
+export interface AdminOrdersFilters {
+  from?: string;
+  to?: string;
+  status?: string;
+  search?: string;
+}
+
+/** Listado administrativo de pedidos de una compañía con filtros. */
+export function useAdminOrders(companyId: string, filters: AdminOrdersFilters) {
+  return useQuery({
+    queryKey: ['admin', 'orders', companyId, filters],
+    queryFn: async () => {
+      const res = await api.get<AdminOrderDetail[]>('/admin/orders', {
+        params: {
+          companyId,
+          ...(filters.from ? { from: filters.from } : {}),
+          ...(filters.to ? { to: filters.to } : {}),
+          ...(filters.status ? { status: filters.status } : {}),
+          ...(filters.search ? { search: filters.search } : {}),
+        },
+      });
+      return res.data;
+    },
+  });
+}
+
+/* ---- Descargar pedidos (descarga masiva en PDF) ---- */
+
+export interface DownloadableOrder {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  customerCode: string;
+  sellerName: string;
+  total: number;
+  siesaEstado?: string;
+  createdAt: string;
+  downloadedAt?: string | null;
+}
+
+/** Pedidos subidos a Siesa (no rebotados ni anulados) de una compañía. */
+export function useDownloadableOrders(companyId: string) {
+  return useQuery({
+    queryKey: ['admin', 'downloadable-orders', companyId],
+    queryFn: async () => {
+      const res = await api.get<DownloadableOrder[]>('/admin/orders/downloadable', {
+        params: { companyId },
+      });
+      return res.data;
+    },
+  });
+}
+
+/**
+ * Genera un único PDF con los pedidos seleccionados, los marca como
+ * descargados y refresca la lista.
+ */
+export function useDownloadOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { companyId: string; orderIds: string[] }) => {
+      const res = await api.post('/admin/orders/download', input, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(res.data as Blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pedidos-${input.companyId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    },
+    onSuccess: (_data, input) => {
+      qc.invalidateQueries({
+        queryKey: ['admin', 'downloadable-orders', input.companyId],
+      });
+    },
+  });
+}
+
 /* ---- Listas de precios ---- */
 
 export interface PriceListSummary {
@@ -392,52 +537,6 @@ export function useClientPortfolio(
         headers: { 'X-Company-Id': companyId },
       });
       return res.data;
-    },
-  });
-}
-
-/* ---- Carga de pedidos a Siesa (cortes) ---- */
-
-/** Previsualiza los pedidos pendientes por envío de un corte/fecha. */
-export function useUploadPreview(
-  companyId: string,
-  corte: string,
-  date: string,
-) {
-  return useQuery({
-    queryKey: ['admin', 'siesa-preview', companyId, corte, date],
-    queryFn: async () => {
-      const res = await api.get<Order[]>('/admin/orders/upload-preview', {
-        params: { corte, date },
-        headers: { 'X-Company-Id': companyId },
-      });
-      return res.data;
-    },
-  });
-}
-
-/** Sube a Siesa los pedidos pendientes por envío de un corte/fecha. */
-export function useUploadBatch() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: {
-      companyId: string;
-      corte: string;
-      date: string;
-    }) => {
-      const res = await api.post<UploadBatchResult>(
-        '/admin/orders/upload',
-        {},
-        {
-          params: { corte: input.corte, date: input.date },
-          headers: { 'X-Company-Id': input.companyId },
-        },
-      );
-      return res.data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'siesa-preview'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     },
   });
 }

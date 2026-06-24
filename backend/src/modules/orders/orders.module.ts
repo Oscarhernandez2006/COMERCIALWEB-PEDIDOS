@@ -1,33 +1,31 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from '@nestjs/axios';
+import { ConfigModule } from '@nestjs/config';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
-import { AdminOrdersController } from './admin-orders.controller';
 import { CarteraOrdersController } from './cartera-orders.controller';
 import { OrderApprovalScheduler } from './order-approval.scheduler';
+import { OrdersErpClient } from './orders-erp.client';
 import { ClientsModule } from '../clients/clients.module';
 import { ProductsModule } from '../products/products.module';
-import { SiesaModule } from '../siesa/siesa.module';
 import { UsersModule } from '../users/users.module';
 import { PriceListsModule } from '../price-lists/price-lists.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem]),
+    HttpModule,
+    ConfigModule,
     ClientsModule,
     ProductsModule,
-    SiesaModule,
     UsersModule,
     PriceListsModule,
   ],
-  controllers: [
-    OrdersController,
-    AdminOrdersController,
-    CarteraOrdersController,
-  ],
-  providers: [OrdersService, OrderApprovalScheduler],
+  controllers: [OrdersController, CarteraOrdersController],
+  providers: [OrdersService, OrderApprovalScheduler, OrdersErpClient],
   exports: [OrdersService],
 })
 export class OrdersModule {}

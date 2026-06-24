@@ -110,7 +110,7 @@ export function CarteraPage() {
               <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold">{order.orderNumber}</p>
+                    <p className="font-semibold">Pedido #{order.orderNumber}</p>
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
                       {companyName(order.companyId)}
                     </span>
@@ -186,7 +186,7 @@ export function CarteraPage() {
             <div className="flex items-start justify-between gap-4 border-b border-border p-5">
               <div>
                 <h3 className="text-lg font-semibold">
-                  Pedido {detailTarget.orderNumber}
+                  Pedido #{detailTarget.orderNumber}
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {detailTarget.customer.name} · {companyName(detailTarget.companyId)}
@@ -257,7 +257,7 @@ export function CarteraPage() {
             <p className="mt-3 text-sm text-muted-foreground">
               ¿Estás seguro de que deseas aprobar el pedido{' '}
               <span className="font-semibold text-foreground">
-                {approveTarget.orderNumber}
+                #{approveTarget.orderNumber}
               </span>{' '}
               de {approveTarget.customer.name}? El pedido quedará pendiente por
               envío a Siesa.
@@ -307,7 +307,7 @@ export function CarteraPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               El pedido{' '}
               <span className="font-semibold text-foreground">
-                {approvedOrder.orderNumber}
+                #{approvedOrder.orderNumber}
               </span>{' '}
               de {approvedOrder.customer.name} fue aprobado. El vendedor será
               notificado del cambio de estado.
@@ -332,7 +332,7 @@ export function CarteraPage() {
             <h3 className="text-lg font-semibold">Desaprobar pedido</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Se liberará el inventario reservado del pedido{' '}
-              {rejectTarget.orderNumber}.
+              #{rejectTarget.orderNumber}.
             </p>
             <label className="mt-4 block text-sm font-medium">
               Motivo (opcional)

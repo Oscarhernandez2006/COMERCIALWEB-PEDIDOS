@@ -75,12 +75,12 @@ export function CompanySelectPage() {
           habilite el acceso.
         </p>
       ) : (
-        <div className="grid w-full max-w-4xl gap-4 sm:grid-cols-3">
+        <div className="flex w-full max-w-4xl flex-wrap justify-center gap-4">
           {companies.map((company) => (
             <Card
               key={company.id}
               onClick={() => handleSelect(company)}
-              className="group cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
+              className="group w-full max-w-xs cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
             >
               <CardContent className="flex flex-col items-start gap-3 p-5">
                 {COMPANY_LOGOS[company.id] ? (

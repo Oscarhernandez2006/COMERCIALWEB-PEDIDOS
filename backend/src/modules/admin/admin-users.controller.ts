@@ -47,6 +47,16 @@ export class AdminUsersController {
     return this.toView(user);
   }
 
+  /** Define los módulos visibles del usuario (rutas del front). */
+  @Patch(':id/permissions')
+  async setPermissions(
+    @Param('id') id: string,
+    @Body('permissions') permissions: string[],
+  ) {
+    const user = await this.usersService.setPermissions(id, permissions ?? []);
+    return this.toView(user);
+  }
+
   /** Asigna (o actualiza) el acceso del usuario a una compañía con su código. */
   @Post(':id/companies')
   async assignCompany(
@@ -81,6 +91,7 @@ export class AdminUsersController {
       name: user.name,
       role: user.role,
       active: user.active,
+      permissions: user.permissions ?? [],
       createdAt: user.createdAt,
       companies: mappings.map((m) => ({
         companyId: m.companyId,
