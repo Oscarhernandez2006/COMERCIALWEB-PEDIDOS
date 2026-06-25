@@ -62,6 +62,7 @@ export function getWarehouse(companyId: string): string {
  */
 export const ORDER_ENDPOINT_BY_COMPANY: Record<string, string> = {
   '3': 'ventas/pedidos-agropecuaria', // AGROPECUARIA
+  '8': 'ventas/pedidos/carnesfrias', // CARNES FRIAS
 };
 
 /**
@@ -85,6 +86,7 @@ export function getOrderEndpoint(companyId: string): string {
  */
 export const ORDER_DOC_TYPE_BY_COMPANY: Record<string, string> = {
   '3': 'PVA', // AGROPECUARIA
+  '8': 'PDV', // CARNES FRIAS
 };
 
 /** Tipo de documento de pedidos en Siesa para una compañía (por defecto PVA). */

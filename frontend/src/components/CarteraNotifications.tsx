@@ -18,8 +18,12 @@ export function CarteraNotifications() {
   if (notifications.length === 0) return null;
 
   const order = notifications[0];
-  const approved = order.status === 'confirmed';
+  // Tras aprobar en cartera, el pedido se sube al ERP y su estado pasa a
+  // syncing/synced/failed (ya no queda en "confirmed"). Por eso un aviso es de
+  // aprobación cuando el estado NO es desaprobado ni vencido.
+  const disapproved = order.status === 'disapproved';
   const expired = order.status === 'expired';
+  const approved = !disapproved && !expired;
 
   const handleClose = () => {
     acknowledge.mutate(order.id);

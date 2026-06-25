@@ -9,26 +9,53 @@
 #
 # Solución permanente: configurar el dominio en la pestaña
 # "Domains" de la aplicación en la UI de Dokploy (host, puerto
-# 80, HTTPS + certresolver letsencrypt). Eso persiste solo.
+# 3003, HTTPS + certresolver letsencrypt). Eso persiste solo.
 #
 # Uso:  sudo bash deploy/restore-traefik-sigcom.sh
 # ============================================================
 set -euo pipefail
 
 DOMAIN="sigcom.grupo-santacruz.com"   # <-- cambia el dominio si aplica
-PORT="80"                             # Nginx de la imagen combinada (frontend + proxy /api)
+PORT="3003"                           # Nginx de la imagen combinada (frontend + proxy /api)
 NETWORK="dokploy-network"
 CERTRESOLVER="letsencrypt"
 ROUTER="sigcom"
 
-# Detecta automáticamente el servicio de SIGCOM (el sufijo cambia por app)
-SERVICE="$(docker service ls --format '{{.Name}}' | grep -i '^sigcom' | head -n1 || true)"
+# Nombre (o prefijo) del servicio de la APP WEB. OJO: debe ser la app, NO la
+# base de datos. Antes esto usaba '^sigcom', que hacía match con el postgres
+# 'sigcompro-...' y le ponía el dominio web a la DB (causa del 502).
+APP_MATCH="insitu-app-comercial"
+
+# Detecta automáticamente el servicio de la app web (el sufijo cambia por deploy)
+SERVICE="$(docker service ls --format '{{.Name}}' | grep -i "${APP_MATCH}" | head -n1 || true)"
 if [ -z "${SERVICE}" ]; then
-  echo "ERROR: no se encontró ningún servicio que empiece por 'sigcom'."
+  echo "ERROR: no se encontró ningún servicio que coincida con '${APP_MATCH}'."
   echo "Servicios disponibles:"
   docker service ls --format '  - {{.Name}}'
   exit 1
 fi
+
+# Seguridad: limpia labels de Traefik que pudieran haber quedado en OTROS
+# servicios (p. ej. la base de datos) reclamando el mismo dominio. Sin esto,
+# Traefik balancea entre la app y un backend muerto -> 502 intermitente.
+for OTHER in $(docker service ls --format '{{.Name}}'); do
+  [ "${OTHER}" = "${SERVICE}" ] && continue
+  if docker service inspect "${OTHER}" --format '{{json .Spec.Labels}}' 2>/dev/null | grep -q "${DOMAIN}"; then
+    echo ">> Quitando labels de Traefik (dominio ${DOMAIN}) del servicio ajeno: ${OTHER}"
+    docker service update \
+      --label-rm 'traefik.enable' \
+      --label-rm 'traefik.http.middlewares.sigcom-redirect.redirectscheme.scheme' \
+      --label-rm 'traefik.http.routers.sigcom-secure.entrypoints' \
+      --label-rm 'traefik.http.routers.sigcom-secure.rule' \
+      --label-rm 'traefik.http.routers.sigcom-secure.tls' \
+      --label-rm 'traefik.http.routers.sigcom-secure.tls.certresolver' \
+      --label-rm 'traefik.http.routers.sigcom-web.entrypoints' \
+      --label-rm 'traefik.http.routers.sigcom-web.middlewares' \
+      --label-rm 'traefik.http.routers.sigcom-web.rule' \
+      --label-rm 'traefik.http.services.sigcom.loadbalancer.server.port' \
+      "${OTHER}" || true
+  fi
+done
 
 echo ">> Servicio detectado: ${SERVICE}"
 echo ">> Aplicando labels de Traefik (dominio ${DOMAIN}, puerto ${PORT})..."
