@@ -580,9 +580,13 @@ export class OrdersService {
 
   /**
    * Estado real en Siesa de los pedidos del vendedor. Consulta el ERP y cruza
-   * por `CONSECUTIVO` (que para los documentos de nuestra compañía coincide con
-   * nuestro `orderNumber`), devolviendo solo los pedidos del vendedor en esta
-   * compañía. Mapa: orderNumber -> estado, facturado, despachado.
+   * por `NUM_REFERENCIA` (el `documento_venta` que enviamos al subir el pedido,
+   * que equivale a nuestro `orderNumber`), devolviendo solo los pedidos del
+   * vendedor en esta compañía. Mapa: orderNumber -> estado, facturado,
+   * despachado. Cruzar por `NUM_REFERENCIA` (y no por `CONSECUTIVO`) evita
+   * colisiones con el histórico de Siesa en compañías que ya tienen miles de
+   * documentos previos (p. ej. Carnes Frías), donde el consecutivo asignado por
+   * Siesa no coincide con nuestro `orderNumber`.
    */
   async getSiesaStates(
     companyId: string,
@@ -595,13 +599,13 @@ export class OrdersService {
     if (orders.length === 0) return {};
 
     const states = await this.erpClient.getOrderStates(companyId);
-    const byConsecutivo = this.indexStatesByConsecutivo(states);
+    const byReferencia = this.indexStatesByReferencia(states);
 
     const result: Record<string, SiesaOrderState> = {};
     for (const order of orders) {
-      const consecutivo = parseInt(order.orderNumber, 10);
-      if (Number.isNaN(consecutivo)) continue;
-      const state = byConsecutivo.get(consecutivo);
+      const referencia = parseInt(order.orderNumber, 10);
+      if (Number.isNaN(referencia)) continue;
+      const state = byReferencia.get(referencia);
       if (!state) continue;
       result[order.orderNumber] = {
         estado: state.DESC_ESTADO,
@@ -613,19 +617,21 @@ export class OrdersService {
   }
 
   /**
-   * Indexa los estados de Siesa por su `CONSECUTIVO`. Para el tipo de documento
-   * de nuestra compañía (p. ej. PVA) el consecutivo de Siesa coincide con
-   * nuestro `orderNumber`, así que el pedido #1 corresponde al consecutivo 1.
+   * Indexa los estados de Siesa por su `NUM_REFERENCIA`, que es el
+   * `documento_venta` que enviamos al subir el pedido y equivale a nuestro
+   * `orderNumber`. Así el pedido #1 se cruza con el documento cuyo
+   * `NUM_REFERENCIA` es 1, sin depender del consecutivo interno de Siesa.
    */
-  private indexStatesByConsecutivo(
+  private indexStatesByReferencia(
     states: ErpOrderState[],
   ): Map<number, ErpOrderState> {
-    const byConsecutivo = new Map<number, ErpOrderState>();
+    const byReferencia = new Map<number, ErpOrderState>();
     for (const state of states) {
-      if (typeof state.CONSECUTIVO !== 'number') continue;
-      byConsecutivo.set(state.CONSECUTIVO, state);
+      const referencia = parseInt(state.NUM_REFERENCIA, 10);
+      if (Number.isNaN(referencia)) continue;
+      byReferencia.set(referencia, state);
     }
-    return byConsecutivo;
+    return byReferencia;
   }
 
   /**
@@ -683,14 +689,14 @@ export class OrdersService {
     if (syncedOrders.length === 0) return 0;
 
     const states = await this.erpClient.getOrderStates(companyId);
-    const byConsecutivo = this.indexStatesByConsecutivo(states);
+    const byReferencia = this.indexStatesByReferencia(states);
 
     let updated = 0;
     for (const order of syncedOrders) {
-      // Se cruza por CONSECUTIVO (nuestro orderNumber).
-      const consecutivo = parseInt(order.orderNumber, 10);
-      if (Number.isNaN(consecutivo)) continue;
-      const state = byConsecutivo.get(consecutivo);
+      // Se cruza por NUM_REFERENCIA (nuestro orderNumber / documento_venta).
+      const referencia = parseInt(order.orderNumber, 10);
+      if (Number.isNaN(referencia)) continue;
+      const state = byReferencia.get(referencia);
 
       // No apareció en el ERP: en Siesa el rebote es inmediato (o entra o
       // rebota). Solo se respeta un pequeño margen de asentamiento para que la
