@@ -6,16 +6,22 @@
  */
 
 /**
- * Extrae la fecha (YYYY-MM-DD) y la hora (0-23) de una fecha en horario de
- * Colombia (America/Bogota), independientemente de la zona del servidor.
+ * Extrae la fecha (YYYY-MM-DD), la hora (0-23) y el minuto (0-59) de una fecha
+ * en horario de Colombia (America/Bogota), independientemente de la zona del
+ * servidor.
  */
-export function bogotaParts(date: Date): { date: string; hour: number } {
+export function bogotaParts(date: Date): {
+  date: string;
+  hour: number;
+  minute: number;
+} {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Bogota',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
+    minute: '2-digit',
     hour12: false,
   }).formatToParts(date);
 
@@ -27,6 +33,7 @@ export function bogotaParts(date: Date): { date: string; hour: number } {
   return {
     date: `${get('year')}-${get('month')}-${get('day')}`,
     hour,
+    minute: Number(get('minute')),
   };
 }
 
@@ -63,5 +70,36 @@ export function isOrderCreationOpen(): boolean {
 /** ¿Todavía se pueden subir pedidos a Siesa? (antes de las 4:00 p.m.) */
 export function isOrderUploadOpen(): boolean {
   return bogotaCurrentHour() < ORDER_UPLOAD_CLOSE_HOUR;
+}
+
+/** Configuración de la ventana horaria para crear pedidos (hora de Colombia). */
+export interface OrderScheduleConfig {
+  enabled: boolean;
+  openHour: number;
+  openMinute: number;
+  closeHour: number;
+  closeMinute: number;
+}
+
+/**
+ * ¿Se pueden crear pedidos ahora según la configuración dada? Si la restricción
+ * está desactivada, siempre devuelve true. Tiene en cuenta horas y minutos.
+ */
+export function isOrderCreationOpenFor(cfg: OrderScheduleConfig): boolean {
+  if (!cfg.enabled) return true;
+  const { hour, minute } = bogotaParts(new Date());
+  const now = hour * 60 + minute;
+  const open = cfg.openHour * 60 + cfg.openMinute;
+  const close = cfg.closeHour * 60 + cfg.closeMinute;
+  return now >= open && now < close;
+}
+
+/** Formatea una hora/minuto (24h) como texto am/pm en español (p. ej. 4:30 p.m.). */
+export function formatScheduleTime(hour: number, minute: number): string {
+  const period = hour >= 12 ? 'p.m.' : 'a.m.';
+  let h = hour % 12;
+  if (h === 0) h = 12;
+  const mm = minute.toString().padStart(2, '0');
+  return `${h}:${mm} ${period}`;
 }
 

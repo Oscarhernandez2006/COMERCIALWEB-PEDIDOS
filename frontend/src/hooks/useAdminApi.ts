@@ -509,6 +509,50 @@ export function useSetOrderPicked() {
   });
 }
 
+/**
+ * Marca/desmarca varios pedidos como alistados de una sola vez (acción masiva
+ * para todos los pedidos filtrados en la tabla de Descargar pedidos).
+ */
+export function useSetOrderPickedBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      companyId: string;
+      orderIds: string[];
+      picked: boolean;
+    }) => {
+      const res = await api.patch<{ updated: number }>(
+        '/admin/orders/picked-bulk',
+        { orderIds: input.orderIds, picked: input.picked },
+        { params: { companyId: input.companyId } },
+      );
+      return res.data;
+    },
+    onMutate: async (input) => {
+      const key = ['admin', 'downloadable-orders', input.companyId];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<DownloadableOrder[]>(key);
+      const ids = new Set(input.orderIds);
+      qc.setQueryData<DownloadableOrder[]>(key, (old) =>
+        (old ?? []).map((o) =>
+          ids.has(o.id) ? { ...o, picked: input.picked } : o,
+        ),
+      );
+      return { prev, key };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.prev) {
+        qc.setQueryData(context.key, context.prev);
+      }
+    },
+    onSettled: (_data, _err, input) => {
+      qc.invalidateQueries({
+        queryKey: ['admin', 'downloadable-orders', input.companyId],
+      });
+    },
+  });
+}
+
 /* ---- Listas de precios ---- */
 
 export interface PriceListSummary {
@@ -705,5 +749,41 @@ export function useDisapproveOrder() {
       return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cartera', 'orders'] }),
+  });
+}
+
+/* ---- Horario de toma de pedidos (configurable) ---- */
+
+export interface OrderSchedule {
+  enabled: boolean;
+  openHour: number;
+  openMinute: number;
+  closeHour: number;
+  closeMinute: number;
+}
+
+/** Ventana horaria actual para crear pedidos (cualquier usuario autenticado). */
+export function useOrderSchedule() {
+  return useQuery({
+    queryKey: ['order-schedule'],
+    queryFn: async () => {
+      const res = await api.get<OrderSchedule>('/settings/order-schedule');
+      return res.data;
+    },
+  });
+}
+
+/** Actualiza la ventana horaria para crear pedidos (admin o permiso). */
+export function useUpdateOrderSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: OrderSchedule) => {
+      const res = await api.patch<OrderSchedule>(
+        '/admin/order-schedule',
+        input,
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['order-schedule'] }),
   });
 }

@@ -21,6 +21,7 @@ import { DownloadOrdersPage } from '@/pages/DownloadOrdersPage';
 import { PriceListsPage } from '@/pages/PriceListsPage';
 import { ClientsPage } from '@/pages/ClientsPage';
 import { UsersPage } from '@/pages/UsersPage';
+import { OrderSchedulePage } from '@/pages/OrderSchedulePage';
 import { CarteraPage } from '@/pages/CarteraPage';
 
 function App() {
@@ -63,6 +64,7 @@ function App() {
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="cartera" element={<CarteraPage />} />
+        <Route path="horario-pedidos" element={<OrderSchedulePage />} />
         <Route path="usuarios" element={<UsersPage />} />
       </Route>
 

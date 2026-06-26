@@ -13,6 +13,7 @@ import { ClientsModule } from '../clients/clients.module';
 import { ProductsModule } from '../products/products.module';
 import { UsersModule } from '../users/users.module';
 import { PriceListsModule } from '../price-lists/price-lists.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { PriceListsModule } from '../price-lists/price-lists.module';
     ProductsModule,
     UsersModule,
     PriceListsModule,
+    SettingsModule,
   ],
   controllers: [OrdersController, CarteraOrdersController],
   providers: [OrdersService, OrderApprovalScheduler, OrdersErpClient],

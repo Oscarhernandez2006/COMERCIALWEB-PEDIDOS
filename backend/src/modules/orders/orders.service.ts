@@ -22,11 +22,11 @@ import { getMinOrderTotal, getWarehouse, COMPANIES } from '../../common/companie
 import { buildOrderPdf } from './order-pdf';
 import {
   bogotaToday,
-  isOrderCreationOpen,
-  ORDER_OPEN_HOUR,
-  ORDER_UPLOAD_CLOSE_HOUR,
+  isOrderCreationOpenFor,
+  formatScheduleTime,
   APPROVAL_WINDOW_HOURS,
 } from './order-cortes';
+import { SettingsService } from '../settings/settings.service';
 
 /** Trazabilidad de un pedido en Siesa para mostrar al vendedor. */
 export interface SiesaOrderState {
@@ -59,6 +59,7 @@ export class OrdersService {
     private readonly erpClient: OrdersErpClient,
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
+    private readonly settingsService: SettingsService,
   ) {}
 
   async create(
@@ -67,14 +68,16 @@ export class OrdersService {
     seller: User,
   ): Promise<Order> {
     // Los vendedores solo pueden CREAR pedidos dentro de la ventana operativa
-    // (7:00 a.m. – 4:00 p.m., hora de Colombia). Una vez creado dentro del
-    // horario, la aprobación de cartera y la subida a Siesa pueden ocurrir
-    // después de las 4:00 p.m. sin problema (no se revalida el horario allí).
-    if (!isOrderCreationOpen()) {
+    // configurable (hora de Colombia). Una vez creado dentro del horario, la
+    // aprobación de cartera y la subida a Siesa pueden ocurrir después sin
+    // problema (no se revalida el horario allí).
+    const schedule = await this.settingsService.getOrderSchedule();
+    if (!isOrderCreationOpenFor(schedule)) {
       throw new BadRequestException(
         `El pedido no se pudo realizar porque está fuera del horario de ` +
           `atención. La toma de pedidos está disponible de ` +
-          `${ORDER_OPEN_HOUR}:00 a.m. a ${ORDER_UPLOAD_CLOSE_HOUR - 12}:00 p.m.`,
+          `${formatScheduleTime(schedule.openHour, schedule.openMinute)} a ` +
+          `${formatScheduleTime(schedule.closeHour, schedule.closeMinute)}.`,
       );
     }
 

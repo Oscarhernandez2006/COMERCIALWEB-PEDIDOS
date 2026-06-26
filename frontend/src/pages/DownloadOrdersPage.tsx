@@ -7,12 +7,14 @@ import {
   RefreshCw,
   CheckCircle2,
   PackageCheck,
+  Calendar,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
   useDownloadableOrders,
   useDownloadOrders,
   useSetOrderPicked,
+  useSetOrderPickedBulk,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn } from '@/lib/utils';
@@ -35,24 +37,57 @@ function money(value: number): string {
   }).format(Number(value) || 0);
 }
 
+/** Fecha (YYYY-MM-DD) en horario de Colombia de una fecha dada (hoy por defecto). */
+function bogotaDateStr(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+/** Filtro por estado de alistado. */
+type PickedFilter = 'all' | 'picked' | 'unpicked';
+
 export function DownloadOrdersPage() {
   const [companyId, setCompanyId] = useState(COMPANIES[0].id);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
+  // Filtros: por día (predeterminado hoy) y por estado de alistado.
+  const [dateFilter, setDateFilter] = useState<string>(bogotaDateStr());
+  const [pickedFilter, setPickedFilter] = useState<PickedFilter>('all');
 
   const company = COMPANIES.find((c) => c.id === companyId)!;
   const { data: orders, isLoading, isError, refetch, isFetching } =
     useDownloadableOrders(companyId);
   const download = useDownloadOrders();
   const setPicked = useSetOrderPicked();
+  const setPickedBulk = useSetOrderPickedBulk();
 
-  const list = orders ?? [];
-  const allSelected = list.length > 0 && selected.size === list.length;
+  const all = orders ?? [];
+
+  // Lista visible tras aplicar los filtros de día y de alistado.
+  const list = useMemo(() => {
+    return all.filter((o) => {
+      const matchesDate =
+        !dateFilter || bogotaDateStr(new Date(o.createdAt)) === dateFilter;
+      const matchesPicked =
+        pickedFilter === 'all' ||
+        (pickedFilter === 'picked' ? o.picked : !o.picked);
+      return matchesDate && matchesPicked;
+    });
+  }, [all, dateFilter, pickedFilter]);
+
+  const allSelected = list.length > 0 && list.every((o) => selected.has(o.id));
 
   const selectedCount = useMemo(
     () => list.filter((o) => selected.has(o.id)).length,
     [list, selected],
   );
+
+  // Estado de la casilla masiva de "alistado" (sobre los pedidos filtrados).
+  const allPicked = list.length > 0 && list.every((o) => o.picked);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -64,9 +99,26 @@ export function DownloadOrdersPage() {
   }
 
   function toggleAll() {
-    setSelected((prev) =>
-      prev.size === list.length ? new Set() : new Set(list.map((o) => o.id)),
-    );
+    setSelected((prev) => {
+      const everySelected = list.every((o) => prev.has(o.id));
+      const next = new Set(prev);
+      if (everySelected) {
+        list.forEach((o) => next.delete(o.id));
+      } else {
+        list.forEach((o) => next.add(o.id));
+      }
+      return next;
+    });
+  }
+
+  /** Marca/desmarca como alistados TODOS los pedidos filtrados (acción masiva). */
+  function toggleAllPicked(picked: boolean) {
+    if (list.length === 0) return;
+    setPickedBulk.mutate({
+      companyId,
+      orderIds: list.map((o) => o.id),
+      picked,
+    });
   }
 
   function changeCompany(id: string) {
@@ -147,6 +199,66 @@ export function DownloadOrdersPage() {
             </div>
           </div>
 
+          {/* Filtros: día y estado de alistado */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Día</label>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="h-9 rounded-lg border border-border bg-background py-1 pl-8 pr-2 text-sm"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDateFilter(bogotaDateStr())}
+                >
+                  Hoy
+                </Button>
+                {dateFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDateFilter('')}
+                  >
+                    Todos
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Alistado</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { v: 'all', label: 'Todos' },
+                    { v: 'unpicked', label: 'Pendientes' },
+                    { v: 'picked', label: 'Alistados' },
+                  ] as { v: PickedFilter; label: string }[]
+                ).map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setPickedFilter(opt.v)}
+                    className={cn(
+                      'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                      pickedFilter === opt.v
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Acciones */}
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -200,7 +312,20 @@ export function DownloadOrdersPage() {
                   <th className="px-3 py-2">Estado Siesa</th>
                   <th className="px-3 py-2 text-right">Total</th>
                   <th className="px-3 py-2">Descarga</th>
-                  <th className="px-3 py-2 text-center">Alistado</th>
+                  <th className="px-3 py-2 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer accent-[var(--success)]"
+                        checked={allPicked}
+                        disabled={list.length === 0 || setPickedBulk.isPending}
+                        onChange={(e) => toggleAllPicked(e.target.checked)}
+                        title="Marcar/desmarcar como alistados todos los filtrados"
+                        aria-label="Marcar todos los filtrados como alistados"
+                      />
+                      <span>Alistado</span>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>

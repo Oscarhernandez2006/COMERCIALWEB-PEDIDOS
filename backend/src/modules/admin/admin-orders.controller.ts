@@ -103,4 +103,26 @@ export class AdminOrdersController {
       user.name,
     );
   }
+
+  /**
+   * Marca/desmarca varios pedidos como alistados de una sola vez (acción
+   * masiva: marca todos los pedidos filtrados en la tabla).
+   */
+  @Patch('picked-bulk')
+  @Roles(UserRole.ADMIN, UserRole.ALISTADOR)
+  setPickedBulk(
+    @Query('companyId') companyId: string,
+    @Body() body: { orderIds: string[]; picked: boolean },
+    @CurrentUser() user: User,
+  ) {
+    if (!companyId) {
+      throw new BadRequestException('Falta la compañía.');
+    }
+    return this.adminOrdersService.setPickedBulk(
+      companyId,
+      body?.orderIds ?? [],
+      !!body?.picked,
+      user.name,
+    );
+  }
 }

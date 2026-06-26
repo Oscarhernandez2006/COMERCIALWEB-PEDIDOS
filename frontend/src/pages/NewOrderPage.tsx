@@ -34,6 +34,7 @@ import {
   useCreateOrder,
   downloadOrderPdf,
 } from '@/hooks/useApi';
+import { useOrderSchedule } from '@/hooks/useAdminApi';
 import { formatCurrency, cn } from '@/lib/utils';
 import { DeliverySchedulePicker } from '@/components/DeliverySchedulePicker';
 import { isScheduleComplete, formatDeliverySchedule } from '@/lib/delivery-schedule';
@@ -67,19 +68,44 @@ const STEPS = [
   { n: 3, label: 'Confirmar', icon: ClipboardCheck },
 ] as const;
 
-// Ventana operativa para crear pedidos (hora de Colombia): 7:00 a.m. – 4:00 p.m.
-const ORDER_OPEN_HOUR = 7;
-const ORDER_CLOSE_HOUR = 16;
+/** Configuración de la ventana horaria para crear pedidos. */
+interface OrderScheduleCfg {
+  enabled: boolean;
+  openHour: number;
+  openMinute: number;
+  closeHour: number;
+  closeMinute: number;
+}
 
-/** ¿Estamos dentro del horario para crear pedidos? (hora de Colombia). */
-function isWithinOrderHours(): boolean {
-  const hourStr = new Intl.DateTimeFormat('en-US', {
+/** Minutos transcurridos del día (0-1439) en horario de Colombia. */
+function bogotaNowMinutes(): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Bogota',
     hour: '2-digit',
+    minute: '2-digit',
     hour12: false,
-  }).format(new Date());
-  const hour = Number(hourStr) % 24;
-  return hour >= ORDER_OPEN_HOUR && hour < ORDER_CLOSE_HOUR;
+  }).formatToParts(new Date());
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const hour = get('hour') % 24;
+  return hour * 60 + get('minute');
+}
+
+/** ¿Estamos dentro del horario para crear pedidos? (hora de Colombia). */
+function isWithinOrderHours(cfg?: OrderScheduleCfg): boolean {
+  // Sin config (aún cargando) o con la restricción desactivada: se permite.
+  if (!cfg || !cfg.enabled) return true;
+  const now = bogotaNowMinutes();
+  const open = cfg.openHour * 60 + cfg.openMinute;
+  const close = cfg.closeHour * 60 + cfg.closeMinute;
+  return now >= open && now < close;
+}
+
+/** Formatea una hora/minuto (24h) como texto am/pm (p. ej. 4:30 p.m.). */
+function formatScheduleTime(hour: number, minute: number): string {
+  const period = hour >= 12 ? 'p.m.' : 'a.m.';
+  let h = hour % 12;
+  if (h === 0) h = 12;
+  return `${h}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
 export function NewOrderPage() {
@@ -98,11 +124,22 @@ export function NewOrderPage() {
   const [submitError, setSubmitError] = useState('');
 
   // Se revisa el horario cada minuto para bloquear/desbloquear el botón en vivo.
-  const [withinHours, setWithinHours] = useState(isWithinOrderHours);
+  // El rango es configurable desde el panel admin (horario de pedidos).
+  const { data: orderSchedule } = useOrderSchedule();
+  const [withinHours, setWithinHours] = useState(true);
   useEffect(() => {
-    const id = setInterval(() => setWithinHours(isWithinOrderHours()), 60_000);
+    setWithinHours(isWithinOrderHours(orderSchedule));
+    const id = setInterval(
+      () => setWithinHours(isWithinOrderHours(orderSchedule)),
+      60_000,
+    );
     return () => clearInterval(id);
-  }, []);
+  }, [orderSchedule]);
+
+  const scheduleRangeText =
+    orderSchedule && orderSchedule.enabled
+      ? `de ${formatScheduleTime(orderSchedule.openHour, orderSchedule.openMinute)} a ${formatScheduleTime(orderSchedule.closeHour, orderSchedule.closeMinute)}`
+      : '';
 
   const { data: customers = [] } = useClients(customerSearch);
   const { data: products = [] } = useProductsForList(
@@ -996,7 +1033,7 @@ export function NewOrderPage() {
                 <p className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-center text-xs text-destructive">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    La toma de pedidos está disponible de 7:00 a.m. a 4:00 p.m.
+                    La toma de pedidos está disponible {scheduleRangeText}.
                     Fuera de ese horario no se pueden crear pedidos.
                   </span>
                 </p>

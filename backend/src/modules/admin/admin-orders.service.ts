@@ -303,4 +303,36 @@ export class AdminOrdersService {
       pickedBy: order.pickedBy ?? null,
     };
   }
+
+  /**
+   * Marca/desmarca varios pedidos como alistados de una sola vez (acción
+   * masiva desde la tabla de Descargar pedidos). Devuelve cuántos se
+   * actualizaron.
+   */
+  async setPickedBulk(
+    companyId: string,
+    orderIds: string[],
+    picked: boolean,
+    pickedBy?: string,
+  ): Promise<{ updated: number }> {
+    if (!isValidCompany(companyId)) {
+      throw new BadRequestException('Compañía inválida.');
+    }
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return { updated: 0 };
+    }
+
+    const orders = await this.ordersRepository.find({
+      where: { id: In(orderIds), companyId },
+    });
+    const now = new Date();
+    for (const order of orders) {
+      order.picked = picked;
+      order.pickedAt = picked ? now : undefined;
+      order.pickedBy = picked ? (pickedBy ?? undefined) : undefined;
+    }
+    await this.ordersRepository.save(orders);
+
+    return { updated: orders.length };
+  }
 }

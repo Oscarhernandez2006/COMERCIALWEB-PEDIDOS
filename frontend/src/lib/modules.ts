@@ -26,6 +26,7 @@ export const ADMIN_MODULES: ModuleDef[] = [
   { key: '/admin/listas-precios', label: 'Listas de precios' },
   { key: '/admin/clientes', label: 'Clientes' },
   { key: '/admin/cartera', label: 'Aprobación de cartera' },
+  { key: '/admin/horario-pedidos', label: 'Horario de pedidos' },
   { key: '/admin/usuarios', label: 'Usuarios' },
 ];
 
