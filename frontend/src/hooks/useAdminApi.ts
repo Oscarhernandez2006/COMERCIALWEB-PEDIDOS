@@ -36,7 +36,7 @@ interface CreateUserInput {
   name: string;
   password: string;
   email?: string;
-  role: 'admin' | 'seller' | 'cartera';
+  role: 'admin' | 'seller' | 'cartera' | 'alistador';
   siesaSellerCode?: string;
   permissions?: string[];
 }
@@ -58,7 +58,7 @@ interface UpdateUserInput {
   name?: string;
   password?: string;
   email?: string;
-  role?: 'admin' | 'seller' | 'cartera';
+  role?: 'admin' | 'seller' | 'cartera' | 'alistador';
   siesaSellerCode?: string;
 }
 

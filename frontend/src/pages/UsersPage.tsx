@@ -240,10 +240,10 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     documentId: '',
     name: '',
     password: '',
-    role: 'seller' as 'admin' | 'seller',
+    role: 'seller' as 'admin' | 'seller' | 'cartera' | 'alistador',
   });
 
-  function setRole(role: 'admin' | 'seller') {
+  function setRole(role: 'admin' | 'seller' | 'cartera' | 'alistador') {
     setForm((f) => ({ ...f, role }));
   }
 
@@ -296,10 +296,20 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
               id="role"
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               value={form.role}
-              onChange={(e) => setRole(e.target.value as 'admin' | 'seller')}
+              onChange={(e) =>
+                setRole(
+                  e.target.value as
+                    | 'admin'
+                    | 'seller'
+                    | 'cartera'
+                    | 'alistador',
+                )
+              }
             >
               <option value="seller">Vendedor · Toma de pedidos</option>
               <option value="admin">Administrador · Administrativa</option>
+              <option value="cartera">Cartera</option>
+              <option value="alistador">Alistador</option>
             </select>
           </div>
         </div>
@@ -348,7 +358,7 @@ function EditUserModal({
     documentId: user.documentId,
     name: user.name,
     email: user.email ?? '',
-    role: user.role as 'admin' | 'seller' | 'cartera',
+    role: user.role as 'admin' | 'seller' | 'cartera' | 'alistador',
     password: '',
   });
 
@@ -413,13 +423,18 @@ function EditUserModal({
               onChange={(e) =>
                 setForm({
                   ...form,
-                  role: e.target.value as 'admin' | 'seller' | 'cartera',
+                  role: e.target.value as
+                    | 'admin'
+                    | 'seller'
+                    | 'cartera'
+                    | 'alistador',
                 })
               }
             >
               <option value="seller">Vendedor · Toma de pedidos</option>
               <option value="admin">Administrador · Administrativa</option>
               <option value="cartera">Cartera</option>
+              <option value="alistador">Alistador</option>
             </select>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
