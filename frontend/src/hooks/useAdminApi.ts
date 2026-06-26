@@ -293,6 +293,27 @@ export async function downloadInventoryReport(
 }
 
 /**
+ * Descarga el PDF de productos vendidos dividido por compañía en un rango de
+ * fechas (por defecto el día de hoy). Cada compañía aparece en su propia
+ * sección con sus productos, la cantidad vendida y los ingresos.
+ */
+export async function downloadProductSalesReport(from?: string, to?: string) {
+  const res = await api.get('/admin/reports/product-sales', {
+    params: { ...(from ? { from } : {}), ...(to ? { to } : {}) },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `productos-vendidos-${range}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/**
  * Descarga el PDF con toda una lista de precios. El documento no muestra el
  * nombre de la lista (solo dice "Lista de precios").
  */

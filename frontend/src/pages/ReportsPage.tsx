@@ -6,9 +6,13 @@ import {
   Download,
   Package,
   AlertCircle,
+  ShoppingCart,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
-import { downloadInventoryReport } from '@/hooks/useAdminApi';
+import {
+  downloadInventoryReport,
+  downloadProductSalesReport,
+} from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn } from '@/lib/utils';
 import {
@@ -33,6 +37,12 @@ export function ReportsPage() {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
 
+  // Reporte de productos vendidos por compañía (rango de fechas).
+  const [salesFrom, setSalesFrom] = useState(todayStr());
+  const [salesTo, setSalesTo] = useState(todayStr());
+  const [downloadingSales, setDownloadingSales] = useState(false);
+  const [salesError, setSalesError] = useState('');
+
   const company = COMPANIES.find((c) => c.id === companyId)!;
 
   async function handleDownload() {
@@ -52,6 +62,33 @@ export function ReportsPage() {
       }
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleDownloadSales() {
+    if (salesFrom && salesTo && salesFrom > salesTo) {
+      setSalesError('La fecha inicial no puede ser mayor que la final.');
+      return;
+    }
+    setDownloadingSales(true);
+    setSalesError('');
+    try {
+      await downloadProductSalesReport(
+        salesFrom || undefined,
+        salesTo || undefined,
+      );
+    } catch (err) {
+      if (isAxiosError(err)) {
+        const msg = err.response?.data?.message;
+        setSalesError(
+          (Array.isArray(msg) ? msg.join(', ') : msg) ||
+            'No se pudo generar el reporte.',
+        );
+      } else {
+        setSalesError('No se pudo generar el reporte.');
+      }
+    } finally {
+      setDownloadingSales(false);
     }
   }
 
@@ -135,6 +172,80 @@ export function ReportsPage() {
             </Button>
             <span className="text-xs text-muted-foreground">
               {company.name} · {date || 'hoy'}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <ShoppingCart className="h-5 w-5" />
+            </span>
+            Productos vendidos por compañía
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            <Package className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Un solo PDF <strong>dividido por compañía</strong>: por cada
+              producto vendido en el rango de fechas muestra la{' '}
+              <strong>cantidad vendida</strong> y los{' '}
+              <strong>ingresos</strong> (precio × cantidad). Por defecto el día
+              de hoy.
+            </span>
+          </p>
+
+          {/* Rango de fechas */}
+          <div className="grid gap-3 sm:grid-cols-2 max-w-md">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Desde</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={salesFrom}
+                  max={salesTo || todayStr()}
+                  onChange={(e) => setSalesFrom(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Hasta</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={salesTo}
+                  max={todayStr()}
+                  onChange={(e) => setSalesTo(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+          </div>
+
+          {salesError && (
+            <p className="flex items-center gap-1 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              {salesError}
+            </p>
+          )}
+
+          <div className="flex items-center gap-3">
+            <Button onClick={handleDownloadSales} disabled={downloadingSales}>
+              <Download
+                className={cn('h-4 w-4', downloadingSales && 'animate-pulse')}
+              />
+              {downloadingSales ? 'Generando...' : 'Descargar PDF'}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {salesFrom === salesTo
+                ? salesFrom || 'hoy'
+                : `${salesFrom} a ${salesTo}`}
             </span>
           </div>
         </CardContent>

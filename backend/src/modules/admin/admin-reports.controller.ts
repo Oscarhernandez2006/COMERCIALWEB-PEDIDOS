@@ -35,4 +35,28 @@ export class AdminReportsController {
     );
     res.send(buffer);
   }
+
+  /**
+   * Productos vendidos divididos por compañía en un rango de fechas (hora de
+   * Colombia). Por defecto el día de hoy. Por cada compañía lista sus productos
+   * con la cantidad vendida y los ingresos (precio x cantidad).
+   */
+  @Get('product-sales')
+  async productSales(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res() res: Response,
+  ) {
+    const {
+      buffer,
+      from: fromDate,
+      to: toDate,
+    } = await this.reportsService.getProductSalesReportPdf(from, to);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="productos-vendidos-${fromDate}_a_${toDate}.pdf"`,
+    );
+    res.send(buffer);
+  }
 }
