@@ -745,48 +745,71 @@ function CompaniesModal({
           return (
             <div
               key={c.id}
-              className="flex items-center gap-2 rounded-lg border border-border bg-background p-3"
+              className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4"
             >
-              <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="w-32 shrink-0 text-sm font-medium">
-                {c.name}
-              </span>
-              <Input
-                placeholder="Cód. vendedor"
-                className="h-8"
-                value={codes[c.id] ?? ''}
-                onChange={(e) =>
-                  setCodes({ ...codes, [c.id]: e.target.value })
-                }
-              />
-              <Button
-                size="sm"
-                variant={has ? 'secondary' : 'default'}
-                disabled={assign.isPending}
-                onClick={() =>
-                  assign.mutate({
-                    id: user.id,
-                    companyId: c.id,
-                    siesaSellerCode: codes[c.id] || undefined,
-                  })
-                }
-              >
-                {has ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                {has ? 'Guardar' : 'Asignar'}
-              </Button>
-              {has && (
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-sm font-semibold">{c.name}</span>
+                {has ? (
+                  <Badge variant="secondary" className="ml-auto">
+                    Asignada
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="ml-auto">
+                    Sin asignar
+                  </Badge>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor={`code-${c.id}`} className="text-xs">
+                  Código de vendedor en Siesa
+                </Label>
+                <Input
+                  id={`code-${c.id}`}
+                  placeholder="Ej. 0033"
+                  value={codes[c.id] ?? ''}
+                  onChange={(e) =>
+                    setCodes({ ...codes, [c.id]: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
                 <Button
-                  size="icon"
-                  variant="ghost"
-                  title="Quitar acceso"
-                  disabled={remove.isPending}
+                  size="sm"
+                  className="flex-1"
+                  variant={has ? 'secondary' : 'default'}
+                  disabled={assign.isPending}
                   onClick={() =>
-                    remove.mutate({ id: user.id, companyId: c.id })
+                    assign.mutate({
+                      id: user.id,
+                      companyId: c.id,
+                      siesaSellerCode: codes[c.id] || undefined,
+                    })
                   }
                 >
-                  <X className="h-4 w-4 text-destructive" />
+                  {has ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  {has ? 'Guardar código' : 'Asignar compañía'}
                 </Button>
-              )}
+                {has && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Quitar acceso"
+                    disabled={remove.isPending}
+                    onClick={() =>
+                      remove.mutate({ id: user.id, companyId: c.id })
+                    }
+                  >
+                    <X className="h-4 w-4 text-destructive" />
+                  </Button>
+                )}
+              </div>
             </div>
           );
         })}
