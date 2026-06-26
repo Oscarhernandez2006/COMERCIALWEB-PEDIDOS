@@ -404,6 +404,7 @@ export function useAdminOrders(companyId: string, filters: AdminOrdersFilters) {
       });
       return res.data;
     },
+    enabled: Boolean(companyId),
   });
 }
 

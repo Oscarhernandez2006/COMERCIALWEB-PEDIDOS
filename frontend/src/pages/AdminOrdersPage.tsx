@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardList,
@@ -23,6 +23,8 @@ import {
 import { downloadOrderPdf } from '@/hooks/useApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn } from '@/lib/utils';
+import { useCompany } from '@/company/useCompany';
+import { useAuth } from '@/auth/useAuth';
 import { OrderStatusBadge } from '@/components/OrderStatusBadge';
 import type { OrderStatus } from '@/types';
 import {
@@ -64,12 +66,38 @@ function dateTime(value?: string | null): string {
 }
 
 export function AdminOrdersPage() {
-  const [companyId, setCompanyId] = useState(COMPANIES[0].id);
+  const { user } = useAuth();
+  const { companies: myCompanies } = useCompany();
+  const isAdmin = user?.role === 'admin';
+
+  // Compañías que el usuario puede ver en esta pantalla: admin ve todas; el
+  // resto solo aquellas donde tiene asignado el permiso del módulo.
+  const availableCompanies = useMemo(() => {
+    if (isAdmin) return COMPANIES;
+    return COMPANIES.filter((c) =>
+      myCompanies.some(
+        (mc) =>
+          mc.id === c.id &&
+          (mc.permissions ?? []).includes('/admin/pedidos'),
+      ),
+    );
+  }, [isAdmin, myCompanies]);
+
+  const [companyId, setCompanyId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<AdminOrderDetail | null>(null);
+
+  // Selecciona por defecto la primera compañía disponible y corrige si la
+  // seleccionada deja de estar disponible.
+  useEffect(() => {
+    if (availableCompanies.length === 0) return;
+    if (!availableCompanies.some((c) => c.id === companyId)) {
+      setCompanyId(availableCompanies[0].id);
+    }
+  }, [availableCompanies, companyId]);
 
   const filters: AdminOrdersFilters = useMemo(
     () => ({ from, to, status, search }),
@@ -80,7 +108,7 @@ export function AdminOrdersPage() {
     useAdminOrders(companyId, filters);
 
   const list = orders ?? [];
-  const company = COMPANIES.find((c) => c.id === companyId)!;
+  const company = COMPANIES.find((c) => c.id === companyId);
 
   function clearFilters() {
     setFrom('');
@@ -117,7 +145,7 @@ export function AdminOrdersPage() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Compañía</label>
             <div className="flex flex-wrap gap-2">
-              {COMPANIES.map((c) => (
+              {availableCompanies.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setCompanyId(c.id)}
@@ -218,7 +246,7 @@ export function AdminOrdersPage() {
               </Button>
             )}
             <span className="text-xs text-muted-foreground">
-              {company.name} · {list.length} pedido(s)
+              {company?.name ?? '—'} · {list.length} pedido(s)
             </span>
           </div>
 

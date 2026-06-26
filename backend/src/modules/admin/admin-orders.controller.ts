@@ -34,19 +34,30 @@ export class AdminOrdersController {
 
   /** Listado administrativo de pedidos con seguimiento completo y filtros. */
   @Get()
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.SELLER,
+    UserRole.ALISTADOR,
+    UserRole.CARTERA,
+  )
   listAll(
     @Query('companyId') companyId: string,
+    @CurrentUser() user: User,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
   ) {
-    return this.adminOrdersService.listAll(companyId, {
-      from,
-      to,
-      status,
-      search,
-    });
+    return this.adminOrdersService.listAll(
+      companyId,
+      {
+        from,
+        to,
+        status,
+        search,
+      },
+      user,
+    );
   }
 
   /** Pedidos descargables (subidos a Siesa, no rebotados ni anulados). */

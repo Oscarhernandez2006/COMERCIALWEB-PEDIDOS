@@ -1,10 +1,20 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { buildOrdersPdf } from '../orders/order-pdf';
 import { bogotaParts } from '../orders/order-cortes';
 import { isValidCompany } from '../../common/companies';
+import { UsersService } from '../users/users.service';
+import { User, UserRole } from '../users/entities/user.entity';
+
+/** Clave del módulo (permiso) de la administración de pedidos. */
+const ADMIN_ORDERS_PERMISSION = '/admin/pedidos';
 
 /** Resumen de un pedido descargable (para la tabla del administrador). */
 export interface DownloadableOrder {
@@ -92,7 +102,42 @@ export class AdminOrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly ordersRepository: Repository<Order>,
+    private readonly usersService: UsersService,
   ) {}
+
+  /**
+   * Verifica que el usuario pueda ver la administración de pedidos de una
+   * compañía: admin (todas), o que tenga el permiso del módulo asignado en esa
+   * compañía (o de forma global, siempre que tenga acceso a la compañía).
+   */
+  private async assertCanAccess(
+    user: User,
+    companyId: string,
+  ): Promise<void> {
+    if (user.role === UserRole.ADMIN) return;
+
+    const companies = await this.usersService.findCompaniesForUser(user.id);
+    const mapping = companies.find((c) => c.companyId === companyId);
+    if (!mapping) {
+      throw new ForbiddenException(
+        'No tienes acceso a los pedidos de esta compañía.',
+      );
+    }
+
+    const fullUser = await this.usersService.findById(user.id);
+    const globalPerms = fullUser.permissions ?? [];
+    const companyPerms = mapping.permissions ?? [];
+    if (
+      companyPerms.includes(ADMIN_ORDERS_PERMISSION) ||
+      globalPerms.includes(ADMIN_ORDERS_PERMISSION)
+    ) {
+      return;
+    }
+
+    throw new ForbiddenException(
+      'No tienes permiso para ver la administración de pedidos.',
+    );
+  }
 
   /**
    * Listado administrativo de todos los pedidos de una compañía con toda la
@@ -102,9 +147,13 @@ export class AdminOrdersService {
   async listAll(
     companyId: string,
     filter: AdminOrdersFilter = {},
+    user?: User,
   ): Promise<AdminOrderDetail[]> {
     if (!isValidCompany(companyId)) {
       throw new BadRequestException('Compañía inválida.');
+    }
+    if (user) {
+      await this.assertCanAccess(user, companyId);
     }
 
     const orders = await this.ordersRepository.find({
