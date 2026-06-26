@@ -3,6 +3,8 @@ export type UserRole = 'admin' | 'seller' | 'cartera';
 export interface Company {
   id: string;
   name: string;
+  /** Módulos que el usuario puede ver en esta compañía (vacío = todos los de su rol). */
+  permissions?: string[];
 }
 
 export interface User {
@@ -250,6 +252,8 @@ export interface UserCompanyAccess {
   companyId: string;
   name: string;
   siesaSellerCode?: string;
+  /** Módulos visibles del usuario en esta compañía (vacío = todos los de su rol). */
+  permissions: string[];
 }
 
 export interface AdminUser {

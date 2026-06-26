@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserCompany } from './entities/user-company.entity';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
@@ -63,6 +64,42 @@ export class UsersService {
     return this.usersRepository.find({ order: { createdAt: 'DESC' } });
   }
 
+  /** Actualiza la información editable de un usuario. */
+  async update(id: string, dto: UpdateUserDto): Promise<User> {
+    const user = await this.findById(id);
+
+    if (dto.documentId && dto.documentId !== user.documentId) {
+      const existing = await this.usersRepository.findOne({
+        where: { documentId: dto.documentId },
+      });
+      if (existing && existing.id !== id) {
+        throw new ConflictException('Ya existe un usuario con esa cédula');
+      }
+      user.documentId = dto.documentId;
+    }
+
+    if (dto.email !== undefined) {
+      user.email = dto.email ? dto.email.toLowerCase() : undefined;
+    }
+    if (dto.name !== undefined) user.name = dto.name;
+    if (dto.role !== undefined) user.role = dto.role;
+    if (dto.siesaSellerCode !== undefined) {
+      user.siesaSellerCode = dto.siesaSellerCode || undefined;
+    }
+    if (dto.password) {
+      user.passwordHash = await bcrypt.hash(dto.password, 10);
+    }
+
+    return this.usersRepository.save(user);
+  }
+
+  /** Elimina un usuario (sus accesos por compañía se borran en cascada). */
+  async remove(id: string): Promise<void> {
+    const user = await this.findById(id);
+    await this.userCompaniesRepository.delete({ userId: user.id });
+    await this.usersRepository.delete({ id: user.id });
+  }
+
   /** Activa/desactiva un usuario. */
   async setActive(id: string, active: boolean): Promise<User> {
     const user = await this.findById(id);
@@ -75,6 +112,27 @@ export class UsersService {
     const user = await this.findById(id);
     user.permissions = Array.isArray(permissions) ? permissions : [];
     return this.usersRepository.save(user);
+  }
+
+  /**
+   * Define los módulos visibles del usuario EN UNA compañía especifica.
+   * El usuario debe tener acceso a esa compañía (debe existir el mapeo).
+   */
+  async setCompanyPermissions(
+    userId: string,
+    companyId: string,
+    permissions: string[],
+  ): Promise<UserCompany> {
+    const mapping = await this.userCompaniesRepository.findOne({
+      where: { userId, companyId },
+    });
+    if (!mapping) {
+      throw new NotFoundException(
+        'El usuario no tiene acceso a esa compañía',
+      );
+    }
+    mapping.permissions = Array.isArray(permissions) ? permissions : [];
+    return this.userCompaniesRepository.save(mapping);
   }
 
   /** Quita el acceso de un usuario a una compañía. */

@@ -1,7 +1,7 @@
 // Script puntual: resetea SOLO los pedidos (orders + order_items).
 // NO toca inventario, productos, usuarios ni clientes.
 // El consecutivo de pedidos se calcula por conteo, así que al quedar la tabla
-// vacía la numeración vuelve a empezar en 000001 por compañía.
+// vacía la numeración vuelve a empezar en 1 por compañía (1, 2, 3, ...).
 require('dotenv').config();
 const { Client } = require('pg');
 

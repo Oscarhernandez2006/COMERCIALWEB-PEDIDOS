@@ -10,14 +10,19 @@ import {
   Power,
   KeyRound,
   LayoutGrid,
+  Pencil,
+  Trash2,
+  Search,
 } from 'lucide-react';
 import {
   useAdminUsers,
   useCreateUser,
+  useUpdateUser,
+  useDeleteUser,
   useSetUserActive,
   useAssignCompany,
   useRemoveCompany,
-  useSetUserPermissions,
+  useSetCompanyPermissions,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { MODULE_GROUPS, ALL_MODULES, areaLabel } from '@/lib/modules';
@@ -35,10 +40,30 @@ import type { AdminUser } from '@/types';
 export function UsersPage() {
   const { data: users = [], isLoading } = useAdminUsers();
   const setActive = useSetUserActive();
+  const deleteUser = useDeleteUser();
 
   const [showCreate, setShowCreate] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [permsUser, setPermsUser] = useState<AdminUser | null>(null);
+  const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [search, setSearch] = useState('');
+
+  const term = search.trim().toLowerCase();
+  const filtered = term
+    ? users.filter((u) =>
+        [u.name, u.documentId, u.email ?? '']
+          .join(' ')
+          .toLowerCase()
+          .includes(term),
+      )
+    : users;
+
+  function handleDelete(u: AdminUser) {
+    const ok = window.confirm(
+      `¿Eliminar al usuario "${u.name}" (cédula ${u.documentId})? Esta acción no se puede deshacer.`,
+    );
+    if (ok) deleteUser.mutate(u.id);
+  }
 
   return (
     <div className="space-y-6">
@@ -56,6 +81,17 @@ export function UsersPage() {
         </Button>
       </div>
 
+      {/* Filtro de búsqueda */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Buscar por nombre, cédula o correo..."
+          className="pl-9"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       {/* Listado de usuarios */}
       <Card>
         <CardContent className="px-0 py-0">
@@ -63,13 +99,13 @@ export function UsersPage() {
             <p className="py-10 text-center text-sm text-muted-foreground">
               Cargando usuarios...
             </p>
-          ) : users.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              No hay usuarios.
+              {term ? 'No hay usuarios que coincidan.' : 'No hay usuarios.'}
             </p>
           ) : (
             <ul className="divide-y divide-border">
-              {users.map((u) => (
+              {filtered.map((u) => (
                 <li key={u.id}>
                   <div className="flex flex-wrap items-center gap-4 px-6 py-4">
                     <div
@@ -96,9 +132,6 @@ export function UsersPage() {
                       </div>
                       <p className="text-sm text-muted-foreground">
                         Cédula {u.documentId} · {areaLabel(u.role)}
-                        {u.permissions.length > 0 && (
-                          <> · {u.permissions.length} módulo(s)</>
-                        )}
                       </p>
                     </div>
 
@@ -113,6 +146,9 @@ export function UsersPage() {
                           <Badge key={c.companyId} variant="default">
                             {c.name}
                             {c.siesaSellerCode ? ` · ${c.siesaSellerCode}` : ''}
+                            {c.permissions && c.permissions.length > 0
+                              ? ` · ${c.permissions.length} mód.`
+                              : ''}
                           </Badge>
                         ))
                       )}
@@ -137,6 +173,14 @@ export function UsersPage() {
                         <Building2 className="h-4 w-4" />
                         Compañías
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditUser(u)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Editar
+                      </Button>
                       {u.role !== 'admin' && (
                         <Button
                           variant="ghost"
@@ -156,6 +200,14 @@ export function UsersPage() {
                           />
                         </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Eliminar usuario"
+                        onClick={() => handleDelete(u)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </div>
                   </div>
 
@@ -174,6 +226,9 @@ export function UsersPage() {
           onClose={() => setPermsUser(null)}
         />
       )}
+      {editUser && (
+        <EditUserModal user={editUser} onClose={() => setEditUser(null)} />
+      )}
     </div>
   );
 }
@@ -187,21 +242,14 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     password: '',
     role: 'seller' as 'admin' | 'seller',
   });
-  const [permissions, setPermissions] = useState<string[]>([]);
 
   function setRole(role: 'admin' | 'seller') {
     setForm((f) => ({ ...f, role }));
   }
 
-  function toggle(key: string) {
-    setPermissions((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createUser.mutate({ ...form, permissions }, { onSuccess: onClose });
+    createUser.mutate({ ...form, permissions: [] }, { onSuccess: onClose });
   }
 
   return (
@@ -256,34 +304,15 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {/* Módulos visibles (operativo + administrativo) */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="flex items-center gap-1.5">
-              <LayoutGrid className="h-4 w-4" />
-              Módulos visibles
-            </Label>
-            <button
-              type="button"
-              className="text-xs text-primary hover:underline"
-              onClick={() =>
-                setPermissions(
-                  permissions.length === ALL_MODULES.length
-                    ? []
-                    : ALL_MODULES.map((m) => m.key),
-                )
-              }
-            >
-              {permissions.length === ALL_MODULES.length
-                ? 'Quitar todos'
-                : 'Seleccionar todos'}
-            </button>
-          </div>
+        {/* Los módulos visibles se asignan por compañía después de crear el
+            usuario y asignarle compañías (botón "Permisos"). */}
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+          <LayoutGrid className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <p className="text-xs text-muted-foreground">
-            Puedes asignar módulos de ambas áreas. Si no marcas ninguno, el
-            usuario verá los módulos por defecto de su rol.
+            Después de crear el usuario, asígnale sus compañías y luego define
+            qué módulos puede ver <strong>en cada compañía</strong> desde el botón
+            “Permisos”. Sin módulos marcados, verá los de su rol por defecto.
           </p>
-          <ModuleGroupsPicker selected={permissions} onToggle={toggle} />
         </div>
 
         {createUser.isError && (
@@ -306,7 +335,127 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Modal para activar/desactivar los módulos visibles de un usuario. */
+/** Modal para editar la información de un usuario. */
+function EditUserModal({
+  user,
+  onClose,
+}: {
+  user: AdminUser;
+  onClose: () => void;
+}) {
+  const updateUser = useUpdateUser();
+  const [form, setForm] = useState({
+    documentId: user.documentId,
+    name: user.name,
+    email: user.email ?? '',
+    role: user.role as 'admin' | 'seller' | 'cartera',
+    password: '',
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    updateUser.mutate(
+      {
+        id: user.id,
+        documentId: form.documentId,
+        name: form.name,
+        email: form.email ? form.email : undefined,
+        role: form.role,
+        // Solo enviamos la contraseña si se escribió una nueva.
+        ...(form.password ? { password: form.password } : {}),
+      },
+      { onSuccess: onClose },
+    );
+  }
+
+  return (
+    <ModalShell title={`Editar · ${user.name}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-documentId">Cédula</Label>
+            <Input
+              id="edit-documentId"
+              inputMode="numeric"
+              required
+              minLength={4}
+              value={form.documentId}
+              onChange={(e) =>
+                setForm({ ...form, documentId: e.target.value })
+              }
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-name">Nombre</Label>
+            <Input
+              id="edit-name"
+              required
+              minLength={2}
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-email">Correo (opcional)</Label>
+            <Input
+              id="edit-email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-role">Área / Rol</Label>
+            <select
+              id="edit-role"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={form.role}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  role: e.target.value as 'admin' | 'seller' | 'cartera',
+                })
+              }
+            >
+              <option value="seller">Vendedor · Toma de pedidos</option>
+              <option value="admin">Administrador · Administrativa</option>
+              <option value="cartera">Cartera</option>
+            </select>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="edit-password">Nueva contraseña (opcional)</Label>
+            <Input
+              id="edit-password"
+              type="password"
+              placeholder="Dejar en blanco para no cambiarla"
+              minLength={4}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+          </div>
+        </div>
+
+        {updateUser.isError && (
+          <p className="text-sm text-destructive">
+            No se pudieron guardar los cambios. ¿La cédula ya existe?
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={updateUser.isPending}>
+            <Check className="h-4 w-4" />
+            {updateUser.isPending ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+/** Modal para activar/desactivar los módulos visibles de un usuario POR compañía. */
 function PermissionsModal({
   user,
   onClose,
@@ -314,19 +463,56 @@ function PermissionsModal({
   user: AdminUser;
   onClose: () => void;
 }) {
-  const setPermissions = useSetUserPermissions();
-  const [selected, setSelected] = useState<string[]>(user.permissions ?? []);
+  const setCompanyPermissions = useSetCompanyPermissions();
+  const companies = user.companies ?? [];
+  const [activeCompany, setActiveCompany] = useState<string>(
+    companies[0]?.companyId ?? '',
+  );
+  // Permisos por compañía, inicializados desde lo que ya tiene el usuario.
+  const [byCompany, setByCompany] = useState<Record<string, string[]>>(() =>
+    Object.fromEntries(
+      companies.map((c) => [c.companyId, c.permissions ?? []]),
+    ),
+  );
+
+  const selected = byCompany[activeCompany] ?? [];
 
   function toggle(key: string) {
-    setSelected((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    );
+    setByCompany((prev) => {
+      const current = prev[activeCompany] ?? [];
+      const next = current.includes(key)
+        ? current.filter((k) => k !== key)
+        : [...current, key];
+      return { ...prev, [activeCompany]: next };
+    });
+  }
+
+  function setSelected(next: string[]) {
+    setByCompany((prev) => ({ ...prev, [activeCompany]: next }));
   }
 
   function handleSave() {
-    setPermissions.mutate(
-      { id: user.id, permissions: selected },
+    setCompanyPermissions.mutate(
+      { id: user.id, companyId: activeCompany, permissions: selected },
       { onSuccess: onClose },
+    );
+  }
+
+  if (companies.length === 0) {
+    return (
+      <ModalShell title={`Permisos · ${user.name}`} onClose={onClose}>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Este usuario no tiene compañías asignadas. Asigna primero una
+            compañía para poder definir sus módulos por empresa.
+          </p>
+          <div className="flex justify-end border-t border-border pt-4">
+            <Button variant="ghost" onClick={onClose}>
+              Cerrar
+            </Button>
+          </div>
+        </div>
+      </ModalShell>
     );
   }
 
@@ -338,11 +524,34 @@ function PermissionsModal({
           <Badge variant="secondary">{areaLabel(user.role)}</Badge>
         </div>
 
+        {/* Selector de compañía: los módulos se asignan por empresa. */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Compañía
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {companies.map((c) => (
+              <button
+                key={c.companyId}
+                type="button"
+                onClick={() => setActiveCompany(c.companyId)}
+                className={cn(
+                  'rounded-md border px-3 py-1.5 text-sm transition-colors',
+                  c.companyId === activeCompany
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:bg-muted/50',
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Marca los módulos que este usuario podrá ver. Puedes combinar
-            módulos operativos y administrativos. Sin ninguno marcado, verá
-            los módulos por defecto de su rol.
+            Marca los módulos que este usuario podrá ver en esta compañía. Sin
+            ninguno marcado, verá los módulos por defecto de su rol.
           </p>
           <button
             type="button"
@@ -363,7 +572,7 @@ function PermissionsModal({
 
         <ModuleGroupsPicker selected={selected} onToggle={toggle} />
 
-        {setPermissions.isError && (
+        {setCompanyPermissions.isError && (
           <p className="text-sm text-destructive">
             No se pudieron guardar los permisos.
           </p>
@@ -373,9 +582,14 @@ function PermissionsModal({
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={setPermissions.isPending}>
+          <Button
+            onClick={handleSave}
+            disabled={setCompanyPermissions.isPending}
+          >
             <Check className="h-4 w-4" />
-            {setPermissions.isPending ? 'Guardando...' : 'Guardar permisos'}
+            {setCompanyPermissions.isPending
+              ? 'Guardando...'
+              : 'Guardar permisos'}
           </Button>
         </div>
       </div>

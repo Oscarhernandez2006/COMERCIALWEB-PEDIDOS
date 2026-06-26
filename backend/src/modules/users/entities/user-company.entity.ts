@@ -27,6 +27,15 @@ export class UserCompany extends BaseEntity {
   @Column({ name: 'siesa_seller_code', nullable: true })
   siesaSellerCode?: string;
 
+  /**
+   * Módulos que el usuario puede ver EN ESTA compañía (rutas del front, p. ej.
+   * "/pedidos", "/admin/inventario"). Si está vacío, ve todos los módulos de su
+   * rol en esta compañía (compatibilidad). Permite, por ejemplo, dar Inventario
+   * solo en una compañía y no en otra.
+   */
+  @Column({ name: 'permissions', type: 'jsonb', default: () => "'[]'" })
+  permissions: string[];
+
   @Column({ default: true })
   active: boolean;
 }

@@ -52,6 +52,40 @@ export function useCreateUser() {
   });
 }
 
+interface UpdateUserInput {
+  id: string;
+  documentId?: string;
+  name?: string;
+  password?: string;
+  email?: string;
+  role?: 'admin' | 'seller' | 'cartera';
+  siesaSellerCode?: string;
+}
+
+/** Edita la información de un usuario. */
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: UpdateUserInput) => {
+      const res = await api.patch<AdminUser>(`/admin/users/${id}`, body);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+/** Elimina un usuario. */
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete<{ ok: boolean }>(`/admin/users/${id}`);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
 export function useSetUserActive() {
   const qc = useQueryClient();
   return useMutation({
@@ -73,6 +107,25 @@ export function useSetUserPermissions() {
     mutationFn: async (input: { id: string; permissions: string[] }) => {
       const res = await api.patch<AdminUser>(
         `/admin/users/${input.id}/permissions`,
+        { permissions: input.permissions },
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+/** Define los módulos visibles (permisos) de un usuario EN una compañía. */
+export function useSetCompanyPermissions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      companyId: string;
+      permissions: string[];
+    }) => {
+      const res = await api.patch<AdminUser>(
+        `/admin/users/${input.id}/companies/${input.companyId}/permissions`,
         { permissions: input.permissions },
       );
       return res.data;

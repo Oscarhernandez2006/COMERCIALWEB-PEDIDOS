@@ -41,14 +41,27 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('companies')
   async companies(@CurrentUser() user: User) {
-    // El admin tiene acceso a todas las compañías.
+    // El admin tiene acceso a todas las compañías (sin restriccion de módulos).
     if (user.role === UserRole.ADMIN) {
-      return COMPANIES.map((c) => ({ id: c.id, name: c.name }));
+      return COMPANIES.map((c) => ({
+        id: c.id,
+        name: c.name,
+        permissions: [] as string[],
+      }));
     }
     const mappings = await this.usersService.findCompaniesForUser(user.id);
     return mappings
-      .map((m) => COMPANIES.find((c) => c.id === m.companyId))
-      .filter((c): c is (typeof COMPANIES)[number] => Boolean(c))
-      .map((c) => ({ id: c.id, name: c.name }));
+      .map((m) => {
+        const company = COMPANIES.find((c) => c.id === m.companyId);
+        if (!company) return null;
+        return {
+          id: company.id,
+          name: company.name,
+          permissions: m.permissions ?? [],
+        };
+      })
+      .filter((c): c is { id: string; name: string; permissions: string[] } =>
+        Boolean(c),
+      );
   }
 }

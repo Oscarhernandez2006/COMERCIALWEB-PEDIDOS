@@ -77,10 +77,11 @@ export function AppLayout() {
   }, [mobileOpen]);
 
   // El menú combina los módulos operativos y administrativos según los
-  // permisos asignados al usuario. Si tiene permisos definidos, se muestran
-  // todos los módulos permitidos (de cualquier área) juntos. Si no tiene
-  // permisos (lista vacía), ve los módulos por defecto de su área actual.
-  const perms = user?.permissions;
+  // permisos asignados al usuario EN LA COMPAÑÍA ACTUAL. Si tiene permisos
+  // definidos para esa compañía, se muestran solo esos módulos. Si no tiene
+  // permisos (lista vacía) ve los módulos por defecto de su área. El admin
+  // siempre ve los módulos por defecto de su área (sin restricción por empresa).
+  const perms = user?.role === 'admin' ? undefined : company?.permissions;
   let navItems: typeof sellerNav;
   if (isCarteraArea) {
     navItems = carteraNav;

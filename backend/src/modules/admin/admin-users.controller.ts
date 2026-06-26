@@ -11,6 +11,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsersService } from '../users/users.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
+import { UpdateUserDto } from '../users/dto/update-user.dto';
 import { AssignCompanyDto } from './dto/assign-company.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -38,6 +39,20 @@ export class AdminUsersController {
     return this.toView(user);
   }
 
+  /** Edita la información de un usuario. */
+  @Patch(':id')
+  async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    const user = await this.usersService.update(id, dto);
+    return this.toView(user);
+  }
+
+  /** Elimina un usuario y sus accesos por compañía. */
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    await this.usersService.remove(id);
+    return { ok: true };
+  }
+
   @Patch(':id/active')
   async setActive(
     @Param('id') id: string,
@@ -54,6 +69,22 @@ export class AdminUsersController {
     @Body('permissions') permissions: string[],
   ) {
     const user = await this.usersService.setPermissions(id, permissions ?? []);
+    return this.toView(user);
+  }
+
+  /** Define los módulos visibles del usuario EN una compañía especifica. */
+  @Patch(':id/companies/:companyId/permissions')
+  async setCompanyPermissions(
+    @Param('id') id: string,
+    @Param('companyId') companyId: string,
+    @Body('permissions') permissions: string[],
+  ) {
+    await this.usersService.setCompanyPermissions(
+      id,
+      companyId,
+      permissions ?? [],
+    );
+    const user = await this.usersService.findById(id);
     return this.toView(user);
   }
 
@@ -97,6 +128,7 @@ export class AdminUsersController {
         companyId: m.companyId,
         name: COMPANIES.find((c) => c.id === m.companyId)?.name ?? m.companyId,
         siesaSellerCode: m.siesaSellerCode,
+        permissions: m.permissions ?? [],
       })),
     };
   }
