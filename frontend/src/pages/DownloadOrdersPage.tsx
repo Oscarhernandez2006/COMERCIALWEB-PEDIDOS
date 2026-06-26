@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   PackageCheck,
   Calendar,
+  Search,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
@@ -54,9 +55,10 @@ export function DownloadOrdersPage() {
   const [companyId, setCompanyId] = useState(COMPANIES[0].id);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
-  // Filtros: por día (predeterminado hoy) y por estado de alistado.
+  // Filtros: por día (predeterminado hoy), por estado de alistado y búsqueda.
   const [dateFilter, setDateFilter] = useState<string>(bogotaDateStr());
   const [pickedFilter, setPickedFilter] = useState<PickedFilter>('all');
+  const [search, setSearch] = useState('');
 
   const company = COMPANIES.find((c) => c.id === companyId)!;
   const { data: orders, isLoading, isError, refetch, isFetching } =
@@ -67,17 +69,27 @@ export function DownloadOrdersPage() {
 
   const all = orders ?? [];
 
-  // Lista visible tras aplicar los filtros de día y de alistado.
+  // Lista visible tras aplicar los filtros de día, alistado y búsqueda,
+  // ordenada por consecutivo ascendente (1, 2, 3...).
   const list = useMemo(() => {
-    return all.filter((o) => {
-      const matchesDate =
-        !dateFilter || bogotaDateStr(new Date(o.createdAt)) === dateFilter;
-      const matchesPicked =
-        pickedFilter === 'all' ||
-        (pickedFilter === 'picked' ? o.picked : !o.picked);
-      return matchesDate && matchesPicked;
-    });
-  }, [all, dateFilter, pickedFilter]);
+    const term = search.trim().toLowerCase();
+    return all
+      .filter((o) => {
+        const matchesDate =
+          !dateFilter || bogotaDateStr(new Date(o.createdAt)) === dateFilter;
+        const matchesPicked =
+          pickedFilter === 'all' ||
+          (pickedFilter === 'picked' ? o.picked : !o.picked);
+        const matchesSearch =
+          !term ||
+          o.orderNumber.toLowerCase().includes(term) ||
+          o.customerName.toLowerCase().includes(term) ||
+          o.customerCode.toLowerCase().includes(term) ||
+          o.sellerName.toLowerCase().includes(term);
+        return matchesDate && matchesPicked && matchesSearch;
+      })
+      .sort((a, b) => Number(a.orderNumber) - Number(b.orderNumber));
+  }, [all, dateFilter, pickedFilter, search]);
 
   const allSelected = list.length > 0 && list.every((o) => selected.has(o.id));
 
@@ -201,6 +213,20 @@ export function DownloadOrdersPage() {
 
           {/* Filtros: día y estado de alistado */}
           <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Buscar</label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Pedido, cliente o vendedor"
+                  className="h-9 w-64 rounded-lg border border-border bg-background py-1 pl-8 pr-2 text-sm"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Día</label>
               <div className="flex items-center gap-2">
