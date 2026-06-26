@@ -54,9 +54,10 @@ export function bogotaCurrentHour(): number {
   return bogotaParts(new Date()).hour;
 }
 
-/** ¿Ya se pueden crear pedidos? (a partir de las 7:00 a.m.) */
+/** ¿Ya se pueden crear pedidos? (entre las 7:00 a.m. y las 4:00 p.m.) */
 export function isOrderCreationOpen(): boolean {
-  return bogotaCurrentHour() >= ORDER_OPEN_HOUR;
+  const hour = bogotaCurrentHour();
+  return hour >= ORDER_OPEN_HOUR && hour < ORDER_UPLOAD_CLOSE_HOUR;
 }
 
 /** ¿Todavía se pueden subir pedidos a Siesa? (antes de las 4:00 p.m.) */

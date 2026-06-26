@@ -14,3 +14,11 @@ export function formatCurrency(value: number): string {
     maximumFractionDigits: 0,
   }).format(value);
 }
+
+/** Formatea una fecha "YYYY-MM-DD" (o ISO) como "DD/MM/YYYY". */
+export function formatDate(value?: string | null): string {
+  if (!value) return '—';
+  const [y, m, d] = value.slice(0, 10).split('-');
+  if (!y || !m || !d) return value;
+  return `${d}/${m}/${y}`;
+}

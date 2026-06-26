@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -49,12 +51,14 @@ export class AdminOrdersController {
 
   /** Pedidos descargables (subidos a Siesa, no rebotados ni anulados). */
   @Get('downloadable')
+  @Roles(UserRole.ADMIN, UserRole.ALISTADOR)
   listDownloadable(@Query('companyId') companyId: string) {
     return this.adminOrdersService.listDownloadable(companyId);
   }
 
   /** Genera un PDF con los pedidos seleccionados y los marca como descargados. */
   @Post('download')
+  @Roles(UserRole.ADMIN, UserRole.ALISTADOR)
   async download(
     @Body() body: { companyId: string; orderIds: string[] },
     @CurrentUser() user: User,
@@ -75,5 +79,28 @@ export class AdminOrdersController {
       `attachment; filename="pedidos-${companyId}.pdf"`,
     );
     res.send(buffer);
+  }
+
+  /**
+   * Marca/desmarca un pedido como alistado. Lo usa el alistador desde la tabla
+   * de Descargar pedidos; se guarda automáticamente y la marca persiste.
+   */
+  @Patch(':id/picked')
+  @Roles(UserRole.ADMIN, UserRole.ALISTADOR)
+  setPicked(
+    @Param('id') id: string,
+    @Query('companyId') companyId: string,
+    @Body() body: { picked: boolean },
+    @CurrentUser() user: User,
+  ) {
+    if (!companyId) {
+      throw new BadRequestException('Falta la compañía.');
+    }
+    return this.adminOrdersService.setPicked(
+      companyId,
+      id,
+      !!body?.picked,
+      user.name,
+    );
   }
 }

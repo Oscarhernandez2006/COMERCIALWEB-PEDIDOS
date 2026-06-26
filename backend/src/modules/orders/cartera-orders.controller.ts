@@ -16,21 +16,25 @@ import { DisapproveOrderDto } from './dto/disapprove-order.dto';
 @ApiTags('cartera')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.CARTERA, UserRole.ADMIN)
+@Roles(UserRole.CARTERA, UserRole.SELLER, UserRole.ADMIN)
 @Controller('cartera/orders')
 export class CarteraOrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  /** Pedidos pendientes de aprobación en cartera (todas las compañías). */
+  /**
+   * Pedidos pendientes de aprobación en cartera, SOLO de las compañías que el
+   * usuario tiene asignadas (los administradores ven todas). Así cada persona
+   * de cartera ve únicamente los pedidos de su(s) compañía(s).
+   */
   @Get()
-  findPending() {
-    return this.ordersService.findPendingApproval();
+  findPending(@CurrentUser() user: User) {
+    return this.ordersService.findPendingApproval(user);
   }
 
   /** Aprueba el pedido: pasa a "pendiente por envío" a Siesa. */
   @Post(':id/approve')
   approve(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.ordersService.approveOrder(id, user.name);
+    return this.ordersService.approveOrder(id, user);
   }
 
   /** Desaprueba el pedido: se libera el inventario reservado. */
@@ -40,6 +44,6 @@ export class CarteraOrdersController {
     @Body() dto: DisapproveOrderDto,
     @CurrentUser() user: User,
   ) {
-    return this.ordersService.disapproveOrder(id, dto.reason, user.name);
+    return this.ordersService.disapproveOrder(id, dto.reason, user);
   }
 }

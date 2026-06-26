@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -67,6 +67,21 @@ const STEPS = [
   { n: 3, label: 'Confirmar', icon: ClipboardCheck },
 ] as const;
 
+// Ventana operativa para crear pedidos (hora de Colombia): 7:00 a.m. – 4:00 p.m.
+const ORDER_OPEN_HOUR = 7;
+const ORDER_CLOSE_HOUR = 16;
+
+/** ¿Estamos dentro del horario para crear pedidos? (hora de Colombia). */
+function isWithinOrderHours(): boolean {
+  const hourStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota',
+    hour: '2-digit',
+    hour12: false,
+  }).format(new Date());
+  const hour = Number(hourStr) % 24;
+  return hour >= ORDER_OPEN_HOUR && hour < ORDER_CLOSE_HOUR;
+}
+
 export function NewOrderPage() {
   const navigate = useNavigate();
   const [customerSearch, setCustomerSearch] = useState('');
@@ -81,6 +96,13 @@ export function NewOrderPage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [submitError, setSubmitError] = useState('');
+
+  // Se revisa el horario cada minuto para bloquear/desbloquear el botón en vivo.
+  const [withinHours, setWithinHours] = useState(isWithinOrderHours);
+  useEffect(() => {
+    const id = setInterval(() => setWithinHours(isWithinOrderHours()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const { data: customers = [] } = useClients(customerSearch);
   const { data: products = [] } = useProductsForList(
@@ -142,6 +164,19 @@ export function NewOrderPage() {
             : l,
         )
         .filter((l) => l.quantity > 0),
+    );
+  };
+
+  // Permite escribir la cantidad directamente (sin tener que dar clic muchas
+  // veces). Se admite vacio temporalmente para poder borrar y reescribir; el
+  // valor 0 se filtra al salir del campo (onBlur).
+  const setQty = (sku: string, value: number) => {
+    setCart((prev) =>
+      prev.map((l) =>
+        l.product.sku === sku
+          ? { ...l, quantity: Math.max(0, Math.floor(value) || 0) }
+          : l,
+      ),
     );
   };
 
@@ -766,9 +801,27 @@ export function NewOrderPage() {
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                            <span className="w-8 text-center text-sm font-semibold">
-                              {line.quantity}
-                            </span>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={line.quantity === 0 ? '' : String(line.quantity)}
+                              onChange={(e) => {
+                                const digits = e.target.value.replace(
+                                  /\D/g,
+                                  '',
+                                );
+                                setQty(
+                                  line.product.sku,
+                                  digits === '' ? 0 : Number(digits),
+                                );
+                              }}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => {
+                                if (line.quantity <= 0)
+                                  removeLine(line.product.sku);
+                              }}
+                              className="h-8 w-20 text-center text-base font-semibold"
+                            />
                             <Button
                               variant="outline"
                               size="icon"
@@ -784,13 +837,15 @@ export function NewOrderPage() {
                               min={0}
                               max={100}
                               value={line.discountPct}
+                              disabled
+                              title="El descuento aún no está habilitado"
                               onChange={(e) =>
                                 updateDiscount(
                                   line.product.sku,
                                   Number(e.target.value),
                                 )
                               }
-                              className="h-7 w-14 text-right text-xs"
+                              className="h-7 w-14 cursor-not-allowed text-right text-xs opacity-60"
                             />
                             <span className="text-xs text-muted-foreground">
                               % dto
@@ -918,6 +973,7 @@ export function NewOrderPage() {
                   cart.length === 0 ||
                   !deliveryDate ||
                   belowMinimum ||
+                  !withinHours ||
                   createOrder.isPending
                 }
                 onClick={handleSubmit}
@@ -935,6 +991,14 @@ export function NewOrderPage() {
                 <p className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-center text-xs text-destructive">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>{submitError}</span>
+                </p>
+              ) : !withinHours ? (
+                <p className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-center text-xs text-destructive">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    La toma de pedidos está disponible de 7:00 a.m. a 4:00 p.m.
+                    Fuera de ese horario no se pueden crear pedidos.
+                  </span>
                 </p>
               ) : belowMinimum ? (
                 <p className="flex items-start gap-1.5 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-center text-xs text-[var(--warning)]">

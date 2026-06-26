@@ -30,6 +30,10 @@ export interface PortfolioDocument {
   docType?: string;
   description?: string;
   documentNumber: number;
+  /** Fecha de la factura (YYYY-MM-DD). */
+  invoiceDate?: string;
+  /** Fecha de vencimiento de la factura (YYYY-MM-DD). */
+  dueDate?: string;
   debit: number;
   credit: number;
   balance: number;
@@ -333,9 +337,21 @@ export class ClientsService {
       docType: this.clean(raw.TIPO_DOC_CRUCE),
       description: this.clean(raw.DESCRIPCION),
       documentNumber: Number(raw.CONS_DOC_CRUCE) || 0,
+      invoiceDate: this.dateOnly(raw.FECHA),
+      dueDate: this.dateOnly(raw.FECHA_VCTO),
       debit: Number(raw.DEBITO) || 0,
       credit: Number(raw.CREDITO) || 0,
       balance: Number(raw.SALDO) || 0,
     };
+  }
+
+  /**
+   * Extrae solo la parte de fecha (YYYY-MM-DD) de un valor tipo
+   * "2026-06-23T00:00:00". Devuelve undefined si no hay fecha válida.
+   */
+  private dateOnly(value?: string | null): string | undefined {
+    const trimmed = (value ?? '').trim();
+    if (!trimmed) return undefined;
+    return trimmed.slice(0, 10);
   }
 }

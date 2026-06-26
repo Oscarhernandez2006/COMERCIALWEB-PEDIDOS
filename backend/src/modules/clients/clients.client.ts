@@ -40,6 +40,8 @@ export interface PortfolioRaw {
   TIPO_DOC_CRUCE?: string;
   DESCRIPCION?: string;
   CONS_DOC_CRUCE?: number;
+  FECHA?: string;
+  FECHA_VCTO?: string;
   DEBITO?: number;
   CREDITO?: number;
   SALDO?: number;

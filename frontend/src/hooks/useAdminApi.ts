@@ -292,6 +292,31 @@ export async function downloadInventoryReport(
   window.URL.revokeObjectURL(url);
 }
 
+/**
+ * Descarga el PDF con toda una lista de precios. El documento no muestra el
+ * nombre de la lista (solo dice "Lista de precios").
+ */
+export async function downloadPriceListPdf(
+  companyId: string,
+  listCode: string,
+) {
+  const res = await api.get(
+    `/price-lists/${encodeURIComponent(listCode)}/pdf`,
+    {
+      headers: { 'X-Company-Id': companyId },
+      responseType: 'blob',
+    },
+  );
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'lista-de-precios.pdf';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 /** Descarga la plantilla de inventario (.xlsx). */
 export async function downloadInventoryTemplate() {
   const res = await api.get('/products/template', {
@@ -394,6 +419,9 @@ export interface DownloadableOrder {
   siesaEstado?: string;
   createdAt: string;
   downloadedAt?: string | null;
+  picked: boolean;
+  pickedAt?: string | null;
+  pickedBy?: string | null;
 }
 
 /** Pedidos subidos a Siesa (no rebotados ni anulados) de una compañía. */
@@ -430,6 +458,50 @@ export function useDownloadOrders() {
       window.URL.revokeObjectURL(url);
     },
     onSuccess: (_data, input) => {
+      qc.invalidateQueries({
+        queryKey: ['admin', 'downloadable-orders', input.companyId],
+      });
+    },
+  });
+}
+
+/**
+ * Marca/desmarca un pedido como alistado. Se guarda automáticamente y la
+ * lista se actualiza de forma optimista para que el chulito reaccione al
+ * instante.
+ */
+export function useSetOrderPicked() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      companyId: string;
+      orderId: string;
+      picked: boolean;
+    }) => {
+      const res = await api.patch(
+        `/admin/orders/${input.orderId}/picked`,
+        { picked: input.picked },
+        { params: { companyId: input.companyId } },
+      );
+      return res.data;
+    },
+    onMutate: async (input) => {
+      const key = ['admin', 'downloadable-orders', input.companyId];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<DownloadableOrder[]>(key);
+      qc.setQueryData<DownloadableOrder[]>(key, (old) =>
+        (old ?? []).map((o) =>
+          o.id === input.orderId ? { ...o, picked: input.picked } : o,
+        ),
+      );
+      return { prev, key };
+    },
+    onError: (_err, _input, context) => {
+      if (context?.prev) {
+        qc.setQueryData(context.key, context.prev);
+      }
+    },
+    onSettled: (_data, _err, input) => {
       qc.invalidateQueries({
         queryKey: ['admin', 'downloadable-orders', input.companyId],
       });

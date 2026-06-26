@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, LessThan, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
@@ -15,17 +16,15 @@ import { ClientRecord } from '../clients/entities/client-record.entity';
 import { PriceListsService } from '../price-lists/price-lists.service';
 import { OrdersErpClient, ErpOrderRegistro, ErpOrderState } from './orders-erp.client';
 import { UsersService } from '../users/users.service';
-import { User } from '../users/entities/user.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 import { Product } from '../products/entities/product.entity';
 import { getMinOrderTotal, getWarehouse, COMPANIES } from '../../common/companies';
 import { buildOrderPdf } from './order-pdf';
 import {
   bogotaToday,
-  // [TEMPORAL] Restricciones de horario desactivadas (imports en pausa).
-  // isOrderCreationOpen,
-  // isOrderUploadOpen,
-  // ORDER_OPEN_HOUR,
-  // ORDER_UPLOAD_CLOSE_HOUR,
+  isOrderCreationOpen,
+  ORDER_OPEN_HOUR,
+  ORDER_UPLOAD_CLOSE_HOUR,
   APPROVAL_WINDOW_HOURS,
 } from './order-cortes';
 
@@ -67,15 +66,17 @@ export class OrdersService {
     dto: CreateOrderDto,
     seller: User,
   ): Promise<Order> {
-    // [TEMPORAL] Restricción de horario de creación desactivada.
-    // Los pedidos solo se pueden crear a partir de las 7:00 a.m. (Colombia).
-    // if (!isOrderCreationOpen()) {
-    //   throw new BadRequestException(
-    //     `El pedido no se pudo realizar porque está fuera del horario de ` +
-    //       `atención. La toma de pedidos está disponible a partir de las ` +
-    //       `${ORDER_OPEN_HOUR}:00 a.m.`,
-    //   );
-    // }
+    // Los vendedores solo pueden CREAR pedidos dentro de la ventana operativa
+    // (7:00 a.m. – 4:00 p.m., hora de Colombia). Una vez creado dentro del
+    // horario, la aprobación de cartera y la subida a Siesa pueden ocurrir
+    // después de las 4:00 p.m. sin problema (no se revalida el horario allí).
+    if (!isOrderCreationOpen()) {
+      throw new BadRequestException(
+        `El pedido no se pudo realizar porque está fuera del horario de ` +
+          `atención. La toma de pedidos está disponible de ` +
+          `${ORDER_OPEN_HOUR}:00 a.m. a ${ORDER_UPLOAD_CLOSE_HOUR - 12}:00 p.m.`,
+      );
+    }
 
     const customer = await this.clientsService.findOne(
       companyId,
@@ -201,11 +202,41 @@ export class OrdersService {
    * Lista los pedidos pendientes de aprobación en cartera (de todas las
    * compañías), ordenados por la fecha límite más próxima a vencer.
    */
-  async findPendingApproval(): Promise<Order[]> {
+  async findPendingApproval(user: User): Promise<Order[]> {
+    const companyIds = await this.allowedCompanyIds(user);
     return this.ordersRepository.find({
-      where: { status: OrderStatus.PENDING_APPROVAL },
+      where: companyIds
+        ? { companyId: In(companyIds), status: OrderStatus.PENDING_APPROVAL }
+        : { status: OrderStatus.PENDING_APPROVAL },
       order: { approvalDeadline: 'ASC' },
     });
+  }
+
+  /**
+   * Compañías sobre las que el usuario puede operar en cartera. Devuelve null
+   * para administradores (acceso a todas). El rol CARTERA accede a todas sus
+   * compañías asignadas. Cualquier otro rol (p. ej. vendedor) solo accede a las
+   * compañías donde tenga asignado el módulo de aprobación de cartera
+   * (`/admin/cartera`). Así cartera de una compañía no ve ni aprueba pedidos de
+   * otra, y un vendedor sin ese módulo no puede usar la aprobación.
+   */
+  private async allowedCompanyIds(user: User): Promise<string[] | null> {
+    if (user.role === UserRole.ADMIN) return null;
+    const mappings = await this.usersService.findCompaniesForUser(user.id);
+    if (user.role === UserRole.CARTERA) {
+      return mappings.map((m) => m.companyId);
+    }
+    return mappings
+      .filter((m) => (m.permissions ?? []).includes('/admin/cartera'))
+      .map((m) => m.companyId);
+  }
+
+  /** Verifica que el pedido pertenezca a una compañía permitida al usuario. */
+  private async assertOrderCompany(user: User, order: Order): Promise<void> {
+    const companyIds = await this.allowedCompanyIds(user);
+    if (companyIds && !companyIds.includes(order.companyId)) {
+      throw new ForbiddenException('No tiene acceso a esta compañía.');
+    }
   }
 
   /**
@@ -213,9 +244,12 @@ export class OrdersService {
    * inmediato al ERP (queda "enviado a Siesa"). Si la subida falla, el pedido
    * queda en error para reintentar.
    */
-  async approveOrder(id: string, approvedBy: string): Promise<Order> {
-    const order = await this.ordersRepository.findOne({ where: { id } });
+  async approveOrder(id: string, user: User): Promise<Order> {
+    const order = await this.ordersRepository.findOne({
+      where: { id },
+    });
     if (!order) throw new NotFoundException('Pedido no encontrado');
+    await this.assertOrderCompany(user, order);
     if (order.status !== OrderStatus.PENDING_APPROVAL) {
       throw new BadRequestException(
         'El pedido no está pendiente de aprobación en cartera.',
@@ -223,7 +257,7 @@ export class OrdersService {
     }
     order.status = OrderStatus.CONFIRMED;
     order.approvedAt = new Date();
-    order.approvedBy = approvedBy;
+    order.approvedBy = user.name;
     order.sellerNotificationPending = true;
     const saved = await this.ordersRepository.save(order);
     // Tras aprobar, sube de inmediato al ERP.
@@ -238,12 +272,13 @@ export class OrdersService {
   async disapproveOrder(
     id: string,
     reason: string | undefined,
-    approvedBy: string,
+    user: User,
   ): Promise<Order> {
     return this.dataSource.transaction(async (manager) => {
       const ordersRepo = manager.getRepository(Order);
       const order = await ordersRepo.findOne({ where: { id } });
       if (!order) throw new NotFoundException('Pedido no encontrado');
+      await this.assertOrderCompany(user, order);
       if (order.status !== OrderStatus.PENDING_APPROVAL) {
         throw new BadRequestException(
           'El pedido no está pendiente de aprobación en cartera.',
@@ -252,7 +287,7 @@ export class OrdersService {
       await this.releaseStock(manager, order);
       order.status = OrderStatus.DISAPPROVED;
       order.disapprovalReason = reason?.trim() || 'Desaprobado en cartera.';
-      order.approvedBy = approvedBy;
+      order.approvedBy = user.name;
       order.approvedAt = new Date();
       order.sellerNotificationPending = true;
       return ordersRepo.save(order);

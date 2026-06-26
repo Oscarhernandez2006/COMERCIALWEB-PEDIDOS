@@ -12,6 +12,7 @@ import { isAxiosError } from 'axios';
 import {
   useDownloadableOrders,
   useDownloadOrders,
+  useSetOrderPicked,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,7 @@ export function DownloadOrdersPage() {
   const { data: orders, isLoading, isError, refetch, isFetching } =
     useDownloadableOrders(companyId);
   const download = useDownloadOrders();
+  const setPicked = useSetOrderPicked();
 
   const list = orders ?? [];
   const allSelected = list.length > 0 && selected.size === list.length;
@@ -198,13 +200,14 @@ export function DownloadOrdersPage() {
                   <th className="px-3 py-2">Estado Siesa</th>
                   <th className="px-3 py-2 text-right">Total</th>
                   <th className="px-3 py-2">Descarga</th>
+                  <th className="px-3 py-2 text-center">Alistado</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-3 py-8 text-center text-muted-foreground"
                     >
                       Cargando pedidos...
@@ -213,7 +216,7 @@ export function DownloadOrdersPage() {
                 ) : isError ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-3 py-8 text-center text-destructive"
                     >
                       No se pudieron cargar los pedidos.
@@ -222,7 +225,7 @@ export function DownloadOrdersPage() {
                 ) : list.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-3 py-8 text-center text-muted-foreground"
                     >
                       No hay pedidos disponibles para descargar.
@@ -283,6 +286,29 @@ export function DownloadOrdersPage() {
                               Sin descargar
                             </span>
                           )}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5 cursor-pointer accent-[var(--success)]"
+                            checked={o.picked}
+                            disabled={setPicked.isPending}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setPicked.mutate({
+                                companyId,
+                                orderId: o.id,
+                                picked: e.target.checked,
+                              });
+                            }}
+                            title={
+                              o.pickedBy
+                                ? `Alistado por ${o.pickedBy}`
+                                : 'Marcar como alistado'
+                            }
+                            aria-label={`Marcar pedido ${o.orderNumber} como alistado`}
+                          />
                         </td>
                       </tr>
                     );

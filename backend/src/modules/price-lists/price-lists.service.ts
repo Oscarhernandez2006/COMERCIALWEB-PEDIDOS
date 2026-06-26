@@ -95,6 +95,17 @@ export class PriceListsService {
   }
 
   /**
+   * Devuelve TODOS los ítems de una lista (sin tope) para generar el PDF
+   * completo de la lista de precios.
+   */
+  findAllItems(companyId: string, listCode: string): Promise<PriceListItem[]> {
+    return this.repository.find({
+      where: { companyId, listCode },
+      order: { reference: 'ASC' },
+    });
+  }
+
+  /**
    * Sincroniza las listas de precios desde Siesa.
    *
    * Busca los cambios contra lo guardado en la base de datos:

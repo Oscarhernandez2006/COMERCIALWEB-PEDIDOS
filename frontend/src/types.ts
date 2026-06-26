@@ -72,6 +72,8 @@ export interface PortfolioDocument {
   docType?: string;
   description?: string;
   documentNumber: number;
+  invoiceDate?: string;
+  dueDate?: string;
   debit: number;
   credit: number;
   balance: number;

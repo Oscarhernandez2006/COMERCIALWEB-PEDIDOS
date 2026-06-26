@@ -8,12 +8,14 @@ import {
   Building2,
   ChevronRight,
   ChevronLeft,
+  Printer,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
   usePriceLists,
   usePriceListItems,
   useSyncPriceLists,
+  downloadPriceListPdf,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -47,6 +49,7 @@ export function PriceListsPage() {
   const [listSearch, setListSearch] = useState('');
   const [listPage, setListPage] = useState(1);
   const [itemPage, setItemPage] = useState(1);
+  const [printing, setPrinting] = useState(false);
 
   const { data: lists = [], isLoading: loadingLists } =
     usePriceLists(companyId);
@@ -103,6 +106,16 @@ export function PriceListsPage() {
 
   function handleSync() {
     syncPriceLists.mutate(companyId);
+  }
+
+  async function handlePrint() {
+    if (!selectedList) return;
+    setPrinting(true);
+    try {
+      await downloadPriceListPdf(companyId, selectedList);
+    } finally {
+      setPrinting(false);
+    }
   }
 
   return (
@@ -275,14 +288,25 @@ export function PriceListsPage() {
               {currentList ? currentList.listName : 'Selecciona una lista'}
             </CardTitle>
             {selectedList && (
-              <div className="relative w-full max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  style={{ paddingLeft: '2.5rem' }}
-                  placeholder="Buscar producto o referencia…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
+              <div className="flex w-full max-w-xl items-center gap-2">
+                <div className="relative w-full max-w-xs">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    style={{ paddingLeft: '2.5rem' }}
+                    placeholder="Buscar producto o referencia…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  className="shrink-0 whitespace-nowrap"
+                  onClick={handlePrint}
+                  disabled={printing}
+                >
+                  <Printer className="h-4 w-4" />
+                  {printing ? 'Generando…' : 'Imprimir lista de precios'}
+                </Button>
               </div>
             )}
           </CardHeader>

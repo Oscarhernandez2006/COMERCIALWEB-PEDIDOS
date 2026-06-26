@@ -16,7 +16,7 @@ import {
 import { isAxiosError } from 'axios';
 import { useClients, useSyncClients, useClientPortfolio } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -400,6 +400,8 @@ function PortfolioModal({
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="px-2 py-2 font-medium">Documento</th>
                       <th className="px-2 py-2 font-medium">Tipo</th>
+                      <th className="px-2 py-2 font-medium">Fecha factura</th>
+                      <th className="px-2 py-2 font-medium">Vence</th>
                       <th className="px-2 py-2 font-medium">Sucursal</th>
                       <th className="px-2 py-2 text-right font-medium">Saldo</th>
                     </tr>
@@ -412,6 +414,12 @@ function PortfolioModal({
                         </td>
                         <td className="px-2 py-2 text-xs">
                           {d.description || d.docType || '—'}
+                        </td>
+                        <td className="px-2 py-2 text-xs whitespace-nowrap">
+                          {formatDate(d.invoiceDate)}
+                        </td>
+                        <td className="px-2 py-2 text-xs whitespace-nowrap">
+                          {formatDate(d.dueDate)}
                         </td>
                         <td className="px-2 py-2 text-xs">{d.branch}</td>
                         <td className="px-2 py-2 text-right font-medium">

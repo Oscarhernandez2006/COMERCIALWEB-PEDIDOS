@@ -17,6 +17,14 @@ function companyName(id?: string): string {
   return COMPANIES.find((c) => c.id === id)?.name ?? id ?? '—';
 }
 
+/** Formatea una fecha "YYYY-MM-DD" como "DD/MM/YYYY". */
+function formatDate(value?: string): string {
+  if (!value) return '—';
+  const [y, m, d] = value.slice(0, 10).split('-');
+  if (!y || !m || !d) return value;
+  return `${d}/${m}/${y}`;
+}
+
 export function CarteraPage() {
   const { data: orders = [], isLoading } = useCarteraOrders();
   const approve = useApproveOrder();
@@ -449,6 +457,8 @@ function PortfolioModal({
                     <tr className="border-b border-border text-left text-muted-foreground">
                       <th className="px-2 pb-2 font-medium">Documento</th>
                       <th className="px-2 pb-2 font-medium">Tipo</th>
+                      <th className="px-2 pb-2 font-medium">Fecha factura</th>
+                      <th className="px-2 pb-2 font-medium">Vence</th>
                       <th className="px-2 pb-2 font-medium">Descripción</th>
                       <th className="px-2 pb-2 font-medium">Sucursal</th>
                       <th className="px-2 pb-2 font-medium">C.O.</th>
@@ -468,6 +478,12 @@ function PortfolioModal({
                         </td>
                         <td className="px-2 py-2 text-muted-foreground">
                           {doc.docType ?? '—'}
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground whitespace-nowrap">
+                          {formatDate(doc.invoiceDate)}
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground whitespace-nowrap">
+                          {formatDate(doc.dueDate)}
                         </td>
                         <td className="px-2 py-2 text-muted-foreground">
                           {doc.description ?? '—'}
@@ -492,7 +508,7 @@ function PortfolioModal({
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-border font-semibold">
-                      <td className="px-2 pt-2" colSpan={7}>
+                      <td className="px-2 pt-2" colSpan={9}>
                         Total
                       </td>
                       <td className="px-2 pt-2 text-right text-destructive">

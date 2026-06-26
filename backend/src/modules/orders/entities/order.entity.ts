@@ -199,4 +199,20 @@ export class Order extends BaseEntity {
   /** Nombre del último usuario que descargó el documento del pedido. */
   @Column({ name: 'downloaded_by', nullable: true })
   downloadedBy?: string;
+
+  /**
+   * Marca de "alistado": el alistador la activa cuando ya sacó/preparó el
+   * pedido desde el módulo de Descargar pedidos. Se persiste para que la
+   * marca permanezca al salir y volver a entrar al módulo.
+   */
+  @Column({ name: 'picked', type: 'boolean', default: false })
+  picked: boolean;
+
+  /** Momento en que se marcó como alistado. */
+  @Column({ name: 'picked_at', type: 'timestamptz', nullable: true })
+  pickedAt?: Date;
+
+  /** Nombre del usuario (alistador) que marcó el pedido como alistado. */
+  @Column({ name: 'picked_by', nullable: true })
+  pickedBy?: string;
 }

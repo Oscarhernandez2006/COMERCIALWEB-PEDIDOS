@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import type { Client } from '@/types';
 
 /** Extrae el mensaje de error que envía el backend, si lo hay. */
@@ -234,6 +234,8 @@ function PortfolioModal({
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="px-2 py-2 font-medium">Documento</th>
                       <th className="px-2 py-2 font-medium">Tipo</th>
+                      <th className="px-2 py-2 font-medium">Fecha factura</th>
+                      <th className="px-2 py-2 font-medium">Vence</th>
                       <th className="px-2 py-2 font-medium">Sucursal</th>
                       <th className="px-2 py-2 text-right font-medium">Saldo</th>
                     </tr>
@@ -246,6 +248,12 @@ function PortfolioModal({
                         </td>
                         <td className="px-2 py-2 text-xs">
                           {d.description || d.docType || '—'}
+                        </td>
+                        <td className="px-2 py-2 text-xs whitespace-nowrap">
+                          {formatDate(d.invoiceDate)}
+                        </td>
+                        <td className="px-2 py-2 text-xs whitespace-nowrap">
+                          {formatDate(d.dueDate)}
                         </td>
                         <td className="px-2 py-2 text-xs">{d.branch}</td>
                         <td className="px-2 py-2 text-right font-medium">

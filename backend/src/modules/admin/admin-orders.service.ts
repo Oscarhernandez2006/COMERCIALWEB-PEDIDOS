@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
@@ -17,6 +17,10 @@ export interface DownloadableOrder {
   siesaEstado?: string;
   createdAt: Date;
   downloadedAt?: Date | null;
+  /** Marca de alistado (el alistador ya sacó/preparó el pedido). */
+  picked: boolean;
+  pickedAt?: Date | null;
+  pickedBy?: string | null;
 }
 
 /** Línea (ítem) de un pedido para el detalle administrativo. */
@@ -210,6 +214,9 @@ export class AdminOrdersService {
       siesaEstado: o.siesaEstado,
       createdAt: o.createdAt,
       downloadedAt: o.downloadedAt ?? null,
+      picked: o.picked ?? false,
+      pickedAt: o.pickedAt ?? null,
+      pickedBy: o.pickedBy ?? null,
     }));
   }
 
@@ -256,5 +263,44 @@ export class AdminOrdersService {
     await this.ordersRepository.increment({ id: In(ids) }, 'downloadCount', 1);
 
     return pdf;
+  }
+
+  /**
+   * Marca/desmarca un pedido como alistado (estado propio del módulo de
+   * Descargar pedidos). Persiste quién y cuándo lo marcó para que la marca
+   * permanezca al salir y volver a entrar.
+   */
+  async setPicked(
+    companyId: string,
+    orderId: string,
+    picked: boolean,
+    pickedBy?: string,
+  ): Promise<{
+    id: string;
+    picked: boolean;
+    pickedAt: Date | null;
+    pickedBy: string | null;
+  }> {
+    if (!isValidCompany(companyId)) {
+      throw new BadRequestException('Compañía inválida.');
+    }
+    const order = await this.ordersRepository.findOne({
+      where: { id: orderId, companyId },
+    });
+    if (!order) {
+      throw new NotFoundException('Pedido no encontrado.');
+    }
+
+    order.picked = picked;
+    order.pickedAt = picked ? new Date() : undefined;
+    order.pickedBy = picked ? (pickedBy ?? undefined) : undefined;
+    await this.ordersRepository.save(order);
+
+    return {
+      id: order.id,
+      picked: order.picked,
+      pickedAt: order.pickedAt ?? null,
+      pickedBy: order.pickedBy ?? null,
+    };
   }
 }
