@@ -186,7 +186,9 @@ export function AppLayout() {
                 ? 'Administrador'
                 : user?.role === 'cartera'
                   ? 'Cartera'
-                  : 'Vendedor'}
+                  : user?.role === 'alistador'
+                    ? 'Alistador'
+                    : 'Vendedor'}
             </p>
           </div>
         </div>

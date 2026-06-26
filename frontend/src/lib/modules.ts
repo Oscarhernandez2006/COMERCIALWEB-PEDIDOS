@@ -75,7 +75,7 @@ export function canAccessArea(
 /** Etiqueta del área según el rol. */
 export function areaLabel(role: UserRole): string {
   if (role === 'admin') return 'Administrativa';
-  if (role === 'seller') return 'Toma de pedidos';
+  if (role === 'seller') return 'Vendedor';
   if (role === 'alistador') return 'Alistador';
   return 'Cartera';
 }

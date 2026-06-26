@@ -43,7 +43,7 @@ export function UsersPage() {
   const deleteUser = useDeleteUser();
 
   const [showCreate, setShowCreate] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [companiesUser, setCompaniesUser] = useState<AdminUser | null>(null);
   const [permsUser, setPermsUser] = useState<AdminUser | null>(null);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [search, setSearch] = useState('');
@@ -107,10 +107,10 @@ export function UsersPage() {
             <ul className="divide-y divide-border">
               {filtered.map((u) => (
                 <li key={u.id}>
-                  <div className="flex flex-wrap items-center gap-4 px-6 py-4">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-6 py-4">
                     <div
                       className={cn(
-                        'flex h-10 w-10 items-center justify-center rounded-full',
+                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
                         u.role === 'admin'
                           ? 'bg-primary/10 text-primary'
                           : 'bg-secondary text-secondary-foreground',
@@ -123,8 +123,8 @@ export function UsersPage() {
                       )}
                     </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-[180px] flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">{u.name}</p>
                         {!u.active && (
                           <Badge variant="secondary">Inactivo</Badge>
@@ -135,26 +135,8 @@ export function UsersPage() {
                       </p>
                     </div>
 
-                    {/* Compañías */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {u.companies.length === 0 ? (
-                        <span className="text-xs text-muted-foreground">
-                          Sin compañías
-                        </span>
-                      ) : (
-                        u.companies.map((c) => (
-                          <Badge key={c.companyId} variant="default">
-                            {c.name}
-                            {c.siesaSellerCode ? ` · ${c.siesaSellerCode}` : ''}
-                            {c.permissions && c.permissions.length > 0
-                              ? ` · ${c.permissions.length} mód.`
-                              : ''}
-                          </Badge>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
+                    {/* Acciones */}
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -166,9 +148,7 @@ export function UsersPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() =>
-                          setExpanded(expanded === u.id ? null : u.id)
-                        }
+                        onClick={() => setCompaniesUser(u)}
                       >
                         <Building2 className="h-4 w-4" />
                         Compañías
@@ -209,9 +189,26 @@ export function UsersPage() {
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
-                  </div>
 
-                  {expanded === u.id && <CompanyManager user={u} />}
+                    {/* Compañías (en su propia línea para que no se amontonen) */}
+                    <div className="flex w-full flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
+                      {u.companies.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">
+                          Sin compañías
+                        </span>
+                      ) : (
+                        u.companies.map((c) => (
+                          <Badge key={c.companyId} variant="default">
+                            {c.name}
+                            {c.siesaSellerCode ? ` · ${c.siesaSellerCode}` : ''}
+                            {c.permissions && c.permissions.length > 0
+                              ? ` · ${c.permissions.length} mód.`
+                              : ''}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -220,6 +217,12 @@ export function UsersPage() {
       </Card>
 
       {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} />}
+      {companiesUser && (
+        <CompaniesModal
+          user={companiesUser}
+          onClose={() => setCompaniesUser(null)}
+        />
+      )}
       {permsUser && (
         <PermissionsModal
           user={permsUser}
@@ -306,7 +309,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
                 )
               }
             >
-              <option value="seller">Vendedor · Toma de pedidos</option>
+              <option value="seller">Vendedor</option>
               <option value="admin">Administrador · Administrativa</option>
               <option value="cartera">Cartera</option>
               <option value="alistador">Alistador</option>
@@ -431,7 +434,7 @@ function EditUserModal({
                 })
               }
             >
-              <option value="seller">Vendedor · Toma de pedidos</option>
+              <option value="seller">Vendedor</option>
               <option value="admin">Administrador · Administrativa</option>
               <option value="cartera">Cartera</option>
               <option value="alistador">Alistador</option>
@@ -714,8 +717,14 @@ function ModalShell({
   );
 }
 
-/** Panel para asignar/quitar compañías y códigos de vendedor a un usuario. */
-function CompanyManager({ user }: { user: AdminUser }) {
+/** Modal para asignar/quitar compañías y códigos de vendedor a un usuario. */
+function CompaniesModal({
+  user,
+  onClose,
+}: {
+  user: AdminUser;
+  onClose: () => void;
+}) {
   const assign = useAssignCompany();
   const remove = useRemoveCompany();
   const [codes, setCodes] = useState<Record<string, string>>(() =>
@@ -725,11 +734,12 @@ function CompanyManager({ user }: { user: AdminUser }) {
   );
 
   return (
-    <div className="border-t border-border bg-muted/30 px-6 py-4">
-      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Acceso por compañía y código de vendedor en Siesa
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2">
+    <ModalShell title={`Compañías · ${user.name}`} onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Acceso por compañía y código de vendedor en Siesa
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
         {COMPANIES.map((c) => {
           const has = user.companies.find((x) => x.companyId === c.id);
           return (
@@ -780,7 +790,8 @@ function CompanyManager({ user }: { user: AdminUser }) {
             </div>
           );
         })}
+        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

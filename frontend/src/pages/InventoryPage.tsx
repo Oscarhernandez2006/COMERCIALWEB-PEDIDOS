@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Package,
   Check,
@@ -18,7 +18,7 @@ import {
   useUpdateStock,
   downloadInventoryTemplate,
 } from '@/hooks/useAdminApi';
-import { COMPANIES } from '@/lib/companies';
+import { useCompany } from '@/company/useCompany';
 import { cn } from '@/lib/utils';
 import type { Product } from '@/types';
 import {
@@ -42,11 +42,20 @@ function getErrorMessage(error: unknown): string {
 }
 
 export function InventoryPage() {
-  const [companyId, setCompanyId] = useState(COMPANIES[0].id);
+  // Solo las compañías a las que el usuario tiene acceso (admin = todas).
+  const { companies } = useCompany();
+  const [companyId, setCompanyId] = useState('');
   const [search, setSearch] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   // Archivo seleccionado pendiente de confirmar el cargue.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  // Selecciona la primera compañía disponible (o ajusta si la actual ya no es válida).
+  useEffect(() => {
+    if (companies.length > 0 && !companies.some((c) => c.id === companyId)) {
+      setCompanyId(companies[0].id);
+    }
+  }, [companies, companyId]);
 
   const { data: products = [], isLoading } = useCompanyProducts(
     companyId,
@@ -55,7 +64,7 @@ export function InventoryPage() {
   const importInventory = useImportInventory();
   const updateStock = useUpdateStock();
 
-  const company = COMPANIES.find((c) => c.id === companyId)!;
+  const company = companies.find((c) => c.id === companyId);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -82,7 +91,7 @@ export function InventoryPage() {
 
       {/* Selector de compañía */}
       <div className="flex flex-wrap gap-2">
-        {COMPANIES.map((c) => (
+        {companies.map((c) => (
           <button
             key={c.id}
             onClick={() => setCompanyId(c.id)}
@@ -109,7 +118,7 @@ export function InventoryPage() {
                 <Package className="h-5 w-5" />
               </div>
               <div>
-                <p className="font-semibold">Inventario · {company.name}</p>
+                <p className="font-semibold">Inventario · {company?.name}</p>
                 <p className="text-xs text-muted-foreground">
                   La carga reemplaza todo el inventario de la compañía.
                 </p>
@@ -171,7 +180,7 @@ export function InventoryPage() {
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-4">
           <CardTitle className="text-base">
-            Productos de {company.name}
+            Productos de {company?.name}
             <span className="ml-2 text-sm font-normal text-muted-foreground">
               {products.length}
             </span>
@@ -195,7 +204,7 @@ export function InventoryPage() {
             <div className="py-12 text-center">
               <Package className="mx-auto h-10 w-10 text-muted-foreground/40" />
               <p className="mt-3 text-sm text-muted-foreground">
-                No hay productos en {company.name}.
+                No hay productos en {company?.name}.
               </p>
               <p className="text-xs text-muted-foreground">
                 Carga la plantilla de Excel para cargar el inventario.
@@ -244,7 +253,7 @@ export function InventoryPage() {
                   Este es un <strong className="text-foreground">cargue nuevo</strong>{' '}
                   que <strong className="text-foreground">reemplaza por completo</strong>{' '}
                   el inventario de{' '}
-                  <strong className="text-foreground">{company.name}</strong>.{' '}
+                  <strong className="text-foreground">{company?.name}</strong>.{' '}
                   <strong className="text-amber-600 dark:text-amber-500">
                     No se suma
                   </strong>{' '}

@@ -177,6 +177,7 @@ export function useCompanyProducts(companyId: string, search: string) {
       });
       return res.data;
     },
+    enabled: Boolean(companyId),
   });
 }
 
