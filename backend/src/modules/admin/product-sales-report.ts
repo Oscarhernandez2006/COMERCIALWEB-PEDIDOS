@@ -86,18 +86,20 @@ export function buildProductSalesReportPdf(
     doc.on('error', reject);
 
     const cols = {
-      name: 48,
-      um: 330,
-      qty: 380,
-      revenue: 460,
+      ref: 48,
+      name: 124,
+      um: 278,
+      qty: 318,
+      revenue: 392,
     };
 
     const tableHeader = (top: number) => {
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
-      doc.text('Producto', cols.name, top, { width: 278 });
-      doc.text('UM', cols.um, top, { width: 44 });
-      doc.text('Cantidad', cols.qty, top, { width: 72, align: 'right' });
-      doc.text('Ingresos', cols.revenue, top, { width: 87, align: 'right' });
+      doc.text('Referencia', cols.ref, top, { width: 72 });
+      doc.text('Producto', cols.name, top, { width: 150 });
+      doc.text('UM', cols.um, top, { width: 36 });
+      doc.text('Cantidad', cols.qty, top, { width: 70, align: 'right' });
+      doc.text('Ingresos', cols.revenue, top, { width: 155, align: 'right' });
       doc
         .strokeColor('#ddd')
         .moveTo(48, top + 14)
@@ -183,14 +185,15 @@ export function buildProductSalesReportPdf(
         }
 
         doc.fillColor('#222');
-        doc.text(row.name, cols.name, y, { width: 278 });
-        doc.text(row.unitOfMeasure ?? '', cols.um, y, { width: 44 });
+        doc.text(row.sku, cols.ref, y, { width: 72 });
+        doc.text(row.name, cols.name, y, { width: 150 });
+        doc.text(row.unitOfMeasure ?? '', cols.um, y, { width: 36 });
         doc.text(num(row.quantity), cols.qty, y, {
-          width: 72,
+          width: 70,
           align: 'right',
         });
         doc.text(money(row.revenue), cols.revenue, y, {
-          width: 87,
+          width: 155,
           align: 'right',
         });
 
@@ -216,13 +219,13 @@ export function buildProductSalesReportPdf(
           .stroke();
         y += 8;
         doc.font('Helvetica-Bold').fillColor('#000');
-        doc.text('Total', cols.name, y, { width: 278 });
+        doc.text('Total', cols.ref, y, { width: 222 });
         doc.text(num(company.summary.totalQuantity), cols.qty, y, {
-          width: 72,
+          width: 70,
           align: 'right',
         });
         doc.text(money(company.summary.totalRevenue), cols.revenue, y, {
-          width: 87,
+          width: 155,
           align: 'right',
         });
       }

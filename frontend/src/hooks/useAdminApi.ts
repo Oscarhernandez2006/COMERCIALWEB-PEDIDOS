@@ -4,8 +4,15 @@ import type {
   AdminDashboardStats,
   AdminUser,
   ClientPortfolio,
+  InventoryReportData,
+  ManagerialDashboardStats,
   Order,
   Product,
+  ProductSalesReportData,
+  SalesSummaryReportData,
+  SellerRankingReportData,
+  SellerProductReportData,
+  ProductSellerReportData,
 } from '@/types';
 
 /** KPIs consolidados de ambas compañías para el panel de administración. */
@@ -14,6 +21,29 @@ export function useAdminDashboard() {
     queryKey: ['admin', 'dashboard'],
     queryFn: async () => {
       const res = await api.get<AdminDashboardStats>('/admin/dashboard');
+      return res.data;
+    },
+  });
+}
+
+/**
+ * Dashboard gerencial: mismas métricas divididas por compañía dentro de un
+ * rango de fechas (un día único si `from === to`). Si no se pasan fechas, el
+ * backend usa los últimos 14 días.
+ */
+export function useManagerialDashboard(from?: string, to?: string) {
+  return useQuery({
+    queryKey: ['admin', 'dashboard', 'managerial', from, to],
+    queryFn: async () => {
+      const res = await api.get<ManagerialDashboardStats>(
+        '/admin/dashboard/managerial',
+        {
+          params: {
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+          },
+        },
+      );
       return res.data;
     },
   });
@@ -271,6 +301,57 @@ export function useUpdateStock() {
 /* ---- Reportes (PDF) ---- */
 
 /**
+ * Consulta los datos del resumen de inventario por día (sin descargar) para
+ * mostrarlos en pantalla. La consulta solo se ejecuta cuando `enabled` es true.
+ */
+export function useInventoryReport(
+  companyId: string,
+  date: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'inventory', companyId, date],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get<InventoryReportData>(
+        '/admin/reports/inventory/data',
+        { params: { companyId, ...(date ? { date } : {}) } },
+      );
+      return res.data;
+    },
+  });
+}
+
+/**
+ * Consulta los datos de productos vendidos por compañía (sin descargar) para
+ * mostrarlos en pantalla. La consulta solo se ejecuta cuando `enabled` es true.
+ */
+export function useProductSalesReport(
+  from: string | undefined,
+  to: string | undefined,
+  companyId: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'product-sales', from, to, companyId],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get<ProductSalesReportData>(
+        '/admin/reports/product-sales/data',
+        {
+          params: {
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+            ...(companyId ? { companyId } : {}),
+          },
+        },
+      );
+      return res.data;
+    },
+  });
+}
+
+/**
  * Descarga el reporte PDF de resumen de inventario por día de una compañía.
  * Si no se indica fecha, el backend usa el día actual (hora de Colombia).
  */
@@ -292,21 +373,425 @@ export async function downloadInventoryReport(
   window.URL.revokeObjectURL(url);
 }
 
+/** Descarga el resumen de inventario por día en Excel (.xlsx). */
+export async function downloadInventoryExcel(
+  companyId: string,
+  date?: string,
+) {
+  const res = await api.get('/admin/reports/inventory/excel', {
+    params: { companyId, ...(date ? { date } : {}) },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `inventario-${companyId}-${date || 'hoy'}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 /**
- * Descarga el PDF de productos vendidos dividido por compañía en un rango de
- * fechas (por defecto el día de hoy). Cada compañía aparece en su propia
- * sección con sus productos, la cantidad vendida y los ingresos.
+ * Descarga el PDF de productos vendidos en un rango de fechas (por defecto el
+ * día de hoy). Si se indica `companyId`, el reporte incluye solo esa compañía;
+ * de lo contrario se generan todas las compañías (cada una en su sección) con
+ * sus productos, la referencia, la cantidad vendida y los ingresos.
  */
-export async function downloadProductSalesReport(from?: string, to?: string) {
+export async function downloadProductSalesReport(
+  from?: string,
+  to?: string,
+  companyId?: string,
+) {
   const res = await api.get('/admin/reports/product-sales', {
-    params: { ...(from ? { from } : {}), ...(to ? { to } : {}) },
+    params: {
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(companyId ? { companyId } : {}),
+    },
     responseType: 'blob',
   });
   const url = window.URL.createObjectURL(res.data as Blob);
   const link = document.createElement('a');
   link.href = url;
   const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
-  link.download = `productos-vendidos-${range}.pdf`;
+  const companyPart = companyId ? `${companyId}-` : '';
+  link.download = `productos-vendidos-${companyPart}${range}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga los productos vendidos por compañía en Excel (.xlsx). */
+export async function downloadProductSalesExcel(
+  from?: string,
+  to?: string,
+  companyId?: string,
+) {
+  const res = await api.get('/admin/reports/product-sales/excel', {
+    params: {
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(companyId ? { companyId } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  const companyPart = companyId ? `${companyId}-` : '';
+  link.download = `productos-vendidos-${companyPart}${range}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/**
+ * Consulta el resumen de ventas de una compañía agrupado por cliente o por
+ * producto en un rango de fechas (sin descargar), para mostrarlo en pantalla.
+ * La consulta solo se ejecuta cuando `enabled` es true.
+ */
+export function useSalesSummaryReport(
+  companyId: string | undefined,
+  groupBy: 'customer' | 'product',
+  from: string | undefined,
+  to: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'sales-summary', companyId, groupBy, from, to],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get<SalesSummaryReportData>(
+        '/admin/reports/sales-summary/data',
+        {
+          params: {
+            ...(companyId ? { companyId } : {}),
+            groupBy,
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+          },
+        },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Descarga el PDF del resumen de ventas por cliente o por producto. */
+export async function downloadSalesSummaryReport(
+  companyId: string,
+  groupBy: 'customer' | 'product',
+  from?: string,
+  to?: string,
+) {
+  const res = await api.get('/admin/reports/sales-summary/pdf', {
+    params: {
+      companyId,
+      groupBy,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `ventas-${groupBy}-${companyId}-${range}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga el resumen de ventas por cliente o producto en Excel (.xlsx). */
+export async function downloadSalesSummaryExcel(
+  companyId: string,
+  groupBy: 'customer' | 'product',
+  from?: string,
+  to?: string,
+) {
+  const res = await api.get('/admin/reports/sales-summary/excel', {
+    params: {
+      companyId,
+      groupBy,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `ventas-${groupBy}-${companyId}-${range}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/**
+ * Consulta el ranking de vendedores de una compañía en un rango de fechas (sin
+ * descargar), para mostrarlo en pantalla. Solo se ejecuta cuando `enabled` es
+ * true.
+ */
+export function useSellerRankingReport(
+  companyId: string | undefined,
+  from: string | undefined,
+  to: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'seller-ranking', companyId, from, to],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get<SellerRankingReportData>(
+        '/admin/reports/seller-ranking/data',
+        {
+          params: {
+            ...(companyId ? { companyId } : {}),
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+          },
+        },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Descarga el PDF del ranking de vendedores. */
+export async function downloadSellerRankingReport(
+  companyId: string,
+  from?: string,
+  to?: string,
+) {
+  const res = await api.get('/admin/reports/seller-ranking/pdf', {
+    params: {
+      companyId,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `ranking-vendedores-${companyId}-${range}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga el ranking de vendedores en Excel (.xlsx). */
+export async function downloadSellerRankingExcel(
+  companyId: string,
+  from?: string,
+  to?: string,
+) {
+  const res = await api.get('/admin/reports/seller-ranking/excel', {
+    params: {
+      companyId,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `ranking-vendedores-${companyId}-${range}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/**
+ * Consulta el reporte vendedor–producto (cuánto vendió cada vendedor de cada
+ * producto) en un rango de fechas, con filtros opcionales de vendedor y
+ * búsqueda de producto. Solo se ejecuta cuando `enabled` es true.
+ */
+export function useSellerProductReport(
+  companyId: string | undefined,
+  from: string | undefined,
+  to: string | undefined,
+  sellerId: string | undefined,
+  sku: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [
+      'admin',
+      'reports',
+      'seller-product',
+      companyId,
+      from,
+      to,
+      sellerId,
+      sku,
+    ],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get<SellerProductReportData>(
+        '/admin/reports/seller-product/data',
+        {
+          params: {
+            ...(companyId ? { companyId } : {}),
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+            ...(sellerId ? { sellerId } : {}),
+            ...(sku ? { sku } : {}),
+          },
+        },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Descarga el PDF del reporte vendedor–producto. */
+export async function downloadSellerProductReport(
+  companyId: string,
+  from?: string,
+  to?: string,
+  sellerId?: string,
+  sku?: string,
+) {
+  const res = await api.get('/admin/reports/seller-product/pdf', {
+    params: {
+      companyId,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(sellerId ? { sellerId } : {}),
+      ...(sku ? { sku } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `ventas-vendedor-producto-${companyId}-${range}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga el reporte vendedor–producto en Excel (.xlsx). */
+export async function downloadSellerProductExcel(
+  companyId: string,
+  from?: string,
+  to?: string,
+  sellerId?: string,
+  sku?: string,
+) {
+  const res = await api.get('/admin/reports/seller-product/excel', {
+    params: {
+      companyId,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(sellerId ? { sellerId } : {}),
+      ...(sku ? { sku } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `ventas-vendedor-producto-${companyId}-${range}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Reporte mejor-vendedor-por-producto: por producto, quién más lo vendió. */
+export function useProductSellerReport(
+  companyId: string | undefined,
+  from: string | undefined,
+  to: string | undefined,
+  sku: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'product-seller', companyId, from, to, sku],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get<ProductSellerReportData>(
+        '/admin/reports/product-seller/data',
+        {
+          params: {
+            ...(companyId ? { companyId } : {}),
+            ...(from ? { from } : {}),
+            ...(to ? { to } : {}),
+            ...(sku ? { sku } : {}),
+          },
+        },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Descarga el PDF del reporte mejor-vendedor-por-producto. */
+export async function downloadProductSellerReport(
+  companyId: string,
+  from?: string,
+  to?: string,
+  sku?: string,
+) {
+  const res = await api.get('/admin/reports/product-seller/pdf', {
+    params: {
+      companyId,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(sku ? { sku } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `mejor-vendedor-producto-${companyId}-${range}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga el reporte mejor-vendedor-por-producto en Excel (.xlsx). */
+export async function downloadProductSellerExcel(
+  companyId: string,
+  from?: string,
+  to?: string,
+  sku?: string,
+) {
+  const res = await api.get('/admin/reports/product-seller/excel', {
+    params: {
+      companyId,
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(sku ? { sku } : {}),
+    },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const range = from && to && from !== to ? `${from}_a_${to}` : from || 'hoy';
+  link.download = `mejor-vendedor-producto-${companyId}-${range}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -426,6 +911,11 @@ export function useAdminOrders(companyId: string, filters: AdminOrdersFilters) {
       return res.data;
     },
     enabled: Boolean(companyId),
+    // Refresca la trazabilidad automáticamente: el backend sincroniza los
+    // estados de Siesa cada pocos segundos, así el admin ve los cambios sin
+    // tener que pulsar "Actualizar".
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 

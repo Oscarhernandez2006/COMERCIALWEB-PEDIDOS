@@ -122,10 +122,16 @@ function drawOrder(doc: PDFKit.PDFDocument, order: Order): void {
         : c.priceList,
     );
     line('Condición de pago', c.paymentTerm);
-    line(
-      'Vendedor',
-      c.sellerName ? `${c.sellerName} (${c.sellerCode})` : c.sellerCode,
-    );
+    // Vendedor que registró el pedido: nombre, cédula y código.
+    const seller = order.seller;
+    const sellerName = seller?.name ?? c.sellerName;
+    const sellerDoc = seller?.documentId;
+    const sellerCode = seller?.siesaSellerCode ?? c.sellerCode;
+    const sellerParts: string[] = [];
+    if (sellerName) sellerParts.push(sellerName);
+    if (sellerDoc) sellerParts.push(`C.C. ${sellerDoc}`);
+    if (sellerCode) sellerParts.push(`Cód. ${sellerCode}`);
+    line('Vendedor', sellerParts.join(' · ') || undefined);
     line('Dirección', c.address);
     line('Barrio', c.neighborhood);
     line('Ciudad', c.city);

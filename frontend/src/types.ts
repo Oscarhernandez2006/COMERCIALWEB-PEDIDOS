@@ -250,6 +250,207 @@ export interface AdminDashboardStats {
   }[];
 }
 
+/** Métricas de una compañía dentro del dashboard gerencial (rango de fechas). */
+export interface ManagerialCompanyStats {
+  companyId: string;
+  name: string;
+  totals: {
+    revenue: number;
+    orders: number;
+    units: number;
+    avgTicket: number;
+    customers: number;
+  };
+  salesTrend: { date: string; revenue: number; orders: number }[];
+  ordersByStatus: { status: OrderStatus; count: number }[];
+  topProducts: {
+    sku: string;
+    name: string;
+    quantity: number;
+    revenue: number;
+  }[];
+  topCustomers: {
+    name: string;
+    code: string;
+    orders: number;
+    revenue: number;
+  }[];
+}
+
+/** Dashboard gerencial: mismas métricas divididas por compañía y por rango. */
+export interface ManagerialDashboardStats {
+  from: string;
+  to: string;
+  companies: ManagerialCompanyStats[];
+}
+
+/** Una fila del reporte de inventario por día (un producto). */
+export interface InventoryReportRow {
+  sku: string;
+  name: string;
+  unitOfMeasure?: string;
+  sold: number;
+  stock: number;
+}
+
+/** Datos del reporte de inventario por día (para previsualizar). */
+export interface InventoryReportData {
+  companyId: string;
+  date: string;
+  rows: InventoryReportRow[];
+  summary: {
+    totalRefs: number;
+    refsWithStock: number;
+    refsWithoutStock: number;
+    totalSold: number;
+    totalStock: number;
+  };
+}
+
+/** Una fila del reporte de productos vendidos (un producto). */
+export interface ProductSalesRow {
+  sku: string;
+  name: string;
+  unitOfMeasure?: string;
+  quantity: number;
+  revenue: number;
+}
+
+/** Sección de una compañía dentro del reporte de productos vendidos. */
+export interface ProductSalesCompany {
+  companyId: string;
+  companyName: string;
+  rows: ProductSalesRow[];
+  summary: {
+    totalProducts: number;
+    totalQuantity: number;
+    totalRevenue: number;
+  };
+}
+
+/** Datos del reporte de productos vendidos divididos por compañía. */
+export interface ProductSalesReportData {
+  from: string;
+  to: string;
+  companies: ProductSalesCompany[];
+}
+
+/** Fila del resumen de ventas por cliente o por producto. */
+export interface SalesSummaryRow {
+  reference: string;
+  name: string;
+  unitOfMeasure?: string;
+  orders?: number;
+  units: number;
+  revenue: number;
+}
+
+/** Datos del resumen de ventas por cliente o por producto. */
+export interface SalesSummaryReportData {
+  from: string;
+  to: string;
+  companyId: string;
+  companyName: string;
+  groupBy: 'customer' | 'product';
+  rows: SalesSummaryRow[];
+  summary: {
+    totalRows: number;
+    totalOrders: number;
+    totalUnits: number;
+    totalRevenue: number;
+  };
+}
+
+/** Fila del ranking de vendedores. */
+export interface SellerRankingRow {
+  position: number;
+  name: string;
+  documentId?: string;
+  sellerCode?: string;
+  orders: number;
+  units: number;
+  revenue: number;
+}
+
+/** Datos del ranking de vendedores. */
+export interface SellerRankingReportData {
+  from: string;
+  to: string;
+  companyId: string;
+  companyName: string;
+  rows: SellerRankingRow[];
+  summary: {
+    totalSellers: number;
+    totalOrders: number;
+    totalUnits: number;
+    totalRevenue: number;
+  };
+}
+
+/** Fila del reporte vendedor–producto. */
+export interface SellerProductRow {
+  sellerId: string;
+  sellerName: string;
+  documentId?: string;
+  sellerCode?: string;
+  sku: string;
+  productName: string;
+  unitOfMeasure?: string;
+  quantity: number;
+  revenue: number;
+}
+
+/** Datos del reporte vendedor–producto. */
+export interface SellerProductReportData {
+  from: string;
+  to: string;
+  companyId: string;
+  companyName: string;
+  sellerName?: string;
+  search?: string;
+  productName?: string;
+  sellers: { id: string; name: string }[];
+  products: { sku: string; name: string }[];
+  rows: SellerProductRow[];
+  summary: {
+    totalRows: number;
+    totalQuantity: number;
+    totalRevenue: number;
+  };
+}
+
+/** Fila del reporte mejor-vendedor-por-producto. */
+export interface ProductSellerRow {
+  sku: string;
+  productName: string;
+  unitOfMeasure?: string;
+  position: number;
+  isTop: boolean;
+  sellerId: string;
+  sellerName: string;
+  documentId?: string;
+  sellerCode?: string;
+  quantity: number;
+  revenue: number;
+}
+
+/** Datos del reporte mejor-vendedor-por-producto. */
+export interface ProductSellerReportData {
+  from: string;
+  to: string;
+  companyId: string;
+  companyName: string;
+  search?: string;
+  productName?: string;
+  products: { sku: string; name: string }[];
+  rows: ProductSellerRow[];
+  summary: {
+    totalProducts: number;
+    totalQuantity: number;
+    totalRevenue: number;
+  };
+}
+
 export interface UserCompanyAccess {
   companyId: string;
   name: string;

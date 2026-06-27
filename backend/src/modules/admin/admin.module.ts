@@ -4,6 +4,7 @@ import { Order } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
+import { PriceListItem } from '../price-lists/entities/price-list-item.entity';
 import { UsersModule } from '../users/users.module';
 import { AdminStatsService } from './admin-stats.service';
 import { AdminStatsController } from './admin-stats.controller';
@@ -15,7 +16,7 @@ import { AdminOrdersController } from './admin-orders.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, Customer, Product]),
+    TypeOrmModule.forFeature([Order, OrderItem, Customer, Product, PriceListItem]),
     UsersModule,
   ],
   controllers: [

@@ -6,6 +6,7 @@ import { OrderItem } from '../orders/entities/order-item.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { COMPANIES } from '../../common/companies';
+import { bogotaToday } from '../orders/order-cortes';
 
 /** Estados que representan una venta real (excluye borradores y cancelados). */
 const SALE_STATUSES = [
@@ -45,6 +46,40 @@ export interface AdminDashboardStats {
     status: string;
     createdAt: Date;
   }[];
+}
+
+/** Métricas de una compañía dentro del dashboard gerencial (rango de fechas). */
+export interface ManagerialCompanyStats {
+  companyId: string;
+  name: string;
+  totals: {
+    revenue: number;
+    orders: number;
+    units: number;
+    avgTicket: number;
+    customers: number;
+  };
+  salesTrend: { date: string; revenue: number; orders: number }[];
+  ordersByStatus: { status: string; count: number }[];
+  topProducts: {
+    sku: string;
+    name: string;
+    quantity: number;
+    revenue: number;
+  }[];
+  topCustomers: {
+    name: string;
+    code: string;
+    orders: number;
+    revenue: number;
+  }[];
+}
+
+/** Dashboard gerencial: las mismas métricas divididas por compañía y por rango. */
+export interface ManagerialDashboardStats {
+  from: string;
+  to: string;
+  companies: ManagerialCompanyStats[];
 }
 
 @Injectable()
@@ -260,6 +295,229 @@ export class AdminStatsService {
       total: Number(o.total),
       status: o.status,
       createdAt: o.createdAt,
+    }));
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Dashboard gerencial: mismas métricas divididas por compañía con un  */
+  /* rango de fechas (un día o varios) para comparar.                    */
+  /* ------------------------------------------------------------------ */
+
+  /** Expresión SQL que pasa created_at a fecha local de Colombia (YYYY-MM-DD). */
+  private readonly bogotaDateExpr =
+    "TO_CHAR((o.created_at AT TIME ZONE 'America/Bogota'), 'YYYY-MM-DD')";
+
+  /** Predicado SQL que limita los pedidos al rango de fechas (hora de Colombia). */
+  private readonly bogotaDateFilter =
+    "(o.created_at AT TIME ZONE 'America/Bogota')::date BETWEEN :from::date AND :to::date";
+
+  /**
+   * KPIs y series por compañía para el panel gerencial. Acepta un rango de
+   * fechas (un día único si `from === to`). Por defecto, los últimos 14 días.
+   */
+  async getManagerialDashboard(
+    from?: string,
+    to?: string,
+  ): Promise<ManagerialDashboardStats> {
+    const today = bogotaToday();
+    let toDate = to?.trim() || today;
+    let fromDate = from?.trim() || this.shiftDate(toDate, -13);
+    if (fromDate > toDate) {
+      [fromDate, toDate] = [toDate, fromDate];
+    }
+
+    const companies = await Promise.all(
+      COMPANIES.map((c) => this.getCompanyStats(c.id, c.name, fromDate, toDate)),
+    );
+
+    return { from: fromDate, to: toDate, companies };
+  }
+
+  /** Suma/resta días a una fecha YYYY-MM-DD (sin desfase de zona horaria). */
+  private shiftDate(date: string, days: number): string {
+    const d = new Date(`${date}T12:00:00`);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  private async getCompanyStats(
+    companyId: string,
+    name: string,
+    from: string,
+    to: string,
+  ): Promise<ManagerialCompanyStats> {
+    // Totales de venta (ingresos y pedidos) en el rango.
+    const sale = await this.ordersRepository
+      .createQueryBuilder('o')
+      .select('COALESCE(SUM(o.total), 0)', 'revenue')
+      .addSelect('COUNT(*)', 'orders')
+      .addSelect('COUNT(DISTINCT o.customer_id)', 'customers')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .getRawOne<{ revenue: string; orders: string; customers: string }>();
+
+    // Unidades vendidas (suma de cantidades de los ítems) en el rango.
+    const unitsRow = await this.orderItemsRepository
+      .createQueryBuilder('it')
+      .innerJoin('it.order', 'o')
+      .select('COALESCE(SUM(it.quantity), 0)', 'units')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .getRawOne<{ units: string }>();
+
+    const revenue = Number(sale?.revenue ?? 0);
+    const orders = Number(sale?.orders ?? 0);
+
+    const [salesTrend, ordersByStatus, topProducts, topCustomers] =
+      await Promise.all([
+        this.getCompanyTrend(companyId, from, to),
+        this.getCompanyStatuses(companyId, from, to),
+        this.getCompanyTopProducts(companyId, from, to),
+        this.getCompanyTopCustomers(companyId, from, to),
+      ]);
+
+    return {
+      companyId,
+      name,
+      totals: {
+        revenue,
+        orders,
+        units: Number(unitsRow?.units ?? 0),
+        avgTicket: orders > 0 ? Number((revenue / orders).toFixed(2)) : 0,
+        customers: Number(sale?.customers ?? 0),
+      },
+      salesTrend,
+      ordersByStatus,
+      topProducts,
+      topCustomers,
+    };
+  }
+
+  private async getCompanyTrend(
+    companyId: string,
+    from: string,
+    to: string,
+  ): Promise<ManagerialCompanyStats['salesTrend']> {
+    const rows = await this.ordersRepository
+      .createQueryBuilder('o')
+      .select(this.bogotaDateExpr, 'date')
+      .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
+      .addSelect('COUNT(*)', 'orders')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .groupBy('date')
+      .orderBy('date', 'ASC')
+      .getRawMany<{ date: string; revenue: string; orders: string }>();
+
+    const map = new Map(
+      rows.map((r) => [
+        r.date,
+        { revenue: Number(r.revenue), orders: Number(r.orders) },
+      ]),
+    );
+
+    // Rellena cada día del rango para una serie continua (máx. 92 puntos).
+    const trend: ManagerialCompanyStats['salesTrend'] = [];
+    let cursor = from;
+    let guard = 0;
+    while (cursor <= to && guard < 366) {
+      const found = map.get(cursor);
+      trend.push({
+        date: cursor,
+        revenue: found?.revenue ?? 0,
+        orders: found?.orders ?? 0,
+      });
+      cursor = this.shiftDate(cursor, 1);
+      guard++;
+    }
+    return trend;
+  }
+
+  private async getCompanyStatuses(
+    companyId: string,
+    from: string,
+    to: string,
+  ): Promise<ManagerialCompanyStats['ordersByStatus']> {
+    const rows = await this.ordersRepository
+      .createQueryBuilder('o')
+      .select('o.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .groupBy('o.status')
+      .getRawMany<{ status: string; count: string }>();
+
+    return rows.map((r) => ({ status: r.status, count: Number(r.count) }));
+  }
+
+  private async getCompanyTopProducts(
+    companyId: string,
+    from: string,
+    to: string,
+  ): Promise<ManagerialCompanyStats['topProducts']> {
+    const rows = await this.orderItemsRepository
+      .createQueryBuilder('it')
+      .innerJoin('it.order', 'o')
+      .select('it.sku', 'sku')
+      .addSelect('it.product_name', 'name')
+      .addSelect('COALESCE(SUM(it.quantity), 0)', 'quantity')
+      .addSelect('COALESCE(SUM(it.line_total), 0)', 'revenue')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .groupBy('it.sku')
+      .addGroupBy('it.product_name')
+      .orderBy('quantity', 'DESC')
+      .limit(10)
+      .getRawMany<{
+        sku: string;
+        name: string;
+        quantity: string;
+        revenue: string;
+      }>();
+
+    return rows.map((r) => ({
+      sku: r.sku,
+      name: r.name,
+      quantity: Number(r.quantity),
+      revenue: Number(r.revenue),
+    }));
+  }
+
+  private async getCompanyTopCustomers(
+    companyId: string,
+    from: string,
+    to: string,
+  ): Promise<ManagerialCompanyStats['topCustomers']> {
+    const rows = await this.ordersRepository
+      .createQueryBuilder('o')
+      .innerJoin('o.customer', 'c')
+      .select('c.name', 'name')
+      .addSelect('c.code', 'code')
+      .addSelect('COUNT(*)', 'orders')
+      .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .groupBy('c.name')
+      .addGroupBy('c.code')
+      .orderBy('revenue', 'DESC')
+      .limit(10)
+      .getRawMany<{
+        name: string;
+        code: string;
+        orders: string;
+        revenue: string;
+      }>();
+
+    return rows.map((r) => ({
+      name: r.name,
+      code: r.code,
+      orders: Number(r.orders),
+      revenue: Number(r.revenue),
     }));
   }
 }

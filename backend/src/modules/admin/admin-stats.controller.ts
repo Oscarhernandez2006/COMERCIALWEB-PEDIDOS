@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminStatsService } from './admin-stats.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -21,5 +21,15 @@ export class AdminStatsController {
   @Get('dashboard')
   dashboard() {
     return this.statsService.getDashboard();
+  }
+
+  /**
+   * Dashboard gerencial: las mismas métricas divididas por compañía dentro de
+   * un rango de fechas (un día único si `from === to`). Por defecto, los
+   * últimos 14 días. Permite comparar compañías lado a lado.
+   */
+  @Get('dashboard/managerial')
+  managerial(@Query('from') from: string, @Query('to') to: string) {
+    return this.statsService.getManagerialDashboard(from, to);
   }
 }

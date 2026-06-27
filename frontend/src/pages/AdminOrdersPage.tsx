@@ -65,6 +65,52 @@ function dateTime(value?: string | null): string {
   });
 }
 
+/**
+ * Muestra el estado de trazabilidad del pedido en Siesa (Comprometido,
+ * Despachado, Facturado, etc.). El color resalta el avance: verde cuando ya
+ * está despachado/facturado, ámbar mientras está en proceso. Si el pedido aún
+ * no se ha enviado a Siesa, no hay estado que mostrar.
+ */
+function SiesaTrackingBadge({ order }: { order: AdminOrderDetail }) {
+  const estado = order.siesaEstado?.trim();
+
+  if (!estado) {
+    const pending = order.status === 'synced';
+    return (
+      <span className="text-xs text-muted-foreground">
+        {pending ? 'En espera de Siesa…' : '—'}
+      </span>
+    );
+  }
+
+  const lower = estado.toLowerCase();
+  const isFinal = lower.includes('despach') || lower.includes('factur');
+  const isCancelled = lower.includes('anulad');
+
+  const tone = isCancelled
+    ? 'bg-destructive/10 text-destructive'
+    : isFinal
+      ? 'bg-[var(--success)]/10 text-[var(--success)]'
+      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+        tone,
+      )}
+      title={
+        order.siesaStatePrevious
+          ? `Anterior: ${order.siesaStatePrevious}`
+          : undefined
+      }
+    >
+      <Truck className="h-3 w-3" />
+      {estado}
+    </span>
+  );
+}
+
 export function AdminOrdersPage() {
   const { user } = useAuth();
   const { companies: myCompanies } = useCompany();
@@ -257,6 +303,7 @@ export function AdminOrdersPage() {
                 <tr>
                   <th className="px-3 py-2">Pedido</th>
                   <th className="px-3 py-2">Estado</th>
+                  <th className="px-3 py-2">Trazabilidad Siesa</th>
                   <th className="px-3 py-2">Cliente</th>
                   <th className="px-3 py-2">Vendedor</th>
                   <th className="px-3 py-2">Fecha y hora</th>
@@ -267,19 +314,19 @@ export function AdminOrdersPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                       Cargando pedidos...
                     </td>
                   </tr>
                 ) : isError ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-destructive">
+                    <td colSpan={8} className="px-3 py-8 text-center text-destructive">
                       No se pudieron cargar los pedidos.
                     </td>
                   </tr>
                 ) : list.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
                       No hay pedidos con esos filtros.
                     </td>
                   </tr>
@@ -293,6 +340,9 @@ export function AdminOrdersPage() {
                       <td className="px-3 py-2 font-medium">#{o.orderNumber}</td>
                       <td className="px-3 py-2">
                         <OrderStatusBadge status={o.status as OrderStatus} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <SiesaTrackingBadge order={o} />
                       </td>
                       <td className="px-3 py-2">
                         <div className="font-medium">{o.customerName}</div>
