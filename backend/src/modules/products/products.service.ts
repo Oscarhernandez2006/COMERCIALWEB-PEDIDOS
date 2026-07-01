@@ -21,6 +21,8 @@ export interface SellableProduct {
   unitOfMeasure?: string;
   /** Existencia en inventario (0 si no está cargado). */
   stock: number;
+  /** Tasa de IVA (%) del producto. El IVA se agrega solo para mostrarlo. */
+  taxRate: number;
 }
 
 @Injectable()
@@ -91,10 +93,13 @@ export class ProductsService {
 
     const inventory = await this.productsRepository.find({
       where: { companyId, active: true },
-      select: { sku: true, stock: true },
+      select: { sku: true, stock: true, taxRate: true },
     });
     const stockBySku = new Map(
       inventory.map((p) => [p.sku.trim(), Number(p.stock)]),
+    );
+    const taxBySku = new Map(
+      inventory.map((p) => [p.sku.trim(), Number(p.taxRate)]),
     );
 
     const sellable: SellableProduct[] = items.map((item) => ({
@@ -103,6 +108,7 @@ export class ProductsService {
       price: Number(item.price),
       unitOfMeasure: item.unitOfMeasure,
       stock: stockBySku.get(item.reference.trim()) ?? 0,
+      taxRate: taxBySku.get(item.reference.trim()) ?? 0,
     }));
 
     // Prioridad: primero los que tienen stock (mayor stock arriba), luego el

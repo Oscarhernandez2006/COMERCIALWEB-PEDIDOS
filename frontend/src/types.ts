@@ -113,6 +113,8 @@ export interface SellableProduct {
   price: number;
   unitOfMeasure?: string;
   stock: number;
+  /** Tasa de IVA (%) del producto. El IVA se agrega solo para mostrarlo. */
+  taxRate: number;
 }
 
 export type OrderStatus =

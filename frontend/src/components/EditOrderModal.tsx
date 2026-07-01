@@ -48,11 +48,15 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
 
   const totals = useMemo(() => {
     let subtotal = 0;
+    let taxes = 0;
     for (const line of lines) {
       const gross = line.unitPrice * line.quantity;
-      subtotal += gross - (gross * line.discountPct) / 100;
+      const net = gross - (gross * line.discountPct) / 100;
+      subtotal += net;
+      // El IVA se agrega solo para mostrarlo (el precio base va sin IVA).
+      taxes += (net * (line.product.taxRate ?? 0)) / 100;
     }
-    return { subtotal };
+    return { subtotal, taxes, total: subtotal + taxes };
   }, [lines]);
 
   const totalUnits = useMemo(
@@ -270,6 +274,8 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
                     line.unitPrice *
                     line.quantity *
                     (1 - line.discountPct / 100);
+                  const lineIva =
+                    (lineTotal * (line.product.taxRate ?? 0)) / 100;
                   return (
                     <div
                       key={line.product.sku}
@@ -338,11 +344,27 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between border-t border-border/60 pt-2 text-xs">
-                        <span className="text-muted-foreground">Subtotal</span>
-                        <span className="font-semibold">
-                          {formatCurrency(lineTotal)}
-                        </span>
+                      <div className="space-y-1 border-t border-border/60 pt-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Subtotal</span>
+                          <span className="font-semibold">
+                            {formatCurrency(lineTotal)}
+                          </span>
+                        </div>
+                        {lineIva > 0 && (
+                          <>
+                            <div className="flex items-center justify-between text-muted-foreground">
+                              <span>IVA ({line.product.taxRate}%)</span>
+                              <span>{formatCurrency(lineIva)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Total</span>
+                              <span className="font-semibold">
+                                {formatCurrency(lineTotal + lineIva)}
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
@@ -368,10 +390,11 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
             <div className="text-sm">
               <span className="text-muted-foreground">Total: </span>
               <span className="text-lg font-bold text-primary">
-                {formatCurrency(totals.subtotal)}
+                {formatCurrency(totals.total)}
               </span>
               <span className="ml-1 text-xs text-muted-foreground">
-                (+ impuestos)
+                (subtotal {formatCurrency(totals.subtotal)} + IVA{' '}
+                {formatCurrency(totals.taxes)})
               </span>
             </div>
             <div className="flex gap-2">

@@ -141,24 +141,37 @@ function drawOrder(doc: PDFKit.PDFDocument, order: Order): void {
 
     doc.moveDown(1);
 
-    // Tabla de productos.
+    // Tabla de productos. Columnas (x de inicio) y ancho de cada una. Los
+    // valores numéricos se alinean a la derecha (estilo factura Siesa) y el
+    // detalle muestra, por producto: subtotal (base sin IVA), IVA y total.
     const tableTop = doc.y;
     const cols = {
       sku: 48,
-      name: 110,
-      um: 300,
-      qty: 350,
-      price: 405,
-      total: 480,
+      name: 92,
+      um: 192,
+      qty: 216,
+      price: 246,
+      subtotal: 310,
+      iva: 376,
+      total: 434,
+    };
+    const w = {
+      qty: 28,
+      price: 62,
+      subtotal: 64,
+      iva: 56,
+      total: 66,
     };
 
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
-    doc.text('Ref.', cols.sku, tableTop);
-    doc.text('Producto', cols.name, tableTop);
-    doc.text('UM', cols.um, tableTop);
-    doc.text('Cant.', cols.qty, tableTop);
-    doc.text('Precio', cols.price, tableTop);
-    doc.text('Total', cols.total, tableTop);
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#000');
+    doc.text('Ref.', cols.sku, tableTop, { width: 42 });
+    doc.text('Producto', cols.name, tableTop, { width: 98 });
+    doc.text('UM', cols.um, tableTop, { width: 24 });
+    doc.text('Cant.', cols.qty, tableTop, { width: w.qty, align: 'right' });
+    doc.text('Precio', cols.price, tableTop, { width: w.price, align: 'right' });
+    doc.text('Subtotal', cols.subtotal, tableTop, { width: w.subtotal, align: 'right' });
+    doc.text('IVA', cols.iva, tableTop, { width: w.iva, align: 'right' });
+    doc.text('Total', cols.total, tableTop, { width: w.total, align: 'right' });
 
     doc
       .strokeColor('#ddd')
@@ -175,14 +188,23 @@ function drawOrder(doc: PDFKit.PDFDocument, order: Order): void {
         doc.addPage();
         y = 48;
       }
-      doc.fontSize(9);
-      doc.text(item.sku, cols.sku, y, { width: 56 });
-      doc.text(item.productName, cols.name, y, { width: 185 });
-      doc.text(item.unitOfMeasure ?? '', cols.um, y, { width: 45 });
-      doc.text(String(Number(item.quantity)), cols.qty, y, { width: 45 });
-      doc.text(money(item.unitPrice), cols.price, y, { width: 70 });
-      doc.text(money(item.lineTotal), cols.total, y, { width: 67 });
-      y += 18;
+      // lineTotal es la base sin IVA (precio × cantidad − descuento). El IVA se
+      // agrega solo para mostrarlo; el total de la línea es base + IVA.
+      const lineBase = Number(item.lineTotal);
+      const lineIva = (lineBase * Number(item.taxRate)) / 100;
+      const lineTotal = lineBase + lineIva;
+      doc.fontSize(8);
+      doc.text(item.sku, cols.sku, y, { width: 42 });
+      doc.text(item.productName, cols.name, y, { width: 98 });
+      doc.text(item.unitOfMeasure ?? '', cols.um, y, { width: 24 });
+      doc.text(String(Number(item.quantity)), cols.qty, y, { width: w.qty, align: 'right' });
+      doc.text(money(item.unitPrice), cols.price, y, { width: w.price, align: 'right' });
+      doc.text(money(lineBase), cols.subtotal, y, { width: w.subtotal, align: 'right' });
+      doc.text(money(lineIva), cols.iva, y, { width: w.iva, align: 'right' });
+      doc.text(money(lineTotal), cols.total, y, { width: w.total, align: 'right' });
+      // La fila puede ocupar 2 líneas si el nombre del producto es largo.
+      const nameHeight = doc.heightOfString(item.productName, { width: 98 });
+      y += Math.max(18, nameHeight + 4);
     }
 
     doc
@@ -192,17 +214,19 @@ function drawOrder(doc: PDFKit.PDFDocument, order: Order): void {
       .stroke();
     y += 12;
 
-    // Totales.
-    doc.fontSize(10).font('Helvetica');
-    doc.text('Subtotal:', cols.price, y, { width: 70 });
-    doc.text(money(order.subtotal), cols.total, y, { width: 67 });
+    // Totales (sumatoria de los ítems): subtotal, IVA y total.
+    const totLabelX = cols.subtotal;
+    const totLabelW = cols.total - cols.subtotal - 6;
+    doc.fontSize(10).font('Helvetica').fillColor('#222');
+    doc.text('Subtotal:', totLabelX, y, { width: totLabelW, align: 'right' });
+    doc.text(money(order.subtotal), cols.total, y, { width: w.total, align: 'right' });
     y += 16;
-    doc.text('Impuestos:', cols.price, y, { width: 70 });
-    doc.text(money(order.taxes), cols.total, y, { width: 67 });
+    doc.text('IVA:', totLabelX, y, { width: totLabelW, align: 'right' });
+    doc.text(money(order.taxes), cols.total, y, { width: w.total, align: 'right' });
     y += 16;
     doc.font('Helvetica-Bold').fillColor('#000');
-    doc.text('Total:', cols.price, y, { width: 70 });
-    doc.text(money(order.total), cols.total, y, { width: 67 });
+    doc.text('Total:', totLabelX, y, { width: totLabelW, align: 'right' });
+    doc.text(money(order.total), cols.total, y, { width: w.total, align: 'right' });
 
     // Nota producto.
     if (order.notes) {

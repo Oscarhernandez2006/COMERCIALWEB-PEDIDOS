@@ -150,21 +150,25 @@ export function NewOrderPage() {
 
   const totals = useMemo(() => {
     let subtotal = 0;
+    let taxes = 0;
     for (const line of cart) {
       const gross = line.unitPrice * line.quantity;
       const net = gross - (gross * line.discountPct) / 100;
       subtotal += net;
+      // El IVA se agrega solo para mostrarlo (el precio base va sin IVA).
+      taxes += (net * (line.product.taxRate ?? 0)) / 100;
     }
     return {
       subtotal,
-      total: subtotal,
+      taxes,
+      total: subtotal + taxes,
     };
   }, [cart]);
 
   // Tope mínimo de pedido según la compañía activa.
   const { company } = useCompany();
   const minOrderTotal = getMinOrderTotal(company?.id);
-  const belowMinimum = minOrderTotal > 0 && totals.total < minOrderTotal;
+  const belowMinimum = minOrderTotal > 0 && totals.subtotal < minOrderTotal;
 
   const totalUnits = useMemo(
     () => cart.reduce((acc, l) => acc + l.quantity, 0),
@@ -801,6 +805,8 @@ export function NewOrderPage() {
                       line.unitPrice *
                       line.quantity *
                       (1 - line.discountPct / 100);
+                    const lineIva =
+                      (lineTotal * (line.product.taxRate ?? 0)) / 100;
                     return (
                       <div
                         key={line.product.sku}
@@ -889,11 +895,27 @@ export function NewOrderPage() {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between border-t border-border/60 pt-2 text-xs">
-                          <span className="text-muted-foreground">Subtotal</span>
-                          <span className="font-semibold">
-                            {formatCurrency(lineTotal)}
-                          </span>
+                        <div className="space-y-1 border-t border-border/60 pt-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Subtotal</span>
+                            <span className="font-semibold">
+                              {formatCurrency(lineTotal)}
+                            </span>
+                          </div>
+                          {lineIva > 0 && (
+                            <>
+                              <div className="flex items-center justify-between text-muted-foreground">
+                                <span>IVA ({line.product.taxRate}%)</span>
+                                <span>{formatCurrency(lineIva)}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Total</span>
+                                <span className="font-semibold">
+                                  {formatCurrency(lineTotal + lineIva)}
+                                </span>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -905,6 +927,10 @@ export function NewOrderPage() {
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
                   <span>{formatCurrency(totals.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>IVA</span>
+                  <span>{formatCurrency(totals.taxes)}</span>
                 </div>
                 <div className="flex items-baseline justify-between">
                   <span className="text-base font-semibold">Total</span>
@@ -1043,7 +1069,7 @@ export function NewOrderPage() {
                   <span>
                     El pedido mínimo para esta compañía es{' '}
                     {formatCurrency(minOrderTotal)}. Te faltan{' '}
-                    {formatCurrency(minOrderTotal - totals.total)}.
+                    {formatCurrency(minOrderTotal - totals.subtotal)}.
                   </span>
                 </p>
               ) : (
