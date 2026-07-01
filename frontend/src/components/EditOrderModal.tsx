@@ -22,6 +22,7 @@ function linesFromOrder(order: Order): CartLine[] {
       unitOfMeasure: item.unitOfMeasure,
       // Stock real desconocido aquí; el backend valida al guardar.
       stock: Number.MAX_SAFE_INTEGER,
+      taxRate: Number(item.taxRate),
     },
     quantity: Number(item.quantity),
     discountPct: Number(item.discountPct),
