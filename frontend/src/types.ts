@@ -263,7 +263,7 @@ export interface ManagerialCompanyStats {
     avgTicket: number;
     customers: number;
   };
-  salesTrend: { date: string; revenue: number; orders: number }[];
+  salesTrend: { date: string; revenue: number; orders: number; label?: string }[];
   ordersByStatus: { status: OrderStatus; count: number }[];
   topProducts: {
     sku: string;

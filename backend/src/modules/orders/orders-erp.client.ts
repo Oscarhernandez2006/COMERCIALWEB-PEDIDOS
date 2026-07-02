@@ -92,6 +92,21 @@ export class OrdersErpClient {
     const timeout = this.config.get<number>('priceLists.timeoutMs');
     const endpoint = getOrderEndpoint(companyId);
 
+    // Se registra el cliente y la sucursal de cada línea que se envía al ERP
+    // para poder auditar qué sucursal viaja realmente y descartar que el código
+    // la altere de nuestro lado.
+    this.logger.log(
+      `Payload de carga (compañía ${companyId}): ` +
+        JSON.stringify(
+          registros.map((r) => ({
+            documento_venta: r.documento_venta,
+            cliente: r.cliente,
+            sucursal: r.sucursal,
+            referencia: r.referencia,
+          })),
+        ),
+    );
+
     try {
       const response = await firstValueFrom(
         this.http.post<unknown>(

@@ -5,6 +5,8 @@ interface Point {
   date: string;
   revenue: number;
   orders: number;
+  /** Etiqueta a mostrar en el eje X (p. ej. la hora en vista intradía). */
+  label?: string;
 }
 
 /**
@@ -43,6 +45,9 @@ export function SalesTrendChart({ data }: { data: Point[] }) {
     const d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
   };
+
+  // Usa la etiqueta provista (p. ej. la hora) o formatea la fecha por día.
+  const fmtLabel = (p: Point) => p.label ?? fmtDay(p.date);
 
   return (
     <div className="w-full">
@@ -110,9 +115,9 @@ export function SalesTrendChart({ data }: { data: Point[] }) {
 
       <div className="mt-1 flex justify-between px-1 text-[10px] text-muted-foreground">
         {data
-          .filter((_, i) => i % 2 === 0)
+          .filter((d, i) => (d.label ? true : i % 2 === 0))
           .map((d) => (
-            <span key={d.date}>{fmtDay(d.date)}</span>
+            <span key={d.date}>{fmtLabel(d)}</span>
           ))}
       </div>
 

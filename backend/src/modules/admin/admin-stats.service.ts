@@ -59,7 +59,7 @@ export interface ManagerialCompanyStats {
     avgTicket: number;
     customers: number;
   };
-  salesTrend: { date: string; revenue: number; orders: number }[];
+  salesTrend: { date: string; revenue: number; orders: number; label?: string }[];
   ordersByStatus: { status: string; count: number }[];
   topProducts: {
     sku: string;
@@ -311,6 +311,10 @@ export class AdminStatsService {
   private readonly bogotaDateFilter =
     "(o.created_at AT TIME ZONE 'America/Bogota')::date BETWEEN :from::date AND :to::date";
 
+  /** Expresión SQL que extrae la hora (00–23) en hora local de Colombia. */
+  private readonly bogotaHourExpr =
+    "TO_CHAR((o.created_at AT TIME ZONE 'America/Bogota'), 'HH24')";
+
   /**
    * KPIs y series por compañía para el panel gerencial. Acepta un rango de
    * fechas (un día único si `from === to`). Por defecto, los últimos 14 días.
@@ -400,6 +404,12 @@ export class AdminStatsService {
     from: string,
     to: string,
   ): Promise<ManagerialCompanyStats['salesTrend']> {
+    // Un único día seleccionado: la tendencia se muestra por horas para que la
+    // gráfica refleje el comportamiento intradía en lugar de un solo punto.
+    if (from === to) {
+      return this.getCompanyHourlyTrend(companyId, from);
+    }
+
     const rows = await this.ordersRepository
       .createQueryBuilder('o')
       .select(this.bogotaDateExpr, 'date')
@@ -432,6 +442,45 @@ export class AdminStatsService {
       });
       cursor = this.shiftDate(cursor, 1);
       guard++;
+    }
+    return trend;
+  }
+
+  /** Tendencia intradía (24 horas) de un solo día para una compañía. */
+  private async getCompanyHourlyTrend(
+    companyId: string,
+    day: string,
+  ): Promise<ManagerialCompanyStats['salesTrend']> {
+    const rows = await this.ordersRepository
+      .createQueryBuilder('o')
+      .select(this.bogotaHourExpr, 'hour')
+      .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
+      .addSelect('COUNT(*)', 'orders')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from: day, to: day })
+      .groupBy('hour')
+      .orderBy('hour', 'ASC')
+      .getRawMany<{ hour: string; revenue: string; orders: string }>();
+
+    const map = new Map(
+      rows.map((r) => [
+        Number(r.hour),
+        { revenue: Number(r.revenue), orders: Number(r.orders) },
+      ]),
+    );
+
+    // Serie continua de la jornada laboral (06:00–17:00), una hora por punto.
+    const trend: ManagerialCompanyStats['salesTrend'] = [];
+    for (let h = 6; h <= 17; h++) {
+      const found = map.get(h);
+      const hh = String(h).padStart(2, '0');
+      trend.push({
+        date: `${day}T${hh}:00`,
+        label: `${hh}:00`,
+        revenue: found?.revenue ?? 0,
+        orders: found?.orders ?? 0,
+      });
     }
     return trend;
   }
