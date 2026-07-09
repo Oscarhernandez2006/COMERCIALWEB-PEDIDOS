@@ -15,6 +15,7 @@ import { PriceListsModule } from './modules/price-lists/price-lists.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SeederService } from './database/seeder.service';
 
 @Module({
@@ -37,6 +38,7 @@ import { SeederService } from './database/seeder.service';
     ClientsModule,
     AdminModule,
     SettingsModule,
+    DashboardModule,
   ],
   providers: [SeederService],
 })

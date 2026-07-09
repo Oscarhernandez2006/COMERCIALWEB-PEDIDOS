@@ -252,6 +252,36 @@ export interface AdminDashboardStats {
   }[];
 }
 
+/** Tablero de gestión comercial de un vendedor para un mes. */
+export interface SellerCommercialDashboard {
+  period: { month: number; year: number; label: string };
+  generatedAt: string;
+  seller: { id: string; name: string };
+  totals: {
+    revenue: number;
+    orders: number;
+    customersServed: number;
+    activeCustomers: number;
+    avgTicket: number;
+  };
+  growth: {
+    revenuePct: number | null;
+  };
+  salesTrend: { date: string; revenue: number; orders: number }[];
+  topCustomers: {
+    name: string;
+    code: string;
+    city: string | null;
+    revenue: number;
+    lastPurchase: string | null;
+  }[];
+  salesByCut: {
+    name: string;
+    quantity: number;
+    revenue: number;
+  }[];
+}
+
 /** Métricas de una compañía dentro del dashboard gerencial (rango de fechas). */
 export interface ManagerialCompanyStats {
   companyId: string;

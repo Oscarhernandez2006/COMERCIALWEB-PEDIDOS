@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, ILike, Repository } from 'typeorm';
 import { PriceListItem } from './entities/price-list-item.entity';
 import { PriceListsClient, PriceListRaw } from './price-lists.client';
+import { bogotaToday } from '../orders/order-cortes';
 
 /** Resumen de una lista de precios (sin sus ítems). */
 export interface PriceListSummary {
@@ -214,8 +215,11 @@ export class PriceListsService {
 
   /**
    * Limpia y deduplica las filas crudas.
-   * El endpoint trae espacios de relleno y referencias repetidas por lista;
-   * se conserva la última aparición (precio más reciente del ERP).
+   * El endpoint trae espacios de relleno y la misma referencia repetida con
+   * varios precios (cada uno con su FECHA_ACTIVACION). Por cada referencia se
+   * conserva el precio cuya fecha de activación sea la más reciente pero que
+   * ya esté vigente (hoy o antes); los precios con activación futura se
+   * ignoran. Si una fila no trae fecha, se trata como vigente de respaldo.
    */
   private normalize(raws: PriceListRaw[]): Map<
     string,
@@ -239,13 +243,33 @@ export class PriceListsService {
         price: number;
       }
     >();
+    // Fecha de activación elegida por cada referencia, para comparar cuál es
+    // la más reciente ya vigente.
+    const bestActivation = new Map<string, string>();
+    const today = bogotaToday();
 
     for (const raw of raws) {
       const listCode = (raw.LISTA_PRECIO ?? '').trim();
       const reference = (raw.REFERENCIA ?? '').trim();
       if (!listCode || !reference) continue;
 
-      map.set(`${listCode}::${reference}`, {
+      // Fecha de activación como YYYY-MM-DD. Sin fecha => se trata como muy
+      // antigua ('0000-00-00') para que sirva de respaldo pero nunca gane a
+      // una fila con fecha real.
+      const activation = (raw.FECHA_ACTIVACION ?? '').slice(0, 10);
+      // Ignora precios que aún no están vigentes (activación en el futuro).
+      if (activation && activation > today) continue;
+      const activationForCompare = activation || '0000-00-00';
+
+      const key = `${listCode}::${reference}`;
+      const prevActivation = bestActivation.get(key);
+      // Conserva la fila con la activación más reciente (a igualdad, la última).
+      if (prevActivation !== undefined && prevActivation > activationForCompare) {
+        continue;
+      }
+
+      bestActivation.set(key, activationForCompare);
+      map.set(key, {
         listCode,
         listName: (raw.DESC_LISTA ?? '').trim() || listCode,
         reference,

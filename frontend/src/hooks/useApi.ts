@@ -16,6 +16,7 @@ import type {
   Product,
   Quote,
   SellableProduct,
+  SellerCommercialDashboard,
   SiesaState,
 } from '@/types';
 
@@ -27,6 +28,24 @@ export function useProducts(search: string) {
       const res = await api.get<Product[]>('/products', {
         params: search ? { search } : undefined,
       });
+      return res.data;
+    },
+  });
+}
+
+/**
+ * Tablero de gestión comercial del vendedor autenticado para un mes/año.
+ * La compañía se toma del contexto (cabecera X-Company-Id).
+ */
+export function useSellerDashboard(month: number, year: number) {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['dashboard', 'commercial', company?.id, month, year],
+    queryFn: async () => {
+      const res = await api.get<SellerCommercialDashboard>(
+        '/dashboard/commercial',
+        { params: { month, year } },
+      );
       return res.data;
     },
   });

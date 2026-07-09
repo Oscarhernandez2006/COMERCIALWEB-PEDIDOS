@@ -12,6 +12,10 @@ export interface PriceListRaw {
   PRODUCTO?: string;
   UM?: string;
   PRECIO?: number;
+  /** Fecha desde la que aplica el precio (ISO, p. ej. "2025-12-24T00:00:00"). */
+  FECHA_ACTIVACION?: string;
+  /** Fecha hasta la que aplica el precio (ISO). */
+  FECHA_INACTIVACION?: string;
 }
 
 interface PriceListResponse {
