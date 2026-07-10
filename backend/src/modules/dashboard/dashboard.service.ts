@@ -7,6 +7,7 @@ import { ClientRecord } from '../clients/entities/client-record.entity';
 import { UserCompany } from '../users/entities/user-company.entity';
 import { User } from '../users/entities/user.entity';
 import { bogotaToday } from '../orders/order-cortes';
+import { BudgetsService } from '../budgets/budgets.service';
 
 /** Estados que representan una venta real (excluye borradores y cancelados). */
 const SALE_STATUSES = [
@@ -32,10 +33,14 @@ export interface SellerCommercialDashboard {
     activeCustomers: number;
     /** Ticket promedio (pesos). */
     avgTicket: number;
+    /** Kilos vendidos en el mes (suma de cantidades de ítems en KG). */
+    kilosSold: number;
   };
   growth: {
     /** Crecimiento de ventas vs. el mes anterior (porcentaje) o null. */
     revenuePct: number | null;
+    /** Crecimiento de kilos vendidos vs. el mes anterior (porcentaje) o null. */
+    kilosPct: number | null;
   };
   salesTrend: { date: string; revenue: number; orders: number }[];
   topCustomers: {
@@ -51,6 +56,8 @@ export interface SellerCommercialDashboard {
     quantity: number;
     revenue: number;
   }[];
+  /** Presupuesto (meta) del vendedor para el mes, si está cargado. */
+  budget: { expectedRevenue: number; targetKilos: number } | null;
 }
 
 @Injectable()
@@ -66,6 +73,7 @@ export class DashboardService {
     private readonly userCompaniesRepository: Repository<UserCompany>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    private readonly budgetsService: BudgetsService,
   ) {}
 
   /** Pasa created_at a fecha local de Colombia y la limita a un rango. */
@@ -103,7 +111,7 @@ export class DashboardService {
       month === 1 ? year - 1 : year,
     );
 
-    const [seller, totalsRow, prevRevenue, activeCustomers, salesTrend, topCustomers, salesByCut] =
+    const [seller, totalsRow, prevRevenue, activeCustomers, salesTrend, topCustomers, salesByCut, budget, kilosSold, prevKilos] =
       await Promise.all([
         this.usersRepository.findOne({ where: { id: sellerId } }),
         this.getTotals(companyId, sellerId, from, to),
@@ -112,6 +120,9 @@ export class DashboardService {
         this.getTrend(companyId, sellerId, from, to),
         this.getTopCustomers(companyId, sellerId, from, to),
         this.getSalesByCut(companyId, sellerId, from, to),
+        this.budgetsService.getSellerBudget(companyId, sellerId, month, year),
+        this.getKilosSold(companyId, sellerId, from, to),
+        this.getKilosSold(companyId, sellerId, prev.from, prev.to),
       ]);
 
     const revenue = totalsRow.revenue;
@@ -119,6 +130,10 @@ export class DashboardService {
     const revenuePct =
       prevRevenue > 0
         ? Number((((revenue - prevRevenue) / prevRevenue) * 100).toFixed(1))
+        : null;
+    const kilosPct =
+      prevKilos > 0
+        ? Number((((kilosSold - prevKilos) / prevKilos) * 100).toFixed(1))
         : null;
 
     const label = new Date(year, month - 1, 1).toLocaleDateString('es-CO', {
@@ -136,11 +151,13 @@ export class DashboardService {
         customersServed: totalsRow.customers,
         activeCustomers,
         avgTicket: orders > 0 ? Number((revenue / orders).toFixed(2)) : 0,
+        kilosSold,
       },
-      growth: { revenuePct },
+      growth: { revenuePct, kilosPct },
       salesTrend,
       topCustomers,
       salesByCut,
+      budget,
     };
   }
 
@@ -183,6 +200,26 @@ export class DashboardService {
       .andWhere(this.bogotaDateFilter, { from, to })
       .getRawOne<{ revenue: string }>();
     return Number(row?.revenue ?? 0);
+  }
+
+  /** Kilos vendidos en el mes: suma de cantidades de ítems medidos en KG. */
+  private async getKilosSold(
+    companyId: string,
+    sellerId: string,
+    from: string,
+    to: string,
+  ): Promise<number> {
+    const row = await this.orderItemsRepository
+      .createQueryBuilder('it')
+      .innerJoin('it.order', 'o')
+      .select('COALESCE(SUM(it.quantity), 0)', 'kilos')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .andWhere("UPPER(TRIM(it.unit_of_measure)) = 'KG'")
+      .getRawOne<{ kilos: string }>();
+    return Number(row?.kilos ?? 0);
   }
 
   /** Clientes de la cartera asignados al vendedor (por código de vendedor). */

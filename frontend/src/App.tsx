@@ -23,6 +23,7 @@ import { ClientsPage } from '@/pages/ClientsPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { OrderSchedulePage } from '@/pages/OrderSchedulePage';
 import { CarteraPage } from '@/pages/CarteraPage';
+import { BudgetsPage } from '@/pages/BudgetsPage';
 
 function App() {
   return (
@@ -63,6 +64,7 @@ function App() {
         <Route path="descargar-pedidos" element={<DownloadOrdersPage />} />
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
+        <Route path="presupuestos" element={<BudgetsPage />} />
         <Route path="cartera" element={<CarteraPage />} />
         <Route path="horario-pedidos" element={<OrderSchedulePage />} />
         <Route path="usuarios" element={<UsersPage />} />

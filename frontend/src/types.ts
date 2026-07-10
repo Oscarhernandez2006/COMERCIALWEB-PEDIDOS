@@ -263,9 +263,11 @@ export interface SellerCommercialDashboard {
     customersServed: number;
     activeCustomers: number;
     avgTicket: number;
+    kilosSold: number;
   };
   growth: {
     revenuePct: number | null;
+    kilosPct: number | null;
   };
   salesTrend: { date: string; revenue: number; orders: number }[];
   topCustomers: {
@@ -280,6 +282,16 @@ export interface SellerCommercialDashboard {
     quantity: number;
     revenue: number;
   }[];
+  budget: { expectedRevenue: number; targetKilos: number } | null;
+}
+
+/** Fila de presupuesto de un vendedor para un mes/año. */
+export interface BudgetRow {
+  sellerId: string;
+  sellerName: string;
+  siesaSellerCode: string | null;
+  targetKilos: number;
+  expectedRevenue: number;
 }
 
 /** Métricas de una compañía dentro del dashboard gerencial (rango de fechas). */

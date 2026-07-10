@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import type {
   AdminDashboardStats,
   AdminUser,
+  BudgetRow,
   ClientPortfolio,
   InventoryReportData,
   ManagerialDashboardStats,
@@ -208,6 +209,48 @@ export function useCompanyProducts(companyId: string, search: string) {
       return res.data;
     },
     enabled: Boolean(companyId),
+  });
+}
+
+/* ---- Presupuestos por vendedor y compañía ---- */
+
+export function useBudgets(companyId: string, month: number, year: number) {
+  return useQuery({
+    queryKey: ['admin', 'budgets', companyId, month, year],
+    queryFn: async () => {
+      const res = await api.get<BudgetRow[]>('/admin/budgets', {
+        params: { month, year },
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+    enabled: Boolean(companyId),
+  });
+}
+
+interface SaveBudgetsInput {
+  companyId: string;
+  month: number;
+  year: number;
+  items: { sellerId: string; targetKilos: number; expectedRevenue: number }[];
+}
+
+export function useSaveBudgets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ companyId, month, year, items }: SaveBudgetsInput) => {
+      const res = await api.put<BudgetRow[]>(
+        '/admin/budgets',
+        { month, year, items },
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({
+        queryKey: ['admin', 'budgets', vars.companyId, vars.month, vars.year],
+      });
+    },
   });
 }
 

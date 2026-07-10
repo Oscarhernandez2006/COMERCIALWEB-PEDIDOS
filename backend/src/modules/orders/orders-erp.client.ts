@@ -19,6 +19,8 @@ export interface ErpOrderRegistro {
   cantidad: string;
   precio: string;
   cond_pago: string;
+  /** Notas del pedido (logística y producto concatenadas). */
+  notas: string;
 }
 
 /** Estado de un pedido en Siesa (respuesta de pedidos-estados-siesa). */
@@ -103,6 +105,7 @@ export class OrdersErpClient {
             cliente: r.cliente,
             sucursal: r.sucursal,
             referencia: r.referencia,
+            notas: r.notas,
           })),
         ),
     );

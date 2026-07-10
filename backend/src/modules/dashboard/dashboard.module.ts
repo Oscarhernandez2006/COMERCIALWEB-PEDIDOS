@@ -7,10 +7,12 @@ import { OrderItem } from '../orders/entities/order-item.entity';
 import { ClientRecord } from '../clients/entities/client-record.entity';
 import { UserCompany } from '../users/entities/user-company.entity';
 import { User } from '../users/entities/user.entity';
+import { BudgetsModule } from '../budgets/budgets.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem, ClientRecord, UserCompany, User]),
+    BudgetsModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

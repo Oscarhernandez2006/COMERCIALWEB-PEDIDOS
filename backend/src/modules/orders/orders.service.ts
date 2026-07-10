@@ -1030,6 +1030,17 @@ export class OrdersService {
     // El ERP espera las fechas como YYYYMMDD (sin guiones).
     const toErpDate = (date: string) => date.replace(/-/g, '');
 
+    // Las dos notas (logística y producto) se mandan concatenadas en un solo
+    // campo `notas`, incluyendo solo las que tienen contenido.
+    const notesParts: string[] = [];
+    if (order.logisticsNote?.trim()) {
+      notesParts.push(`notas logistica: ${order.logisticsNote.trim()}`);
+    }
+    if (order.notes?.trim()) {
+      notesParts.push(`notas producto: ${order.notes.trim()}`);
+    }
+    const notas = notesParts.join(' / ');
+
     return order.items.map((item) => ({
       documento_venta: order.orderNumber,
       fecha: toErpDate(orderDate),
@@ -1043,6 +1054,7 @@ export class OrdersService {
       cantidad: String(Number(item.quantity)),
       precio: String(Number(item.unitPrice)),
       cond_pago: order.customer.paymentTerm ?? '',
+      notas,
     }));
   }
 

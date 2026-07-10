@@ -53,6 +53,53 @@ function EnConstruccion({ className }: { className?: string }) {
   );
 }
 
+/** Medidor circular de cumplimiento (porcentaje). */
+function RingGauge({ pct, label }: { pct: number; label: string }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const r = 42;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (clamped / 100) * circ;
+  const color =
+    clamped >= 100
+      ? 'var(--primary)'
+      : clamped >= 70
+        ? '#16a34a'
+        : clamped >= 40
+          ? '#d97706'
+          : '#dc2626';
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative h-28 w-28">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+          <circle
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth="9"
+          />
+          <circle
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth="9"
+            strokeDasharray={circ}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-lg font-bold">{clamped.toFixed(1)}%</span>
+        </div>
+      </div>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
 interface KpiProps {
   label: string;
   value: React.ReactNode;
@@ -110,6 +157,29 @@ export function DashboardPage() {
 
   const totals = data?.totals;
   const growth = data?.growth.revenuePct ?? null;
+  const growthKilos = data?.growth.kilosPct ?? null;
+
+  // Presupuesto del mes (si está cargado) y cumplimiento en pesos.
+  const budget = data?.budget ?? null;
+  const pptoRevenue = budget?.expectedRevenue ?? null;
+  const pptoKilos = budget?.targetKilos ?? null;
+  const cumplimientoPesos =
+    pptoRevenue && pptoRevenue > 0 && totals
+      ? (totals.revenue / pptoRevenue) * 100
+      : null;
+  const kilosSold = totals?.kilosSold ?? 0;
+  const cumplimientoKilos =
+    pptoKilos && pptoKilos > 0 && totals ? (kilosSold / pptoKilos) * 100 : null;
+
+  // Meta acumulada (pesos): presupuesto del mes repartido lineal por día.
+  const metaSeries = useMemo(() => {
+    if (!data || pptoRevenue == null || pptoRevenue <= 0) return undefined;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return data.salesTrend.map((p) => {
+      const day = Number(p.date.slice(8, 10));
+      return (pptoRevenue / daysInMonth) * day;
+    });
+  }, [data, pptoRevenue, month, year]);
 
   return (
     <div className="space-y-5">
@@ -187,11 +257,27 @@ export function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           label="Ppto Mes (Pesos)"
-          value={<EnConstruccion />}
+          value={
+            isLoading ? (
+              '…'
+            ) : pptoRevenue != null ? (
+              formatCurrency(pptoRevenue)
+            ) : (
+              <EnConstruccion />
+            )
+          }
           icon={Wallet}
           accent="bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300"
           subLabel="Ppto (Kilos)"
-          subValue={<EnConstruccion />}
+          subValue={
+            isLoading ? (
+              '…'
+            ) : pptoKilos != null ? (
+              `${pptoKilos.toLocaleString('es-CO')} kg`
+            ) : (
+              <EnConstruccion />
+            )
+          }
         />
         <KpiCard
           label="Ventas Acumuladas"
@@ -199,15 +285,33 @@ export function DashboardPage() {
           icon={DollarSign}
           accent="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300"
           subLabel="Kilos Vendidos"
-          subValue={<EnConstruccion />}
+          subValue={
+            isLoading ? '…' : `${kilosSold.toLocaleString('es-CO')} kg`
+          }
         />
         <KpiCard
           label="Cumplimiento (Pesos)"
-          value={<EnConstruccion />}
+          value={
+            isLoading ? (
+              '…'
+            ) : cumplimientoPesos != null ? (
+              `${cumplimientoPesos.toFixed(1)}%`
+            ) : (
+              <EnConstruccion />
+            )
+          }
           icon={Gauge}
           accent="bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300"
           subLabel="Cumplimiento (Kilos)"
-          subValue={<EnConstruccion />}
+          subValue={
+            isLoading ? (
+              '…'
+            ) : cumplimientoKilos != null ? (
+              `${cumplimientoKilos.toFixed(1)}%`
+            ) : (
+              <EnConstruccion />
+            )
+          }
         />
         <KpiCard
           label="Clientes Atendidos"
@@ -233,12 +337,29 @@ export function DashboardPage() {
           <CardHeader>
             <CardTitle className="text-base">Cumplimiento del Mes</CardTitle>
           </CardHeader>
-          <CardContent className="flex h-56 flex-col items-center justify-center gap-3 text-center">
-            <Gauge className="h-10 w-10 text-muted-foreground" />
-            <EnConstruccion />
-            <p className="text-xs text-muted-foreground">
-              Requiere el presupuesto mensual (pesos y kilos).
-            </p>
+          <CardContent className="flex h-56 items-center justify-around gap-2">
+            {cumplimientoPesos != null ? (
+              <RingGauge pct={cumplimientoPesos} label="Pesos" />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-center">
+                <Gauge className="h-9 w-9 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">
+                  Pesos
+                </span>
+                <EnConstruccion />
+              </div>
+            )}
+            {cumplimientoKilos != null ? (
+              <RingGauge pct={cumplimientoKilos} label="Kilos" />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-center">
+                <Gauge className="h-9 w-9 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">
+                  Kilos
+                </span>
+                <EnConstruccion />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -251,15 +372,17 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             {data ? (
-              <SalesTrendChart data={data.salesTrend} />
+              <SalesTrendChart data={data.salesTrend} metaSeries={metaSeries} />
             ) : (
               <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
                 Cargando…
               </div>
             )}
-            <p className="mt-1 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
-              Kilos vendidos y meta acumulada: <EnConstruccion />
-            </p>
+            {data && !metaSeries && (
+              <p className="mt-1 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
+                Meta acumulada: <EnConstruccion /> — carga el presupuesto del mes.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -414,7 +537,29 @@ export function DashboardPage() {
             }
             hint="Vs. mes anterior"
           />
-          <RankItem label="Crecimiento Kilos (Kg)" value={<EnConstruccion />} />
+          <RankItem
+            label="Crecimiento Kilos (Kg)"
+            value={
+              growthKilos === null ? (
+                <span className="text-muted-foreground">—</span>
+              ) : (
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1',
+                    growthKilos >= 0 ? 'text-emerald-600' : 'text-red-600',
+                  )}
+                >
+                  {growthKilos >= 0 ? (
+                    <ArrowUpRight className="h-4 w-4" />
+                  ) : (
+                    <ArrowDownRight className="h-4 w-4" />
+                  )}
+                  {Math.abs(growthKilos)}%
+                </span>
+              )
+            }
+            hint="Vs. mes anterior"
+          />
         </CardContent>
       </Card>
     </div>

@@ -17,6 +17,7 @@ import {
   Wallet,
   FileText,
   Clock,
+  Target,
   Menu,
   X,
 } from 'lucide-react';
@@ -44,6 +45,7 @@ const adminNav = [
   { to: '/admin/descargar-pedidos', label: 'Descargar pedidos', icon: FileDown },
   { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
   { to: '/admin/clientes', label: 'Clientes', icon: Users },
+  { to: '/admin/presupuestos', label: 'Presupuestos', icon: Target },
   { to: '/admin/cartera', label: 'Aprobación de cartera', icon: Wallet },
   { to: '/admin/horario-pedidos', label: 'Horario de pedidos', icon: Clock },
   { to: '/admin/usuarios', label: 'Usuarios', icon: Users },

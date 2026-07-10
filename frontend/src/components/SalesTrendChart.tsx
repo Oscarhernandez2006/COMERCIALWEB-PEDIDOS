@@ -11,16 +11,30 @@ interface Point {
 
 /**
  * Gráfico de área de ventas (SVG puro, sin dependencias).
- * Muestra la evolución de ingresos por día.
+ * Muestra la evolución de ingresos por día y, opcionalmente, una línea
+ * punteada con la meta acumulada (presupuesto repartido por día).
  */
-export function SalesTrendChart({ data }: { data: Point[] }) {
+export function SalesTrendChart({
+  data,
+  metaSeries,
+}: {
+  data: Point[];
+  /** Meta acumulada (pesos) por punto; misma longitud que `data`. */
+  metaSeries?: number[];
+}) {
   const gradientId = useId();
   const width = 760;
   const height = 220;
   const padX = 8;
   const padY = 24;
 
-  const max = Math.max(1, ...data.map((d) => d.revenue));
+  const hasMeta = Array.isArray(metaSeries) && metaSeries.length === data.length;
+
+  const max = Math.max(
+    1,
+    ...data.map((d) => d.revenue),
+    ...(hasMeta ? metaSeries! : []),
+  );
   const stepX =
     data.length > 1 ? (width - padX * 2) / (data.length - 1) : 0;
 
@@ -31,6 +45,12 @@ export function SalesTrendChart({ data }: { data: Point[] }) {
   const linePath = data
     .map((d, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(d.revenue)}`)
     .join(' ');
+
+  const metaPath = hasMeta
+    ? metaSeries!
+        .map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(v)}`)
+        .join(' ')
+    : '';
 
   const areaPath =
     data.length > 0
@@ -111,6 +131,19 @@ export function SalesTrendChart({ data }: { data: Point[] }) {
             )}
           </>
         )}
+
+        {/* Meta acumulada (línea punteada) */}
+        {hasMeta && (
+          <path
+            d={metaPath}
+            fill="none"
+            stroke="#d97706"
+            strokeWidth="2"
+            strokeDasharray="5 5"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
       </svg>
 
       <div className="mt-1 flex justify-between px-1 text-[10px] text-muted-foreground">
@@ -120,6 +153,25 @@ export function SalesTrendChart({ data }: { data: Point[] }) {
             <span key={d.date}>{fmtLabel(d)}</span>
           ))}
       </div>
+
+      {hasMeta && (
+        <div className="mt-2 flex justify-center gap-4 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-0.5 w-4 rounded bg-[var(--primary)]" />
+            Venta diaria
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span
+              className="h-0.5 w-4 rounded"
+              style={{
+                backgroundImage:
+                  'repeating-linear-gradient(to right, #d97706 0 4px, transparent 4px 8px)',
+              }}
+            />
+            Meta acumulada
+          </span>
+        </div>
+      )}
 
       {!hasData && (
         <p className="-mt-32 mb-24 text-center text-sm text-muted-foreground">
