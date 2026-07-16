@@ -9,7 +9,7 @@ export interface ModuleDef {
 
 /** Área de "Toma de pedidos" (rol vendedor). */
 export const SELLER_MODULES: ModuleDef[] = [
-  { key: '/', label: 'Inicio' },
+  { key: '/', label: 'Dashboard comercial' },
   { key: '/pedidos', label: 'Pedidos' },
   { key: '/cotizaciones', label: 'Cotizaciones' },
   { key: '/clientes', label: 'Cartera de Clientes' },

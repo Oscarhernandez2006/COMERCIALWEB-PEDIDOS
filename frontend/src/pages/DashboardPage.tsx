@@ -7,6 +7,7 @@ import {
   ReceiptText,
   TrendingUp,
   Construction,
+  Info,
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
@@ -49,6 +50,21 @@ function EnConstruccion({ className }: { className?: string }) {
     >
       <Construction className="h-3 w-3" />
       En construcción
+    </span>
+  );
+}
+
+/** Etiqueta para cuando el vendedor no tiene presupuesto cargado ese mes. */
+function SinPresupuesto({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground',
+        className,
+      )}
+    >
+      <Info className="h-3 w-3" />
+      Sin presupuesto asignado
     </span>
   );
 }
@@ -263,7 +279,7 @@ export function DashboardPage() {
             ) : pptoRevenue != null ? (
               formatCurrency(pptoRevenue)
             ) : (
-              <EnConstruccion />
+              <SinPresupuesto />
             )
           }
           icon={Wallet}
@@ -275,7 +291,7 @@ export function DashboardPage() {
             ) : pptoKilos != null ? (
               `${pptoKilos.toLocaleString('es-CO')} kg`
             ) : (
-              <EnConstruccion />
+              <SinPresupuesto />
             )
           }
         />
@@ -297,7 +313,7 @@ export function DashboardPage() {
             ) : cumplimientoPesos != null ? (
               `${cumplimientoPesos.toFixed(1)}%`
             ) : (
-              <EnConstruccion />
+              <SinPresupuesto />
             )
           }
           icon={Gauge}
@@ -309,7 +325,7 @@ export function DashboardPage() {
             ) : cumplimientoKilos != null ? (
               `${cumplimientoKilos.toFixed(1)}%`
             ) : (
-              <EnConstruccion />
+              <SinPresupuesto />
             )
           }
         />
@@ -346,7 +362,7 @@ export function DashboardPage() {
                 <span className="text-xs font-medium text-muted-foreground">
                   Pesos
                 </span>
-                <EnConstruccion />
+                <SinPresupuesto />
               </div>
             )}
             {cumplimientoKilos != null ? (
@@ -357,7 +373,7 @@ export function DashboardPage() {
                 <span className="text-xs font-medium text-muted-foreground">
                   Kilos
                 </span>
-                <EnConstruccion />
+                <SinPresupuesto />
               </div>
             )}
           </CardContent>
@@ -380,7 +396,7 @@ export function DashboardPage() {
             )}
             {data && !metaSeries && (
               <p className="mt-1 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
-                Meta acumulada: <EnConstruccion /> — carga el presupuesto del mes.
+                Meta acumulada: <SinPresupuesto /> — carga el presupuesto del mes.
               </p>
             )}
           </CardContent>

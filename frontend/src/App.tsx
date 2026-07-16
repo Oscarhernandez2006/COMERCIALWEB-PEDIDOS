@@ -2,10 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { RequireCompany } from '@/components/RequireCompany';
 import { AppLayout } from '@/components/AppLayout';
+import { OperationalHome } from '@/components/OperationalHome';
 import { LoginPage } from '@/pages/LoginPage';
-import { WorkspaceSelectPage } from '@/pages/WorkspaceSelectPage';
 import { CompanySelectPage } from '@/pages/CompanySelectPage';
-import { DashboardPage } from '@/pages/DashboardPage';
 import { NewOrderPage } from '@/pages/NewOrderPage';
 import { OrdersPage } from '@/pages/OrdersPage';
 import { NewQuotePage } from '@/pages/NewQuotePage';
@@ -30,14 +29,9 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
-      <Route
-        path="/seleccionar"
-        element={
-          <ProtectedRoute role="admin">
-            <WorkspaceSelectPage />
-          </ProtectedRoute>
-        }
-      />
+      {/* Compatibilidad: el antiguo apartado operativo/administrativo se eliminó;
+          se redirige a la selección de compañía (visual unificada). */}
+      <Route path="/seleccionar" element={<Navigate to="/seleccionar-compania" replace />} />
 
       <Route
         path="/seleccionar-compania"
@@ -93,7 +87,7 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={<OperationalHome />} />
         <Route path="pedidos/nuevo" element={<NewOrderPage />} />
         <Route path="pedidos" element={<OrdersPage />} />
         <Route path="cotizaciones/nueva" element={<NewQuotePage />} />

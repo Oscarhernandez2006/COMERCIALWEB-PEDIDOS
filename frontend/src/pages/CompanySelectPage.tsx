@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Building2, ArrowLeft, ArrowRight, LogOut } from 'lucide-react';
+import { Building2, ArrowRight, LogOut } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { useCompany } from '@/company/useCompany';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ const COMPANY_LOGOS: Record<string, string> = {
 };
 
 export function CompanySelectPage() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const { companies, loading, selectCompany } = useCompany();
   const navigate = useNavigate();
 
@@ -32,30 +32,18 @@ export function CompanySelectPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background to-accent/30 p-4">
-      {user?.role === 'admin' ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute left-4 top-4"
-          onClick={() => navigate('/seleccionar')}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Volver
-        </Button>
-      ) : (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute right-4 top-4"
-          onClick={() => {
-            logout();
-            navigate('/login');
-          }}
-        >
-          <LogOut className="h-4 w-4" />
-          Cerrar sesión
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="absolute right-4 top-4"
+        onClick={() => {
+          logout();
+          navigate('/login');
+        }}
+      >
+        <LogOut className="h-4 w-4" />
+        Cerrar sesión
+      </Button>
 
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-bold tracking-tight">

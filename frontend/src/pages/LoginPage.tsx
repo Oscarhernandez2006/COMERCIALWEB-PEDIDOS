@@ -25,14 +25,10 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const loggedUser = await login(username, password);
-      const home =
-        loggedUser.role === 'admin'
-          ? '/seleccionar'
-          : loggedUser.role === 'cartera'
-            ? '/cartera'
-            : '/';
-      navigate(home);
+      await login(username, password);
+      // Todos entran al área operativa y eligen compañía; ahí ven en una sola
+      // barra los módulos habilitados (el admin ve todos). Divididos por compañía.
+      navigate('/');
     } catch {
       setError('Credenciales invalidas. Verifica tu cedula y contrasena.');
     } finally {

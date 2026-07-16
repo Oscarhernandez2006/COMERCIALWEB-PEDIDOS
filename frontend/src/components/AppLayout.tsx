@@ -30,7 +30,7 @@ import { CarteraNotifications } from '@/components/CarteraNotifications';
 import { SiesaStateNotifications } from '@/components/SiesaStateNotifications';
 
 const sellerNav = [
-  { to: '/', label: 'Inicio', icon: LayoutDashboard, end: true },
+  { to: '/', label: 'Dashboard comercial', icon: LayoutDashboard, end: true },
   { to: '/pedidos', label: 'Pedidos', icon: ClipboardList },
   { to: '/cotizaciones', label: 'Cotizaciones', icon: FileText },
   { to: '/clientes', label: 'Cartera de Clientes', icon: Users },
@@ -51,12 +51,8 @@ const adminNav = [
   { to: '/admin/usuarios', label: 'Usuarios', icon: Users },
 ];
 
-const carteraNav = [
-  { to: '/cartera', label: 'Aprobación de cartera', icon: Wallet, end: true },
-];
-
 export function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { company, clearCompany } = useCompany();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
@@ -85,29 +81,24 @@ export function AppLayout() {
   // definidos para esa compañía, se muestran solo esos módulos. Si no tiene
   // permisos (lista vacía) ve los módulos por defecto de su área. El admin
   // siempre ve los módulos por defecto de su área (sin restricción por empresa).
-  const perms = user?.role === 'admin' ? undefined : company?.permissions;
-  let navItems: typeof sellerNav;
-  if (isCarteraArea) {
-    navItems = carteraNav;
-  } else if (perms && perms.length > 0) {
-    navItems = [...sellerNav, ...adminNav].filter((item) =>
-      perms.includes(item.to),
-    );
-  } else {
-    navItems = isAdminArea ? adminNav : sellerNav;
-  }
+  // UNA sola visual con los módulos agrupados en "Operativo" y "Administrativo"
+  // (para orden). El admin ve todos; los demás ven únicamente los que se les
+  // habilitaron por permiso en la compañía actual. Siempre por compañía.
+  const visibleOf = (items: typeof sellerNav) =>
+    user?.role === 'admin'
+      ? items
+      : items.filter((item) => (company?.permissions ?? []).includes(item.to));
+
+  const navGroups = [
+    { label: 'Operativo', items: visibleOf(sellerNav) },
+    { label: 'Administrativo', items: visibleOf(adminNav) },
+  ].filter((group) => group.items.length > 0);
 
   const handleExit = () => {
-    if (user?.role === 'admin') {
-      navigate('/seleccionar');
-    } else if (user?.role === 'cartera') {
-      logout();
-      navigate('/login');
-    } else {
-      // El vendedor vuelve a elegir compañía (ahi puede cerrar sesion).
-      clearCompany();
-      navigate('/seleccionar-compania');
-    }
+    // Todos (incl. admin) vuelven a la selección de compañía; desde ahí pueden
+    // cambiar de compañía o cerrar sesión.
+    clearCompany();
+    navigate('/seleccionar-compania');
   };
 
   const handleChangeCompany = () => {
@@ -137,7 +128,7 @@ export function AppLayout() {
         )}
       </div>
 
-      {!isAdminArea && !isCarteraArea && company && (
+      {company && (
         <button
           onClick={handleChangeCompany}
           className="group mx-3 mt-3 flex items-center gap-3 rounded-lg border border-border bg-accent/40 px-3 py-2 text-left transition-colors hover:bg-accent"
@@ -156,25 +147,32 @@ export function AppLayout() {
         </button>
       )}
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            onClick={() => setMobileOpen(false)}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-              )
-            }
-          >
-            <item.icon className="h-4 w-4 shrink-0" />
-            {item.label}
-          </NavLink>
+      <nav className="flex-1 space-y-4 overflow-y-auto p-3">
+        {navGroups.map((group) => (
+          <div key={group.label} className="space-y-1">
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              {group.label}
+            </p>
+            {group.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  )
+                }
+              >
+                <item.icon className="h-4 w-4 shrink-0" />
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 

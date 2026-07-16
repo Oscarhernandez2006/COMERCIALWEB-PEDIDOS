@@ -219,13 +219,13 @@ export function UsersPage() {
       {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} />}
       {companiesUser && (
         <CompaniesModal
-          user={companiesUser}
+          user={users.find((u) => u.id === companiesUser.id) ?? companiesUser}
           onClose={() => setCompaniesUser(null)}
         />
       )}
       {permsUser && (
         <PermissionsModal
-          user={permsUser}
+          user={users.find((u) => u.id === permsUser.id) ?? permsUser}
           onClose={() => setPermsUser(null)}
         />
       )}
