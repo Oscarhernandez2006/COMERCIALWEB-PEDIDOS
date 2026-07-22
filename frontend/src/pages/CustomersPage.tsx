@@ -7,6 +7,7 @@ import {
   Wallet,
   X,
   AlertCircle,
+  FileDown,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
@@ -14,10 +15,16 @@ import {
   useClientPortfolio,
   useClientPortfolios,
 } from '@/hooks/useApi';
+import { useAuth } from '@/auth/useAuth';
+import { useCompany } from '@/company/useCompany';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import {
+  exportClientPortfolioPdf,
+  exportSellerPortfolioPdf,
+} from '@/lib/cartera-pdf';
 import type { Client } from '@/types';
 
 /** Extrae el mensaje de error que envía el backend, si lo hay. */
@@ -34,13 +41,16 @@ export function CustomersPage() {
   const [search, setSearch] = useState('');
   const [portfolioClient, setPortfolioClient] = useState<Client | null>(null);
   const { data: customers = [], isLoading } = useClients(search);
+  const { user } = useAuth();
+  const { company } = useCompany();
 
   // Saldos de cartera de todos los clientes, para ordenar por deuda.
   const nits = useMemo(
     () => customers.map((c) => c.code.trim()),
     [customers],
   );
-  const { balances } = useClientPortfolios(nits);
+  const { balances, portfolios, isLoading: isLoadingBalances } =
+    useClientPortfolios(nits);
 
   // Los clientes en deuda van primero (mayor saldo arriba); el resto conserva
   // su orden original.
@@ -52,13 +62,39 @@ export function CustomersPage() {
     });
   }, [customers, balances]);
 
+  const handleExportSeller = () => {
+    exportSellerPortfolioPdf({
+      sellerName: user?.name ?? 'Vendedor',
+      companyName: company?.name ?? '',
+      clients: customers,
+      portfolios,
+    });
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Cartera de Clientes</h2>
-        <p className="text-muted-foreground">
-          Terceros sincronizados desde Siesa.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">
+            Cartera de Clientes
+          </h2>
+          <p className="text-muted-foreground">
+            Terceros sincronizados desde Siesa.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleExportSeller}
+          disabled={customers.length === 0 || isLoadingBalances}
+          title={
+            isLoadingBalances
+              ? 'Consultando la cartera de tus clientes…'
+              : 'Descargar el informe de cartera de todos tus clientes'
+          }
+        >
+          <FileDown className="h-4 w-4" />
+          {isLoadingBalances ? 'Cargando cartera…' : 'Informe de cartera (PDF)'}
+        </Button>
       </div>
 
       <div className="relative max-w-md">
@@ -130,6 +166,8 @@ export function CustomersPage() {
       {portfolioClient && (
         <PortfolioModal
           client={portfolioClient}
+          sellerName={user?.name ?? 'Vendedor'}
+          companyName={company?.name ?? ''}
           onClose={() => setPortfolioClient(null)}
         />
       )}
@@ -171,9 +209,13 @@ function CardPortfolioBalance({ balance }: { balance?: number }) {
 /** Modal con la cartera (documentos por cobrar) de un cliente. */
 function PortfolioModal({
   client,
+  sellerName,
+  companyName,
   onClose,
 }: {
   client: Client;
+  sellerName: string;
+  companyName: string;
   onClose: () => void;
 }) {
   const { data, isLoading, isError, error } = useClientPortfolio(
@@ -199,9 +241,28 @@ function PortfolioModal({
               NIT/Código {client.code.trim()}
             </p>
           </div>
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                data &&
+                exportClientPortfolioPdf({
+                  client,
+                  portfolio: data,
+                  companyName,
+                  sellerName,
+                })
+              }
+              disabled={!data}
+            >
+              <FileDown className="h-4 w-4" />
+              PDF
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="flex-1 overflow-y-auto p-5">
           {isLoading ? (

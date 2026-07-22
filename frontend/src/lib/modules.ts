@@ -11,6 +11,8 @@ export interface ModuleDef {
 export const SELLER_MODULES: ModuleDef[] = [
   { key: '/', label: 'Dashboard comercial' },
   { key: '/pedidos', label: 'Pedidos' },
+  { key: '/pedidos/canales', label: 'Pedidos · Canales' },
+  { key: '/pedidos/subproductos', label: 'Pedidos · Subproductos' },
   { key: '/cotizaciones', label: 'Cotizaciones' },
   { key: '/clientes', label: 'Cartera de Clientes' },
   { key: '/disponibilidad', label: 'Disponibilidad' },

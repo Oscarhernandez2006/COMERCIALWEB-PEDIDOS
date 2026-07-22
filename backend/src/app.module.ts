@@ -17,6 +17,8 @@ import { AdminModule } from './modules/admin/admin.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { BudgetsModule } from './modules/budgets/budgets.module';
+import { ChannelSalesModule } from './modules/channel-sales/channel-sales.module';
+import { CanalOrdersModule } from './modules/canal-orders/canal-orders.module';
 import { SeederService } from './database/seeder.service';
 
 @Module({
@@ -41,6 +43,8 @@ import { SeederService } from './database/seeder.service';
     SettingsModule,
     DashboardModule,
     BudgetsModule,
+    ChannelSalesModule,
+    CanalOrdersModule,
   ],
   providers: [SeederService],
 })

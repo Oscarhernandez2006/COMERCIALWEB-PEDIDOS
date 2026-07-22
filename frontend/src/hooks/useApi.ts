@@ -7,6 +7,7 @@ import {
 import { api } from '@/lib/api';
 import { useCompany } from '@/company/useCompany';
 import type {
+  CanalOrder,
   Client,
   ClientPortfolio,
   Customer,
@@ -34,17 +35,17 @@ export function useProducts(search: string) {
 }
 
 /**
- * Tablero de gestión comercial del vendedor autenticado para un mes/año.
- * La compañía se toma del contexto (cabecera X-Company-Id).
+ * Tablero de gestión comercial del vendedor autenticado para un mes/año y,
+ * opcionalmente, un día concreto (day > 0). La compañía se toma del contexto.
  */
-export function useSellerDashboard(month: number, year: number) {
+export function useSellerDashboard(month: number, year: number, day = 0) {
   const { company } = useCompany();
   return useQuery({
-    queryKey: ['dashboard', 'commercial', company?.id, month, year],
+    queryKey: ['dashboard', 'commercial', company?.id, month, year, day],
     queryFn: async () => {
       const res = await api.get<SellerCommercialDashboard>(
         '/dashboard/commercial',
-        { params: { month, year } },
+        { params: day > 0 ? { month, year, day } : { month, year } },
       );
       return res.data;
     },
@@ -172,7 +173,12 @@ export function useClientPortfolios(nits: string[]) {
   });
   const isLoading = results.some((res) => res.isLoading);
 
-  return { balances, isLoading };
+  const portfolios: Record<string, ClientPortfolio> = {};
+  results.forEach((res, i) => {
+    if (res.data) portfolios[nits[i]] = res.data;
+  });
+
+  return { balances, portfolios, isLoading };
 }
 
 export function useOrders() {
@@ -228,6 +234,49 @@ export function useCreateOrder() {
       return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['orders'] }),
+  });
+}
+
+/* ---- Pedidos de canales (recepción manual, no sube al ERP) ---- */
+
+export function useCanalOrders(from?: string, to?: string) {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['canal-orders', company?.id, from ?? '', to ?? ''],
+    queryFn: async () => {
+      const res = await api.get<CanalOrder[]>('/canal-orders', {
+        params: from && to ? { from, to } : undefined,
+      });
+      return res.data;
+    },
+  });
+}
+
+export interface CreateCanalOrderInput {
+  dispatchDate: string;
+  clientCode: string;
+  clientName: string;
+  clientAddress?: string;
+  clientCity?: string;
+  items: {
+    itemRef: string;
+    itemName: string;
+    especie: string;
+    quantity: number;
+    specifications?: string;
+    price: number;
+    freight?: number;
+  }[];
+}
+
+export function useCreateCanalOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateCanalOrderInput) => {
+      const res = await api.post<CanalOrder>('/canal-orders', input);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['canal-orders'] }),
   });
 }
 

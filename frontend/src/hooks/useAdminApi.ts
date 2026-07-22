@@ -10,6 +10,7 @@ import type {
   Order,
   Product,
   ProductSalesReportData,
+  ProjectionConfig,
   SalesSummaryReportData,
   SellerRankingReportData,
   SellerProductReportData,
@@ -249,6 +250,63 @@ export function useSaveBudgets() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({
         queryKey: ['admin', 'budgets', vars.companyId, vars.month, vars.year],
+      });
+    },
+  });
+}
+
+/* ---- Proyección de ventas por compañía ---- */
+
+export function useProjection(
+  companyId: string,
+  month: number,
+  year: number,
+) {
+  return useQuery({
+    queryKey: ['admin', 'projection', companyId, month, year],
+    queryFn: async () => {
+      const res = await api.get<ProjectionConfig>('/admin/budgets/projection', {
+        params: { month, year },
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+    enabled: Boolean(companyId),
+  });
+}
+
+interface SaveProjectionInput {
+  companyId: string;
+  month: number;
+  year: number;
+  mode: ProjectionConfig['mode'];
+  revenue: number;
+  kilos: number;
+  workingDays: string[];
+}
+
+export function useSaveProjection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      companyId,
+      month,
+      year,
+      mode,
+      revenue,
+      kilos,
+      workingDays,
+    }: SaveProjectionInput) => {
+      const res = await api.put<ProjectionConfig>(
+        '/admin/budgets/projection',
+        { month, year, mode, revenue, kilos, workingDays },
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({
+        queryKey: ['admin', 'projection', vars.companyId, vars.month, vars.year],
       });
     },
   });

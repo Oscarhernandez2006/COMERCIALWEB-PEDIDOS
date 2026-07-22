@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Save, Target, RefreshCw, Check, Search } from 'lucide-react';
+import {
+  Save,
+  Target,
+  RefreshCw,
+  Check,
+  Search,
+  TrendingUp,
+  CalendarDays,
+} from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { useCompany } from '@/company/useCompany';
-import { useBudgets, useSaveBudgets } from '@/hooks/useAdminApi';
+import {
+  useBudgets,
+  useSaveBudgets,
+  useProjection,
+  useSaveProjection,
+} from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn } from '@/lib/utils';
 import {
@@ -46,6 +59,305 @@ const MONTHS = [
 interface Draft {
   targetKilos: string;
   expectedRevenue: string;
+}
+
+/** Limpia una entrada numérica dejando dígitos y un único punto decimal. */
+function cleanNumeric(value: string): string {
+  let clean = value.replace(/[^\d.]/g, '');
+  const firstDot = clean.indexOf('.');
+  if (firstDot !== -1) {
+    clean =
+      clean.slice(0, firstDot + 1) +
+      clean.slice(firstDot + 1).replace(/\./g, '');
+  }
+  return clean;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Encabezados del calendario, semana iniciando en lunes. */
+const WEEKDAY_LABELS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'];
+
+/**
+ * Sección de proyección de ventas de la compañía. Permite elegir entre asignar
+ * la proyección del mes completo o por día hábil (excluyentes), con un
+ * calendario para marcar los días hábiles del mes. El total del mes se muestra
+ * en el dashboard.
+ */
+function ProjectionSection({
+  companyId,
+  month,
+  year,
+}: {
+  companyId: string;
+  month: number;
+  year: number;
+}) {
+  const { data, isLoading } = useProjection(companyId, month, year);
+  const saveMutation = useSaveProjection();
+
+  const [mode, setMode] = useState<'month' | 'day'>('month');
+  const [revenue, setRevenue] = useState('');
+  const [kilos, setKilos] = useState('');
+  const [days, setDays] = useState<Set<string>>(new Set());
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!data) return;
+    setMode(data.mode);
+    setRevenue(data.revenue ? String(data.revenue) : '');
+    setKilos(data.kilos ? String(data.kilos) : '');
+    setDays(new Set(data.workingDays ?? []));
+    setSaved(false);
+  }, [data]);
+
+  const daysInMonth = useMemo(
+    () => new Date(year, month, 0).getDate(),
+    [month, year],
+  );
+  // Índice (0=lunes … 6=domingo) del primer día del mes.
+  const firstOffset = useMemo(
+    () => (new Date(year, month - 1, 1).getDay() + 6) % 7,
+    [month, year],
+  );
+
+  const workingCount = days.size;
+
+  const toggleDay = (d: number) => {
+    const iso = `${year}-${pad2(month)}-${pad2(d)}`;
+    setDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(iso)) next.delete(iso);
+      else next.add(iso);
+      return next;
+    });
+    setSaved(false);
+  };
+
+  const selectWeekdays = (includeSaturday: boolean) => {
+    const next = new Set<string>();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const wd = new Date(year, month - 1, d).getDay(); // 0=domingo … 6=sábado
+      if (wd >= 1 && wd <= (includeSaturday ? 6 : 5)) {
+        next.add(`${year}-${pad2(month)}-${pad2(d)}`);
+      }
+    }
+    setDays(next);
+    setSaved(false);
+  };
+
+  // Total del mes proyectado: en modo "día" se multiplica por días hábiles.
+  const monthRevenue =
+    mode === 'day' ? Number(revenue || 0) * workingCount : Number(revenue || 0);
+  const monthKilos =
+    mode === 'day' ? Number(kilos || 0) * workingCount : Number(kilos || 0);
+
+  const handleSave = async () => {
+    await saveMutation.mutateAsync({
+      companyId,
+      month,
+      year,
+      mode,
+      revenue: Number(revenue || 0),
+      kilos: Number(kilos || 0),
+      workingDays: Array.from(days).sort(),
+    });
+    setSaved(true);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <TrendingUp className="h-5 w-5 text-primary" />
+          Proyección de ventas · {MONTHS[month - 1]} {year}
+        </CardTitle>
+        <Button size="sm" onClick={handleSave} disabled={saveMutation.isPending}>
+          {saved ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {saveMutation.isPending
+            ? 'Guardando…'
+            : saved
+              ? 'Guardado'
+              : 'Guardar proyección'}
+        </Button>
+      </CardHeader>
+      <CardContent className="grid gap-5 lg:grid-cols-2">
+        {/* Columna izquierda: modo + valores */}
+        <div className="space-y-4">
+          {/* Selector de modo (excluyente) */}
+          <div className="inline-flex rounded-lg border border-input p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('month');
+                setSaved(false);
+              }}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                mode === 'month'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Proyección del mes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('day');
+                setSaved(false);
+              }}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                mode === 'day'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Proyección diaria
+            </button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            {mode === 'month'
+              ? 'Ingresa el total proyectado para todo el mes.'
+              : 'Ingresa el valor de un día hábil; el total del mes se calcula multiplicándolo por los días hábiles seleccionados.'}
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                {mode === 'month' ? 'Proyección Pesos (mes)' : 'Pesos por día'}
+              </label>
+              <input
+                inputMode="numeric"
+                value={revenue}
+                onChange={(e) => {
+                  setRevenue(cleanNumeric(e.target.value));
+                  setSaved(false);
+                }}
+                placeholder="0"
+                disabled={isLoading}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                {mode === 'month' ? 'Proyección Kilos (mes)' : 'Kilos por día'}
+              </label>
+              <input
+                inputMode="numeric"
+                value={kilos}
+                onChange={(e) => {
+                  setKilos(cleanNumeric(e.target.value));
+                  setSaved(false);
+                }}
+                placeholder="0"
+                disabled={isLoading}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+          </div>
+
+          {/* Total proyectado del mes */}
+          <div className="rounded-lg border border-border bg-muted/40 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Total proyectado del mes
+              {mode === 'day' ? ` · ${workingCount} días hábiles` : ''}
+            </p>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <span className="text-lg font-bold">
+                {formatSigcom(monthRevenue)}
+              </span>
+              <span className="text-sm font-semibold text-muted-foreground">
+                {monthKilos.toLocaleString('en-US', {
+                  maximumFractionDigits: 2,
+                })}{' '}
+                kg
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Columna derecha: calendario de días hábiles */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              Días hábiles ({workingCount})
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => selectWeekdays(false)}
+              >
+                Lun–Vie
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => selectWeekdays(true)}
+              >
+                Lun–Sáb
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDays(new Set());
+                  setSaved(false);
+                }}
+              >
+                Limpiar
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {WEEKDAY_LABELS.map((w) => (
+              <span
+                key={w}
+                className="py-1 text-[11px] font-semibold text-muted-foreground"
+              >
+                {w}
+              </span>
+            ))}
+            {Array.from({ length: firstOffset }).map((_, i) => (
+              <span key={`blank-${i}`} />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const d = i + 1;
+              const iso = `${year}-${pad2(month)}-${pad2(d)}`;
+              const active = days.has(iso);
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  onClick={() => toggleDay(d)}
+                  className={cn(
+                    'aspect-square rounded-md text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted/50 text-foreground hover:bg-muted',
+                  )}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function BudgetsPage() {
@@ -238,6 +550,11 @@ export function BudgetsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Proyección de ventas de la compañía */}
+      {companyId && (
+        <ProjectionSection companyId={companyId} month={month} year={year} />
+      )}
 
       {/* Tabla editable */}
       <Card>

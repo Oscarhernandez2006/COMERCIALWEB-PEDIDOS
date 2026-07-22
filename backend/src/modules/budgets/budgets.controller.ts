@@ -9,6 +9,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BudgetsService } from './budgets.service';
 import { SaveBudgetsDto } from './dto/save-budgets.dto';
+import { SaveProjectionDto } from './dto/save-projection.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -45,5 +46,28 @@ export class BudgetsController {
     @CurrentUser() user: User,
   ) {
     return this.budgetsService.save(companyId, dto, user);
+  }
+
+  /** Proyección de ventas de la compañía para un mes/año. */
+  @Get('projection')
+  getProjection(
+    @CompanyId() companyId: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    const now = new Date();
+    const m = Number(month) || now.getMonth() + 1;
+    const y = Number(year) || now.getFullYear();
+    return this.budgetsService.getProjection(companyId, m, y);
+  }
+
+  /** Guarda (crea/actualiza) la proyección de ventas de la compañía. */
+  @Put('projection')
+  saveProjection(
+    @CompanyId() companyId: string,
+    @Body() dto: SaveProjectionDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.budgetsService.saveProjection(companyId, dto, user);
   }
 }

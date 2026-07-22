@@ -3,11 +3,12 @@ import {
   Wallet,
   DollarSign,
   Gauge,
-  Users,
-  ReceiptText,
+  ClipboardList,
+  Scale,
+  Coins,
   TrendingUp,
-  Construction,
   Info,
+  Calendar,
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
@@ -24,34 +25,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { SalesTrendChart } from '@/components/SalesTrendChart';
 
-const MONTHS = [
-  'Enero',
-  'Febrero',
-  'Marzo',
-  'Abril',
-  'Mayo',
-  'Junio',
-  'Julio',
-  'Agosto',
-  'Septiembre',
-  'Octubre',
-  'Noviembre',
-  'Diciembre',
-];
-
-/** Etiqueta reutilizable para datos que aún no están disponibles. */
-function EnConstruccion({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-        className,
-      )}
-    >
-      <Construction className="h-3 w-3" />
-      En construcción
-    </span>
-  );
+/** Fecha local de hoy en formato YYYY-MM-DD. */
+function todayISO(): string {
+  const d = new Date();
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
 }
 
 /** Etiqueta para cuando el vendedor no tiene presupuesto cargado ese mes. */
@@ -65,6 +43,21 @@ function SinPresupuesto({ className }: { className?: string }) {
     >
       <Info className="h-3 w-3" />
       Sin presupuesto asignado
+    </span>
+  );
+}
+
+/** Etiqueta para cuando la compañía no tiene proyección asignada ese mes. */
+function SinProyeccion({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground',
+        className,
+      )}
+    >
+      <Info className="h-3 w-3" />
+      Sin proyección asignada
     </span>
   );
 }
@@ -121,8 +114,8 @@ interface KpiProps {
   value: React.ReactNode;
   icon: React.ComponentType<{ className?: string }>;
   accent: string;
-  subLabel: string;
-  subValue: React.ReactNode;
+  subLabel?: string;
+  subValue?: React.ReactNode;
 }
 
 function KpiCard({ label, value, icon: Icon, accent, subLabel, subValue }: KpiProps) {
@@ -145,12 +138,14 @@ function KpiCard({ label, value, icon: Icon, accent, subLabel, subValue }: KpiPr
             <Icon className="h-5 w-5" />
           </div>
         </div>
-        <div className="mt-3 border-t border-border pt-2">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            {subLabel}
-          </p>
-          <div className="text-sm font-semibold">{subValue}</div>
-        </div>
+        {subLabel !== undefined && (
+          <div className="mt-3 border-t border-border pt-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {subLabel}
+            </p>
+            <div className="text-sm font-semibold">{subValue}</div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -158,27 +153,44 @@ function KpiCard({ label, value, icon: Icon, accent, subLabel, subValue }: KpiPr
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
+  // Fecha seleccionada en el calendario y si se ve el mes completo o solo ese
+  // día. De la fecha se derivan mes, año y día.
+  const [dateStr, setDateStr] = useState(() => todayISO());
+  const [wholeMonth, setWholeMonth] = useState(true);
+
+  const selected = new Date(`${dateStr}T12:00:00`);
+  const month = selected.getMonth() + 1;
+  const year = selected.getFullYear();
+  const day = wholeMonth ? 0 : selected.getDate();
 
   const { data, isLoading, isFetching, refetch } = useSellerDashboard(
     month,
     year,
+    day,
   );
 
-  const years = useMemo(() => {
-    return [new Date().getFullYear()];
-  }, []);
+  const daysInMonth = useMemo(
+    () => new Date(year, month, 0).getDate(),
+    [month, year],
+  );
+  const isSingleDay = day > 0;
 
   const totals = data?.totals;
   const growth = data?.growth.revenuePct ?? null;
   const growthKilos = data?.growth.kilosPct ?? null;
+  // Proyección de ventas de la compañía (total del mes), si está asignada.
+  const projection = data?.projection ?? null;
 
-  // Presupuesto del mes (si está cargado) y cumplimiento en pesos.
+  // Presupuesto: mensual, o su parte proporcional del día cuando se filtra un
+  // día (la meta se reparte lineal entre los días del mes).
   const budget = data?.budget ?? null;
-  const pptoRevenue = budget?.expectedRevenue ?? null;
-  const pptoKilos = budget?.targetKilos ?? null;
+  const targetDivisor = isSingleDay ? daysInMonth : 1;
+  const pptoRevenue =
+    budget?.expectedRevenue != null
+      ? budget.expectedRevenue / targetDivisor
+      : null;
+  const pptoKilos =
+    budget?.targetKilos != null ? budget.targetKilos / targetDivisor : null;
   const cumplimientoPesos =
     pptoRevenue && pptoRevenue > 0 && totals
       ? (totals.revenue / pptoRevenue) * 100
@@ -187,15 +199,16 @@ export function DashboardPage() {
   const cumplimientoKilos =
     pptoKilos && pptoKilos > 0 && totals ? (kilosSold / pptoKilos) * 100 : null;
 
-  // Meta acumulada (pesos): presupuesto del mes repartido lineal por día.
+  // Meta acumulada solo aplica en la vista mensual (en un día es por horas).
   const metaSeries = useMemo(() => {
-    if (!data || pptoRevenue == null || pptoRevenue <= 0) return undefined;
-    const daysInMonth = new Date(year, month, 0).getDate();
+    if (isSingleDay) return undefined;
+    const target = budget?.expectedRevenue;
+    if (!data || target == null || target <= 0) return undefined;
     return data.salesTrend.map((p) => {
-      const day = Number(p.date.slice(8, 10));
-      return (pptoRevenue / daysInMonth) * day;
+      const d = Number(p.date.slice(8, 10));
+      return (target / daysInMonth) * d;
     });
-  }, [data, pptoRevenue, month, year]);
+  }, [data, budget, daysInMonth, isSingleDay]);
 
   return (
     <div className="space-y-5">
@@ -228,35 +241,49 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">
-              Mes
+              Fecha
             </label>
-            <select
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i + 1}>
-                  {m}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="date"
+                value={dateStr}
+                max={todayISO()}
+                onChange={(e) => setDateStr(e.target.value || todayISO())}
+                className="h-9 rounded-md border border-input bg-background pl-8 pr-2 text-sm"
+              />
+            </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">
-              Año
+              Ver
             </label>
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+            <div className="inline-flex h-9 overflow-hidden rounded-md border border-input">
+              <button
+                type="button"
+                onClick={() => setWholeMonth(true)}
+                className={cn(
+                  'px-3 text-sm font-medium transition-colors',
+                  wholeMonth
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-background text-muted-foreground hover:bg-accent',
+                )}
+              >
+                Mes
+              </button>
+              <button
+                type="button"
+                onClick={() => setWholeMonth(false)}
+                className={cn(
+                  'px-3 text-sm font-medium transition-colors',
+                  !wholeMonth
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-background text-muted-foreground hover:bg-accent',
+                )}
+              >
+                Día
+              </button>
+            </div>
           </div>
           <Button
             variant="outline"
@@ -270,9 +297,9 @@ export function DashboardPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          label="Ppto Mes (Pesos)"
+          label={`Ppto ${isSingleDay ? 'Día' : 'Mes'} (Pesos)`}
           value={
             isLoading ? (
               '…'
@@ -330,20 +357,54 @@ export function DashboardPage() {
           }
         />
         <KpiCard
-          label="Clientes Atendidos"
-          value={isLoading ? '…' : (totals?.customersServed ?? 0)}
-          icon={Users}
-          accent="bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-900/40 dark:text-fuchsia-300"
-          subLabel="Clientes Activos"
-          subValue={isLoading ? '…' : (totals?.activeCustomers ?? 0)}
+          label="Proyección (Pesos)"
+          value={
+            isLoading ? (
+              '…'
+            ) : projection != null ? (
+              formatCurrency(projection.revenue)
+            ) : (
+              <SinProyeccion />
+            )
+          }
+          icon={TrendingUp}
+          accent="bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-300"
         />
         <KpiCard
-          label="Tickets Facturados"
+          label="Proyección (Kilos)"
+          value={
+            isLoading ? (
+              '…'
+            ) : projection != null ? (
+              `${projection.kilos.toLocaleString('es-CO')} kg`
+            ) : (
+              <SinProyeccion />
+            )
+          }
+          icon={Scale}
+          accent="bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-300"
+        />
+        <KpiCard
+          label="Número de Pedidos"
           value={isLoading ? '…' : (totals?.orders ?? 0)}
-          icon={ReceiptText}
+          icon={ClipboardList}
+          accent="bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300"
+        />
+        <KpiCard
+          label="Pedidos (Kilos)"
+          value={
+            isLoading
+              ? '…'
+              : `${(totals?.orderKilos ?? 0).toLocaleString('es-CO')} kg`
+          }
+          icon={Scale}
+          accent="bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-900/40 dark:text-fuchsia-300"
+        />
+        <KpiCard
+          label="Pedidos (Pesos)"
+          value={isLoading ? '…' : formatCurrency(totals?.orderRevenue ?? 0)}
+          icon={Coins}
           accent="bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-300"
-          subLabel="Ticket Promedio"
-          subValue={isLoading ? '…' : formatCurrency(totals?.avgTicket ?? 0)}
         />
       </div>
 
@@ -445,19 +506,103 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      {/* Canales (en construcción) y cortes (real) */}
+      {/* Canales (desde el ERP) y cortes (pedidos de la app) */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {['Ventas por Canal (Pesos)', 'Ventas en Canales'].map((title) => (
-          <Card key={title}>
-            <CardHeader>
-              <CardTitle className="text-base">{title}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex h-40 flex-col items-center justify-center gap-3 text-center">
-              <Construction className="h-9 w-9 text-muted-foreground" />
-              <EnConstruccion />
-            </CardContent>
-          </Card>
-        ))}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ventas por Canal (Pesos)</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="max-h-56 divide-y divide-border overflow-y-auto">
+              {data && data.salesByChannel.length > 0 ? (
+                (() => {
+                  const totalCh = data.salesByChannel.reduce(
+                    (s, c) => s + c.revenue,
+                    0,
+                  );
+                  return data.salesByChannel.map((c, i) => {
+                    const pct = totalCh > 0 ? (c.revenue / totalCh) * 100 : 0;
+                    return (
+                      <div key={`${c.name}-${i}`} className="px-4 py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <p
+                            className="min-w-0 flex-1 truncate text-sm font-medium"
+                            title={c.name}
+                          >
+                            {c.name}
+                          </p>
+                          <span className="shrink-0 text-sm font-semibold tabular-nums">
+                            {formatCurrency(c.revenue)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="w-10 shrink-0 text-right text-[11px] text-muted-foreground">
+                            {pct.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
+              ) : (
+                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  {isLoading ? 'Cargando…' : 'Sin ventas de canal en el período.'}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ventas en Canales</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="max-h-56 overflow-y-auto">
+              {data && data.salesByChannel.length > 0 ? (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Canal</th>
+                      <th className="px-3 py-2 text-right font-medium">Kg</th>
+                      <th className="px-3 py-2 text-right font-medium">Venta</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {data.salesByChannel.map((c, i) => (
+                      <tr key={`${c.name}-${i}`} className="hover:bg-muted/40">
+                        <td
+                          className="max-w-[120px] truncate px-3 py-2"
+                          title={c.name}
+                        >
+                          {c.name}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {c.kilos.toLocaleString('es-CO', {
+                            maximumFractionDigits: 1,
+                          })}
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium tabular-nums">
+                          {formatCurrency(c.revenue)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  {isLoading ? 'Cargando…' : 'Sin ventas de canal en el período.'}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -517,7 +662,11 @@ export function DashboardPage() {
         <CardHeader>
           <CardTitle className="text-base">Ranking Personal</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <RankItem
+            label="Clientes Atendidos"
+            value={isLoading ? '…' : String(totals?.customersServed ?? 0)}
+          />
           <RankItem
             label="Clientes Activos"
             value={isLoading ? '…' : String(totals?.activeCustomers ?? 0)}

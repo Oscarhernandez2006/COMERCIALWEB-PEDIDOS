@@ -254,7 +254,7 @@ export interface AdminDashboardStats {
 
 /** Tablero de gestión comercial de un vendedor para un mes. */
 export interface SellerCommercialDashboard {
-  period: { month: number; year: number; label: string };
+  period: { month: number; year: number; day: number | null; label: string };
   generatedAt: string;
   seller: { id: string; name: string };
   totals: {
@@ -264,12 +264,14 @@ export interface SellerCommercialDashboard {
     activeCustomers: number;
     avgTicket: number;
     kilosSold: number;
+    orderRevenue: number;
+    orderKilos: number;
   };
   growth: {
     revenuePct: number | null;
     kilosPct: number | null;
   };
-  salesTrend: { date: string; revenue: number; orders: number }[];
+  salesTrend: { date: string; revenue: number; orders: number; label?: string }[];
   topCustomers: {
     name: string;
     code: string;
@@ -282,7 +284,13 @@ export interface SellerCommercialDashboard {
     quantity: number;
     revenue: number;
   }[];
+  salesByChannel: {
+    name: string;
+    kilos: number;
+    revenue: number;
+  }[];
   budget: { expectedRevenue: number; targetKilos: number } | null;
+  projection: { revenue: number; kilos: number } | null;
 }
 
 /** Fila de presupuesto de un vendedor para un mes/año. */
@@ -292,6 +300,50 @@ export interface BudgetRow {
   siesaSellerCode: string | null;
   targetKilos: number;
   expectedRevenue: number;
+}
+
+/** Definición de un ítem de canal seleccionable en la toma de pedidos. */
+export interface CanalItemDef {
+  ref: string;
+  name: string;
+  especie: string;
+}
+
+/** Línea (ítem) de un pedido de canales. */
+export interface CanalOrderItem {
+  itemRef: string;
+  itemName: string;
+  especie: string;
+  quantity: number;
+  specifications: string;
+  price: number;
+  freight: number;
+}
+
+/** Pedido de canales (recepción manual, no sube al ERP). */
+export interface CanalOrder {
+  id: string;
+  orderNumber: number;
+  sellerId: string;
+  sellerName: string;
+  dispatchDate: string;
+  clientCode: string;
+  clientName: string;
+  clientAddress?: string;
+  clientCity?: string;
+  items: CanalOrderItem[];
+  createdAt: string;
+}
+
+/** Modo de asignación de la proyección de ventas de una compañía. */
+export type ProjectionMode = 'month' | 'day';
+
+/** Configuración de la proyección de ventas de una compañía para un mes. */
+export interface ProjectionConfig {
+  mode: ProjectionMode;
+  revenue: number;
+  kilos: number;
+  workingDays: string[];
 }
 
 /** Métricas de una compañía dentro del dashboard gerencial (rango de fechas). */

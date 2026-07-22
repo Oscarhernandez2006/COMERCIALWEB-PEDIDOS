@@ -8,11 +8,13 @@ import { ClientRecord } from '../clients/entities/client-record.entity';
 import { UserCompany } from '../users/entities/user-company.entity';
 import { User } from '../users/entities/user.entity';
 import { BudgetsModule } from '../budgets/budgets.module';
+import { ChannelSalesModule } from '../channel-sales/channel-sales.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem, ClientRecord, UserCompany, User]),
     BudgetsModule,
+    ChannelSalesModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

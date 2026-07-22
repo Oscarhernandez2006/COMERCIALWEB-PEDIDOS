@@ -14,6 +14,7 @@ import {
   FileBarChart,
   FileDown,
   Boxes,
+  Beef,
   Wallet,
   FileText,
   Clock,
@@ -32,6 +33,7 @@ import { SiesaStateNotifications } from '@/components/SiesaStateNotifications';
 const sellerNav = [
   { to: '/', label: 'Dashboard comercial', icon: LayoutDashboard, end: true },
   { to: '/pedidos', label: 'Pedidos', icon: ClipboardList },
+  { to: '/pedidos/canales', label: 'Canales', icon: Beef },
   { to: '/cotizaciones', label: 'Cotizaciones', icon: FileText },
   { to: '/clientes', label: 'Cartera de Clientes', icon: Users },
   { to: '/disponibilidad', label: 'Disponibilidad', icon: Boxes },

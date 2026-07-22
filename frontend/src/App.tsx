@@ -7,6 +7,8 @@ import { LoginPage } from '@/pages/LoginPage';
 import { CompanySelectPage } from '@/pages/CompanySelectPage';
 import { NewOrderPage } from '@/pages/NewOrderPage';
 import { OrdersPage } from '@/pages/OrdersPage';
+import { NewCanalOrderPage } from '@/pages/NewCanalOrderPage';
+import { CanalOrdersPage } from '@/pages/CanalOrdersPage';
 import { NewQuotePage } from '@/pages/NewQuotePage';
 import { QuotesPage } from '@/pages/QuotesPage';
 import { StockPage } from '@/pages/StockPage';
@@ -90,6 +92,8 @@ function App() {
         <Route index element={<OperationalHome />} />
         <Route path="pedidos/nuevo" element={<NewOrderPage />} />
         <Route path="pedidos" element={<OrdersPage />} />
+        <Route path="pedidos/canales" element={<CanalOrdersPage />} />
+        <Route path="pedidos/canales/nuevo" element={<NewCanalOrderPage />} />
         <Route path="cotizaciones/nueva" element={<NewQuotePage />} />
         <Route path="cotizaciones" element={<QuotesPage />} />
         <Route path="disponibilidad" element={<StockPage />} />

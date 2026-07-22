@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -40,6 +40,7 @@ import { DeliverySchedulePicker } from '@/components/DeliverySchedulePicker';
 import { isScheduleComplete, formatDeliverySchedule } from '@/lib/delivery-schedule';
 import { getMinOrderTotal } from '@/lib/companies';
 import { useCompany } from '@/company/useCompany';
+import { useAuth } from '@/auth/useAuth';
 import type {
   CartLine,
   Client,
@@ -110,6 +111,12 @@ function formatScheduleTime(hour: number, minute: number): string {
 
 export function NewOrderPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tipo = (searchParams.get('tipo') ?? 'cortes') as
+    | 'cortes'
+    | 'canales'
+    | 'subproductos';
+  const { user } = useAuth();
   const [customerSearch, setCustomerSearch] = useState('');
   const [customer, setCustomer] = useState<Client | null>(null);
   const [productSearch, setProductSearch] = useState('');
@@ -276,6 +283,45 @@ export function NewOrderPage() {
     // el módulo de Pedidos (no se descarga automáticamente).
     setCreatedOrder(order);
   };
+
+  // Vistas de Canales y Subproductos: aún en construcción. La pantalla actual
+  // es exclusiva de Cortes. Se valida el permiso por si se entra por URL.
+  if (tipo !== 'cortes') {
+    const permKey =
+      tipo === 'canales' ? '/pedidos/canales' : '/pedidos/subproductos';
+    const allowed =
+      user?.role === 'admin' ||
+      (company?.permissions ?? []).includes(permKey);
+    const label = tipo === 'canales' ? 'Canales' : 'Subproductos';
+    return (
+      <div className="mx-auto max-w-lg py-16">
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            {allowed ? (
+              <>
+                <PackageOpen className="h-10 w-10 text-muted-foreground" />
+                <h2 className="text-xl font-bold">Pedido de {label}</h2>
+                <p className="text-sm text-muted-foreground">
+                  Esta vista está en construcción y estará disponible pronto.
+                </p>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-10 w-10 text-destructive" />
+                <h2 className="text-xl font-bold">Sin permiso</h2>
+                <p className="text-sm text-muted-foreground">
+                  No tienes permiso para tomar pedidos de {label}.
+                </p>
+              </>
+            )}
+            <Button variant="outline" onClick={() => navigate('/pedidos')}>
+              Volver a Pedidos
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

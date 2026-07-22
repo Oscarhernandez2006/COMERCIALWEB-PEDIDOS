@@ -22,10 +22,12 @@ export class DashboardController {
     @CurrentUser('id') sellerId: string,
     @Query('month') month?: string,
     @Query('year') year?: string,
+    @Query('day') day?: string,
   ) {
     const now = new Date();
     const m = Number(month) || now.getMonth() + 1;
     const y = Number(year) || now.getFullYear();
-    return this.dashboardService.getSellerDashboard(companyId, sellerId, m, y);
+    const d = Number(day) || undefined;
+    return this.dashboardService.getSellerDashboard(companyId, sellerId, m, y, d);
   }
 }

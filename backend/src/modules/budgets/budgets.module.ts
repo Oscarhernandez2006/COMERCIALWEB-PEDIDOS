@@ -3,11 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BudgetsController } from './budgets.controller';
 import { BudgetsService } from './budgets.service';
 import { Budget } from './entities/budget.entity';
+import { Projection } from './entities/projection.entity';
 import { UserCompany } from '../users/entities/user-company.entity';
 import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Budget, UserCompany]), UsersModule],
+  imports: [
+    TypeOrmModule.forFeature([Budget, Projection, UserCompany]),
+    UsersModule,
+  ],
   controllers: [BudgetsController],
   providers: [BudgetsService],
   exports: [BudgetsService],

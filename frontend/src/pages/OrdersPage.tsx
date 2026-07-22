@@ -1,12 +1,24 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, ClipboardList, Download, Ban, Eye, X, Pencil } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Plus,
+  ClipboardList,
+  Download,
+  Ban,
+  Eye,
+  X,
+  Pencil,
+  Lock,
+  ArrowRight,
+} from 'lucide-react';
 import {
   useOrders,
   useCancelOrder,
   useSiesaStates,
   downloadOrderPdf,
 } from '@/hooks/useApi';
+import { useAuth } from '@/auth/useAuth';
+import { useCompany } from '@/company/useCompany';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -84,6 +96,9 @@ export function OrdersPage() {
   const { data: orders = [], isLoading } = useOrders();
   const { data: siesaStates = {} } = useSiesaStates();
   const cancelMutation = useCancelOrder();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { company } = useCompany();
 
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [detailTarget, setDetailTarget] = useState<Order | null>(null);
@@ -92,6 +107,7 @@ export function OrdersPage() {
   const [cancelOption, setCancelOption] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelError, setCancelError] = useState('');
+  const [showTypeModal, setShowTypeModal] = useState(false);
 
   const handleDownload = async (order: Order) => {
     setDownloadingId(order.id);
@@ -141,11 +157,9 @@ export function OrdersPage() {
             Gestiona y sincroniza tus pedidos con Siesa.
           </p>
         </div>
-        <Button asChild>
-          <Link to="/pedidos/nuevo">
-            <Plus className="h-4 w-4" />
-            Nuevo
-          </Link>
+        <Button onClick={() => setShowTypeModal(true)}>
+          <Plus className="h-4 w-4" />
+          Nuevo
         </Button>
       </div>
 
@@ -611,6 +625,113 @@ export function OrdersPage() {
           </div>
         </div>
       )}
+
+      {/* Modal selector del tipo de pedido */}
+      {showTypeModal && (
+        <OrderTypeModal
+          isAdmin={user?.role === 'admin'}
+          permissions={company?.permissions ?? []}
+          onClose={() => setShowTypeModal(false)}
+          onSelect={(tipo) => {
+            setShowTypeModal(false);
+            if (tipo === 'canales') navigate('/pedidos/canales/nuevo');
+            else navigate(`/pedidos/nuevo?tipo=${tipo}`);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Tipos de pedido disponibles en el modal selector. */
+const ORDER_TYPES: {
+  tipo: 'cortes' | 'canales' | 'subproductos';
+  label: string;
+  description: string;
+  permission?: string;
+}[] = [
+  {
+    tipo: 'cortes',
+    label: 'Cortes',
+    description: 'Toma de pedido de productos de cortes.',
+  },
+  {
+    tipo: 'canales',
+    label: 'Canales',
+    description: 'Toma de pedido de canales.',
+    permission: '/pedidos/canales',
+  },
+  {
+    tipo: 'subproductos',
+    label: 'Subproductos',
+    description: 'Toma de pedido de subproductos.',
+    permission: '/pedidos/subproductos',
+  },
+];
+
+/** Modal que permite elegir el tipo de pedido antes de la toma. */
+function OrderTypeModal({
+  isAdmin,
+  permissions,
+  onClose,
+  onSelect,
+}: {
+  isAdmin: boolean;
+  permissions: string[];
+  onClose: () => void;
+  onSelect: (tipo: 'cortes' | 'canales' | 'subproductos') => void;
+}) {
+  const options = ORDER_TYPES.filter(
+    (o) => !o.permission || isAdmin || permissions.includes(o.permission),
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-xl border border-border bg-background p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Nuevo pedido</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Selecciona el tipo de pedido que vas a tomar.
+            </p>
+          </div>
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {options.map((o) => (
+            <button
+              key={o.tipo}
+              type="button"
+              onClick={() => onSelect(o.tipo)}
+              className="group flex w-full items-center gap-3 rounded-lg border border-input p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{o.label}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {o.description}
+                </span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+          ))}
+
+          {options.length === 1 && (
+            <p className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
+              <Lock className="h-3 w-3" />
+              Canales y Subproductos requieren permiso del administrador.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
