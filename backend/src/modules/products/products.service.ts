@@ -5,6 +5,7 @@ import { Product } from './entities/product.entity';
 import { SiesaService } from '../siesa/siesa.service';
 import { InventoryRow } from './inventory.parser';
 import { PriceListsService } from '../price-lists/price-lists.service';
+import { baseCompanyId } from '../../common/companies';
 
 /**
  * Producto vendible para un cliente: proviene de su lista de precios (siempre
@@ -37,19 +38,19 @@ export class ProductsService {
     private readonly priceListsService: PriceListsService,
   ) {}
 
-  findAll(companyId: string, search?: string): Promise<Product[]> {
+  findAll(companyId: string, search?: string, type = 'corte'): Promise<Product[]> {
     if (search) {
       return this.productsRepository.find({
         where: [
-          { companyId, name: ILike(`%${search}%`), active: true },
-          { companyId, sku: ILike(`%${search}%`), active: true },
+          { companyId, type, name: ILike(`%${search}%`), active: true },
+          { companyId, type, sku: ILike(`%${search}%`), active: true },
         ],
         take: 100,
         order: { name: 'ASC' },
       });
     }
     return this.productsRepository.find({
-      where: { companyId, active: true },
+      where: { companyId, type, active: true },
       take: 100,
       order: { name: 'ASC' },
     });
@@ -60,13 +61,13 @@ export class ProductsService {
    * precios. Es la disponibilidad real para la venta del día. Permite buscar
    * por nombre o SKU. Sin límite de cantidad (se usa para el listado y el PDF).
    */
-  async findInStock(companyId: string, search?: string): Promise<Product[]> {
+  async findInStock(companyId: string, search?: string, type = 'corte'): Promise<Product[]> {
     const where = search
       ? [
-          { companyId, name: ILike(`%${search}%`), active: true },
-          { companyId, sku: ILike(`%${search}%`), active: true },
+          { companyId, type, name: ILike(`%${search}%`), active: true },
+          { companyId, type, sku: ILike(`%${search}%`), active: true },
         ]
-      : { companyId, active: true };
+      : { companyId, type, active: true };
     const products = await this.productsRepository.find({
       where,
       order: { name: 'ASC' },
@@ -84,6 +85,7 @@ export class ProductsService {
     companyId: string,
     listCode: string,
     search?: string,
+    type = 'corte',
   ): Promise<SellableProduct[]> {
     const items = await this.priceListsService.findItems(
       companyId,
@@ -91,8 +93,12 @@ export class ProductsService {
       search,
     );
 
+    // El inventario de subproductos se administra en la compañía base
+    // (Agropecuaria); el de cortes es propio de cada compañía.
+    const inventoryCompany =
+      type === 'subproducto' ? baseCompanyId(companyId) : companyId;
     const inventory = await this.productsRepository.find({
-      where: { companyId, active: true },
+      where: { companyId: inventoryCompany, active: true, type },
       select: { sku: true, stock: true, taxRate: true },
     });
     const stockBySku = new Map(
@@ -102,7 +108,7 @@ export class ProductsService {
       inventory.map((p) => [p.sku.trim(), Number(p.taxRate)]),
     );
 
-    const sellable: SellableProduct[] = items.map((item) => ({
+    let sellable: SellableProduct[] = items.map((item) => ({
       sku: item.reference.trim(),
       name: item.productName,
       price: Number(item.price),
@@ -110,6 +116,12 @@ export class ProductsService {
       stock: stockBySku.get(item.reference.trim()) ?? 0,
       taxRate: taxBySku.get(item.reference.trim()) ?? 0,
     }));
+
+    // Subproductos: solo se muestran los que existen en el inventario propio de
+    // subproductos (no todo el catálogo de la lista de precios).
+    if (type === 'subproducto') {
+      sellable = sellable.filter((s) => stockBySku.has(s.sku));
+    }
 
     // Prioridad: primero los que tienen stock (mayor stock arriba), luego el
     // resto alfabéticamente.
@@ -124,13 +136,20 @@ export class ProductsService {
     return sellable;
   }
 
-  findBySiesaId(companyId: string, siesaId: string): Promise<Product | null> {
-    return this.productsRepository.findOne({ where: { companyId, siesaId } });
+  findBySiesaId(
+    companyId: string,
+    siesaId: string,
+    type = 'corte',
+  ): Promise<Product | null> {
+    return this.productsRepository.findOne({ where: { companyId, siesaId, type } });
   }
 
   /** Sincroniza el catalogo de una compañía desde Siesa (upsert por siesaId). */
   async syncFromSiesa(companyId: string): Promise<{ synced: number }> {
-    const raws = await this.siesaService.fetchProducts(companyId);
+    // Las definiciones (referencias, nombre, precio, IVA) se traen del ERP de la
+    // compañía base; el inventario/stock se guarda bajo el id propio (cada
+    // compañía —incluida MONTERIA TAT— maneja su propio inventario).
+    const raws = await this.siesaService.fetchProducts(baseCompanyId(companyId));
     let synced = 0;
 
     for (const raw of raws) {
@@ -170,10 +189,11 @@ export class ProductsService {
   async replaceInventory(
     companyId: string,
     rows: InventoryRow[],
+    type = 'corte',
   ): Promise<{ total: number; created: number; updated: number; removed: number }> {
     return this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(Product);
-      const existing = await repo.find({ where: { companyId } });
+      const existing = await repo.find({ where: { companyId, type } });
       const existingBySku = new Map(existing.map((p) => [p.sku, p]));
       const incomingSkus = new Set(rows.map((r) => r.reference));
 
@@ -191,6 +211,7 @@ export class ProductsService {
         } else {
           const product = repo.create({
             companyId,
+            type,
             siesaId: row.reference,
             sku: row.reference,
             name: row.description,

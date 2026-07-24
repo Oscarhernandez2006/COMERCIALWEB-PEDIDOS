@@ -243,10 +243,17 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     documentId: '',
     name: '',
     password: '',
-    role: 'seller' as 'admin' | 'seller' | 'cartera' | 'alistador',
+    role: 'seller' as
+      | 'admin'
+      | 'seller'
+      | 'cartera'
+      | 'alistador'
+      | 'facturacion',
   });
 
-  function setRole(role: 'admin' | 'seller' | 'cartera' | 'alistador') {
+  function setRole(
+    role: 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion',
+  ) {
     setForm((f) => ({ ...f, role }));
   }
 
@@ -305,7 +312,8 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
                     | 'admin'
                     | 'seller'
                     | 'cartera'
-                    | 'alistador',
+                    | 'alistador'
+                    | 'facturacion',
                 )
               }
             >
@@ -313,6 +321,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
               <option value="admin">Administrador · Administrativa</option>
               <option value="cartera">Cartera</option>
               <option value="alistador">Alistador</option>
+              <option value="facturacion">Facturación</option>
             </select>
           </div>
         </div>
@@ -361,7 +370,7 @@ function EditUserModal({
     documentId: user.documentId,
     name: user.name,
     email: user.email ?? '',
-    role: user.role as 'admin' | 'seller' | 'cartera' | 'alistador',
+    role: user.role as 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion',
     password: '',
   });
 
@@ -430,7 +439,8 @@ function EditUserModal({
                     | 'admin'
                     | 'seller'
                     | 'cartera'
-                    | 'alistador',
+                    | 'alistador'
+                    | 'facturacion',
                 })
               }
             >
@@ -438,6 +448,7 @@ function EditUserModal({
               <option value="admin">Administrador · Administrativa</option>
               <option value="cartera">Cartera</option>
               <option value="alistador">Alistador</option>
+              <option value="facturacion">Facturación</option>
             </select>
           </div>
           <div className="space-y-1.5 sm:col-span-2">

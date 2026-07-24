@@ -68,7 +68,7 @@ interface CreateUserInput {
   name: string;
   password: string;
   email?: string;
-  role: 'admin' | 'seller' | 'cartera' | 'alistador';
+  role: 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion';
   siesaSellerCode?: string;
   permissions?: string[];
 }
@@ -90,7 +90,7 @@ interface UpdateUserInput {
   name?: string;
   password?: string;
   email?: string;
-  role?: 'admin' | 'seller' | 'cartera' | 'alistador';
+  role?: 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion';
   siesaSellerCode?: string;
 }
 
@@ -199,12 +199,19 @@ export function useRemoveCompany() {
 
 /* ---- Inventario por compañía (header explícito, el admin no fija compañía) ---- */
 
-export function useCompanyProducts(companyId: string, search: string) {
+export function useCompanyProducts(
+  companyId: string,
+  search: string,
+  type?: 'corte' | 'subproducto',
+) {
   return useQuery({
-    queryKey: ['admin', 'products', companyId, search],
+    queryKey: ['admin', 'products', companyId, search, type],
     queryFn: async () => {
       const res = await api.get<Product[]>('/products', {
-        params: search ? { search } : undefined,
+        params: {
+          ...(search ? { search } : {}),
+          ...(type ? { type } : {}),
+        },
         headers: { 'X-Company-Id': companyId },
       });
       return res.data;
@@ -360,13 +367,20 @@ export interface ImportInventoryResult {
 export function useImportInventory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { companyId: string; file: File }) => {
+    mutationFn: async (input: {
+      companyId: string;
+      file: File;
+      type?: 'corte' | 'subproducto';
+    }) => {
       const form = new FormData();
       form.append('file', input.file);
       const res = await api.post<ImportInventoryResult>(
         '/products/import',
         form,
-        { headers: { 'X-Company-Id': input.companyId } },
+        {
+          headers: { 'X-Company-Id': input.companyId },
+          params: input.type ? { type: input.type } : undefined,
+        },
       );
       return res.data;
     },

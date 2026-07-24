@@ -32,6 +32,7 @@ import {
   useClients,
   useProductsForList,
   useCreateOrder,
+  useSellers,
   downloadOrderPdf,
 } from '@/hooks/useApi';
 import { useOrderSchedule } from '@/hooks/useAdminApi';
@@ -116,6 +117,7 @@ export function NewOrderPage() {
     | 'cortes'
     | 'canales'
     | 'subproductos';
+  const isSubproducto = tipo === 'subproductos';
   const { user } = useAuth();
   const [customerSearch, setCustomerSearch] = useState('');
   const [customer, setCustomer] = useState<Client | null>(null);
@@ -129,6 +131,10 @@ export function NewOrderPage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [submitError, setSubmitError] = useState('');
+  // Solo subproductos: vendedor al que se asocia el pedido (lo elige el remitente).
+  const [sellerId, setSellerId] = useState('');
+  const [sellerSearch, setSellerSearch] = useState('');
+  const [sellerOpen, setSellerOpen] = useState(false);
 
   // Se revisa el horario cada minuto para bloquear/desbloquear el botón en vivo.
   // El rango es configurable desde el panel admin (horario de pedidos).
@@ -152,7 +158,9 @@ export function NewOrderPage() {
   const { data: products = [] } = useProductsForList(
     productSearch,
     customer?.priceList,
+    isSubproducto ? 'subproducto' : undefined,
   );
+  const { data: sellers = [] } = useSellers();
   const createOrder = useCreateOrder();
 
   const totals = useMemo(() => {
@@ -248,6 +256,10 @@ export function NewOrderPage() {
       setSubmitError('Selecciona la fecha de entrega del pedido.');
       return;
     }
+    if (isSubproducto && !sellerId) {
+      setSubmitError('Selecciona el vendedor del pedido.');
+      return;
+    }
     setSubmitError('');
     let order: Order;
     try {
@@ -266,6 +278,7 @@ export function NewOrderPage() {
           quantity: l.quantity,
           discountPct: l.discountPct,
         })),
+        ...(isSubproducto ? { orderType: 'subproducto', sellerId } : {}),
       });
     } catch (err) {
       if (isAxiosError(err)) {
@@ -284,15 +297,37 @@ export function NewOrderPage() {
     setCreatedOrder(order);
   };
 
-  // Vistas de Canales y Subproductos: aún en construcción. La pantalla actual
-  // es exclusiva de Cortes. Se valida el permiso por si se entra por URL.
-  if (tipo !== 'cortes') {
-    const permKey =
-      tipo === 'canales' ? '/pedidos/canales' : '/pedidos/subproductos';
+  // Subproductos: valida el permiso (por si se entra por URL) y continúa al
+  // flujo normal de toma de pedido. Otras vistas no-cortes siguen en
+  // construcción.
+  if (tipo === 'subproductos') {
+    const allowed =
+      user?.role === 'admin' ||
+      (company?.permissions ?? []).includes('/pedidos/subproductos');
+    if (!allowed) {
+      return (
+        <div className="mx-auto max-w-lg py-16">
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+              <AlertCircle className="h-10 w-10 text-destructive" />
+              <h2 className="text-xl font-bold">Sin permiso</h2>
+              <p className="text-sm text-muted-foreground">
+                No tienes permiso para tomar pedidos de Subproductos.
+              </p>
+              <Button variant="outline" onClick={() => navigate('/pedidos')}>
+                Volver a Pedidos
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+  } else if (tipo !== 'cortes') {
+    const permKey = '/pedidos/canales';
     const allowed =
       user?.role === 'admin' ||
       (company?.permissions ?? []).includes(permKey);
-    const label = tipo === 'canales' ? 'Canales' : 'Subproductos';
+    const label = 'Canales';
     return (
       <div className="mx-auto max-w-lg py-16">
         <Card>
@@ -328,7 +363,9 @@ export function NewOrderPage() {
       {/* Encabezado + stepper guiado */}
       <div className="space-y-5">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Nuevo pedido</h2>
+          <h2 className="text-2xl font-bold tracking-tight">
+            {isSubproducto ? 'Nuevo pedido de subproductos' : 'Nuevo pedido'}
+          </h2>
           <p className="text-muted-foreground">
             Sigue los pasos: elige el cliente, agrega productos y confirma.
           </p>
@@ -388,6 +425,77 @@ export function NewOrderPage() {
           })}
         </ol>
       </div>
+
+      {isSubproducto && (
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <label className="flex items-center gap-1.5 text-sm font-semibold">
+              <UserCircle className="h-4 w-4 text-primary" />
+              Vendedor del pedido
+            </label>
+            <p className="text-xs text-muted-foreground">
+              El pedido se registra a nombre de este vendedor y con su cédula se
+              carga a Siesa.
+            </p>
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={sellerSearch}
+                onChange={(e) => {
+                  setSellerSearch(e.target.value);
+                  setSellerOpen(true);
+                  if (sellerId) setSellerId('');
+                }}
+                onFocus={() => setSellerOpen(true)}
+                onBlur={() => setTimeout(() => setSellerOpen(false), 150)}
+                placeholder="Buscar y seleccionar vendedor..."
+                className="pl-9"
+              />
+              {sellerOpen && (
+                <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-input bg-background shadow-md">
+                  {(() => {
+                    const q = sellerSearch.trim().toLowerCase();
+                    const list = sellers.filter(
+                      (s) =>
+                        !q ||
+                        s.name.toLowerCase().includes(q) ||
+                        s.siesaSellerCode.toLowerCase().includes(q),
+                    );
+                    if (list.length === 0) {
+                      return (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">
+                          Sin resultados
+                        </p>
+                      );
+                    }
+                    return list.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSellerId(s.id);
+                          setSellerSearch(`${s.name} · ${s.siesaSellerCode}`);
+                          setSellerOpen(false);
+                        }}
+                        className={cn(
+                          'flex w-full flex-col items-start px-3 py-2 text-left hover:bg-muted/50',
+                          sellerId === s.id && 'bg-primary/5',
+                        )}
+                      >
+                        <span className="text-sm font-medium">{s.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Código {s.siesaSellerCode}
+                        </span>
+                      </button>
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

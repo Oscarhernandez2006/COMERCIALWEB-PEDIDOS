@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
-import { getOrderEndpoint, getOrderDocType } from '../../common/companies';
+import {
+  getOrderEndpoint,
+  getOrderDocType,
+  baseCompanyId,
+} from '../../common/companies';
 
 /** Una línea (registro) del pedido en el formato que espera el ERP. */
 export interface ErpOrderRegistro {
@@ -236,7 +240,11 @@ export class OrdersErpClient {
         this.http.get<{ data?: ErpOrderState[] }>(
           `${baseUrl}/pedidos-estados-siesa`,
           {
-            params: { cia: companyId, tipo_doc: getOrderDocType(companyId), token },
+            params: {
+              cia: baseCompanyId(companyId),
+              tipo_doc: getOrderDocType(companyId),
+              token,
+            },
             timeout,
           },
         ),

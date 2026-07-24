@@ -18,7 +18,7 @@ import { OrdersErpClient, ErpOrderRegistro, ErpOrderState } from './orders-erp.c
 import { UsersService } from '../users/users.service';
 import { User, UserRole } from '../users/entities/user.entity';
 import { Product } from '../products/entities/product.entity';
-import { getMinOrderTotal, getWarehouse, COMPANIES } from '../../common/companies';
+import { getMinOrderTotal, getWarehouse, COMPANIES, baseCompanyId } from '../../common/companies';
 import { buildOrderPdf } from './order-pdf';
 import {
   bogotaToday,
@@ -81,6 +81,20 @@ export class OrdersService {
       );
     }
 
+    // Tipo de pedido. Los subproductos usan su inventario propio y se asocian
+    // al vendedor seleccionado (con su cédula se cargan a Siesa), aunque quien
+    // lo suba sea un remitente.
+    const orderType = dto.orderType ?? 'corte';
+    let orderSeller = seller;
+    if (orderType === 'subproducto') {
+      if (!dto.sellerId) {
+        throw new BadRequestException(
+          'Debes seleccionar el vendedor del pedido de subproductos.',
+        );
+      }
+      orderSeller = await this.usersService.findById(dto.sellerId);
+    }
+
     const customer = await this.clientsService.findOne(
       companyId,
       dto.customerId,
@@ -98,6 +112,7 @@ export class OrdersService {
         companyId,
         customer,
         dto.items,
+        orderType,
       );
 
       // Tope mínimo de pedido por compañía: si el total no lo alcanza, no se
@@ -125,9 +140,10 @@ export class OrdersService {
 
       const order = ordersRepo.create({
         companyId,
-        orderNumber: await this.nextOrderNumber(companyId, manager),
+        orderNumber: await this.nextOrderNumber(companyId, orderType, manager),
+        type: orderType,
         customer,
-        seller,
+        seller: orderSeller,
         items,
         // Si el cliente debe cartera, el pedido queda "pendiente por aprobación
         // en cartera"; de lo contrario, "pendiente por envío" a Siesa.
@@ -154,7 +170,7 @@ export class OrdersService {
         await manager
           .getRepository(ClientRecord)
           .update(
-            { id: customer.id, companyId },
+            { id: customer.id, companyId: customer.companyId },
             { deliverySchedule: dto.deliveryScheduleData },
           );
       }
@@ -365,7 +381,7 @@ export class OrdersService {
     for (const item of order.items ?? []) {
       if (!item.product) continue;
       const product = await productsRepo.findOne({
-        where: { id: item.product.id, companyId: order.companyId },
+        where: { id: item.product.id },
         lock: { mode: 'pessimistic_write' },
       });
       if (product) {
@@ -462,7 +478,7 @@ export class OrdersService {
       for (const item of order.items) {
         if (!item.product) continue;
         const product = await productsRepo.findOne({
-          where: { id: item.product.id, companyId },
+          where: { id: item.product.id },
           lock: { mode: 'pessimistic_write' },
         });
         if (product) {
@@ -527,6 +543,7 @@ export class OrdersService {
     companyId: string,
     customer: ClientRecord,
     itemDtos: CreateOrderItemDto[],
+    type = 'corte',
   ): Promise<{ items: OrderItem[]; subtotal: number; taxes: number }> {
     // El precio depende de la lista de precios asignada al cliente.
     if (!customer.priceList) {
@@ -558,9 +575,12 @@ export class OrdersService {
 
       // El producto debe existir en el inventario y tener stock suficiente.
       // Bloqueamos la fila (FOR UPDATE) para que dos pedidos simultáneos no
-      // puedan descontar el mismo stock y provocar sobreventa.
+      // puedan descontar el mismo stock y provocar sobreventa. El inventario de
+      // subproductos vive en la compañía base (Agropecuaria).
+      const inventoryCompany =
+        type === 'subproducto' ? baseCompanyId(companyId) : companyId;
       const product = await productsRepo.findOne({
-        where: { sku, companyId },
+        where: { sku, companyId: inventoryCompany, type },
         lock: { mode: 'pessimistic_write' },
       });
       if (!product) {
@@ -977,7 +997,7 @@ export class OrdersService {
       for (const item of order.items) {
         if (!item.product) continue;
         const product = await productsRepo.findOne({
-          where: { id: item.product.id, companyId },
+          where: { id: item.product.id },
           lock: { mode: 'pessimistic_write' },
         });
         if (product) {
@@ -1075,8 +1095,14 @@ export class OrdersService {
 
     try {
       const registros = await this.buildErpRegistros(order);
+      // Los subproductos se cargan al ERP de Agropecuaria (compañía base),
+      // aunque el pedido se tome en MONTERIA TAT AGROPECUARIA.
+      const erpCompany =
+        order.type === 'subproducto'
+          ? baseCompanyId(order.companyId)
+          : order.companyId;
       const result = await this.erpClient.uploadOrder(
-        order.companyId,
+        erpCompany,
         registros,
       );
 
@@ -1100,17 +1126,48 @@ export class OrdersService {
   }
 
   /**
-   * Consecutivo del pedido por compañía. Empieza en `1` y avanza de uno en uno
-   * (cada compañía lleva su propia numeración).
+   * Consecutivo del pedido. Los pedidos que suben al MISMO destino del ERP
+   * comparten un solo consecutivo para que nunca se repitan:
+   *  - Cortes de una compañía: su propio consecutivo.
+   *  - Subproductos: comparten el consecutivo de los CORTES DE AGROPECUARIA
+   *    (ambos se cargan al ERP de Agropecuaria).
+   *
+   * Se toma MAX(consecutivo)+1 del pool y se serializa con un lock de
+   * transacción (pg_advisory_xact_lock) para evitar duplicados en creaciones
+   * concurrentes (p. ej. un corte y un subproducto al tiempo, por orden de
+   * llegada).
    */
   private async nextOrderNumber(
     companyId: string,
-    manager?: EntityManager,
+    type: string,
+    manager: EntityManager,
   ): Promise<string> {
-    const repo = manager
-      ? manager.getRepository(Order)
-      : this.ordersRepository;
-    const count = await repo.count({ where: { companyId } });
-    return (count + 1).toString();
+    const repo = manager.getRepository(Order);
+    // Clave del pool: los subproductos usan la compañía base (Agropecuaria).
+    const key = type === 'subproducto' ? baseCompanyId(companyId) : companyId;
+
+    // Serializa la numeración del mismo pool. El lock se libera al finalizar la
+    // transacción.
+    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `order-seq:${key}`,
+    ]);
+
+    // Compañías cuyos subproductos caen en este pool (su base es `key`).
+    const bases = COMPANIES.map((c) => c.id).filter(
+      (id) => baseCompanyId(id) === key,
+    );
+
+    const qb = repo
+      .createQueryBuilder('o')
+      .select('COALESCE(MAX(CAST(o.order_number AS INTEGER)), 0)', 'max')
+      .where("(o.company_id = :key AND o.type = 'corte')", { key });
+    if (bases.length > 0) {
+      qb.orWhere("(o.type = 'subproducto' AND o.company_id IN (:...bases))", {
+        bases,
+      });
+    }
+
+    const row = await qb.getRawOne<{ max: string }>();
+    return String(Number(row?.max ?? 0) + 1);
   }
 }

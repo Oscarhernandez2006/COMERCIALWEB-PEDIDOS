@@ -6,6 +6,7 @@ import { User } from './entities/user.entity';
 import { UserCompany } from './entities/user-company.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { baseCompanyId } from '../../common/companies';
 
 @Injectable()
 export class UsersService {
@@ -156,6 +157,35 @@ export class UsersService {
       where: { userId, companyId, active: true },
     });
     return mapping?.siesaSellerCode;
+  }
+
+  /**
+   * Vendedores de una compañía con código de vendedor en Siesa. Se usa para el
+   * selector de vendedor en la toma de subproductos (el remitente elige a nombre
+   * de quién va el pedido). Resuelve la compañía base (p. ej. MONTERIA TAT →
+   * AGROPECUARIA).
+   */
+  async getCompanySellers(companyId: string): Promise<
+    { id: string; name: string; documentId: string; siesaSellerCode: string }[]
+  > {
+    const base = baseCompanyId(companyId);
+    const mappings = await this.userCompaniesRepository.find({
+      where: { companyId: base, active: true },
+      relations: { user: true },
+    });
+    return mappings
+      .map((m) => {
+        const code = (m.siesaSellerCode || m.user?.siesaSellerCode || '').trim();
+        return { mapping: m, code };
+      })
+      .filter(({ mapping, code }) => mapping.user && mapping.user.active && code)
+      .map(({ mapping, code }) => ({
+        id: mapping.user.id,
+        name: mapping.user.name,
+        documentId: mapping.user.documentId,
+        siesaSellerCode: code,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /**

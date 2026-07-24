@@ -18,13 +18,17 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CompanyId } from '../../common/decorators/company-id.decorator';
 import { User } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
 
 @ApiTags('orders')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Post()
   create(
@@ -62,6 +66,12 @@ export class OrdersController {
     @CurrentUser('id') sellerId: string,
   ) {
     return this.ordersService.getSiesaStates(companyId, sellerId);
+  }
+
+  /** Vendedores de la compañía (para el selector de subproductos). */
+  @Get('sellers')
+  sellers(@CompanyId() companyId: string) {
+    return this.usersService.getCompanySellers(companyId);
   }
 
   /** Marca como visto un aviso de cartera del vendedor. */

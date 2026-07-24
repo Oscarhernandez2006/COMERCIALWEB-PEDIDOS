@@ -40,15 +40,17 @@ export class ProductsController {
     @CompanyId() companyId: string,
     @Query('search') search?: string,
     @Query('priceList') priceList?: string,
+    @Query('type') type = 'corte',
   ) {
     if (priceList) {
       return this.productsService.findSellableForList(
         companyId,
         priceList,
         search,
+        type,
       );
     }
-    return this.productsService.findAll(companyId, search);
+    return this.productsService.findAll(companyId, search, type);
   }
 
   /** Productos con existencias (stock > 0), sin importar lista de precios. */
@@ -115,12 +117,13 @@ export class ProductsController {
   importInventory(
     @CompanyId() companyId: string,
     @UploadedFile() file: Express.Multer.File,
+    @Query('type') type = 'corte',
   ) {
     if (!file) {
       throw new UnsupportedMediaTypeException('No se recibió ningún archivo.');
     }
     const rows = parseInventoryExcel(file.buffer);
-    return this.productsService.replaceInventory(companyId, rows);
+    return this.productsService.replaceInventory(companyId, rows, type);
   }
 
   /** Edición de stock (única edición permitida desde la web). */

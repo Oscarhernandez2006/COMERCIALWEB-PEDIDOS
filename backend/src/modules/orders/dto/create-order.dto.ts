@@ -4,6 +4,7 @@ import {
   IsArray,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -72,4 +73,21 @@ export class CreateOrderDto {
   @ValidateNested()
   @Type(() => DeliveryScheduleDto)
   deliveryScheduleData?: DeliveryScheduleDto;
+
+  /**
+   * Tipo de pedido: 'corte' (por defecto) o 'subproducto'. Los subproductos
+   * usan su propio inventario y un vendedor seleccionado.
+   */
+  @IsIn(['corte', 'subproducto'])
+  @IsOptional()
+  orderType?: 'corte' | 'subproducto';
+
+  /**
+   * Vendedor al que se asocia el pedido (solo subproductos). Cuando lo sube un
+   * remitente, el pedido queda a nombre de este vendedor y con su cédula se
+   * carga a Siesa.
+   */
+  @IsUUID()
+  @IsOptional()
+  sellerId?: string;
 }

@@ -49,6 +49,8 @@ export function InventoryPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   // Archivo seleccionado pendiente de confirmar el cargue.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // Tipo de inventario a gestionar/cargar: cortes o subproductos.
+  const [invType, setInvType] = useState<'corte' | 'subproducto'>('corte');
 
   // Selecciona la primera compañía disponible (o ajusta si la actual ya no es válida).
   useEffect(() => {
@@ -57,9 +59,14 @@ export function InventoryPage() {
     }
   }, [companies, companyId]);
 
+  // El inventario de subproductos se administra en AGROPECUARIA.
+  const supportsSubproductos = companyId === '3';
+  const effectiveType = supportsSubproductos ? invType : 'corte';
+
   const { data: products = [], isLoading } = useCompanyProducts(
     companyId,
     search,
+    effectiveType,
   );
   const importInventory = useImportInventory();
   const updateStock = useUpdateStock();
@@ -75,7 +82,11 @@ export function InventoryPage() {
 
   function confirmImport() {
     if (!pendingFile) return;
-    importInventory.mutate({ companyId, file: pendingFile });
+    importInventory.mutate({
+      companyId,
+      file: pendingFile,
+      type: effectiveType,
+    });
     setPendingFile(null);
   }
 
@@ -108,6 +119,36 @@ export function InventoryPage() {
           </button>
         ))}
       </div>
+
+      {/* Selector de tipo de inventario (solo MONTERIA TAT AGROPECUARIA) */}
+      {supportsSubproductos && (
+        <div className="inline-flex rounded-lg border border-input p-1">
+          <button
+            type="button"
+            onClick={() => setInvType('corte')}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              invType === 'corte'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Cortes
+          </button>
+          <button
+            type="button"
+            onClick={() => setInvType('subproducto')}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              invType === 'subproducto'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Subproductos
+          </button>
+        </div>
+      )}
 
       {/* Acciones de inventario */}
       <div className="grid gap-4 sm:grid-cols-2">

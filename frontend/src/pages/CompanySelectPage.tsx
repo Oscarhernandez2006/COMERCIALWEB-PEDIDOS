@@ -11,6 +11,7 @@ const COMPANY_STYLES: Record<string, string> = {
   '3': 'from-emerald-500/15 to-emerald-500/5 text-emerald-600',
   '8': 'from-amber-500/15 to-amber-500/5 text-amber-600',
   '4': 'from-rose-500/15 to-rose-500/5 text-rose-600',
+  MTAT: 'from-emerald-500/15 to-emerald-500/5 text-emerald-600',
 };
 
 /** Logo (en /public) por compañía. */
@@ -18,6 +19,7 @@ const COMPANY_LOGOS: Record<string, string> = {
   '3': '/AGROPECUARIA.png',
   '8': '/CARNESFRIAS.png',
   '4': '/LOGOCARNESSANTACRUZ.png',
+  MTAT: '/AGROPECUARIA.png',
 };
 
 export function CompanySelectPage() {
@@ -88,9 +90,11 @@ export function CompanySelectPage() {
                   </div>
                 )}
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Compañía {company.id}
-                  </p>
+                  {/^\d+$/.test(company.id) && (
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Compañía {company.id}
+                    </p>
+                  )}
                   <h2 className="text-lg font-semibold">{company.name}</h2>
                 </div>
                 <span className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary">

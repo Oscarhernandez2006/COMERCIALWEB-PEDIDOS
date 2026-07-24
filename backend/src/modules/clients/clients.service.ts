@@ -5,6 +5,7 @@ import { ClientRecord } from './entities/client-record.entity';
 import { ClientsClient, ClientRaw, PortfolioRaw } from './clients.client';
 import { PriceListsService } from '../price-lists/price-lists.service';
 import { UsersService } from '../users/users.service';
+import { baseCompanyId } from '../../common/companies';
 
 /** Cliente normalizado listo para guardar. */
 interface NormalizedClient {
@@ -73,9 +74,16 @@ export class ClientsService {
     search?: string,
     sellerCode?: string,
   ): Promise<ClientRecord[]> {
+    companyId = baseCompanyId(companyId);
     const term = search?.trim();
-    const seller = sellerCode?.trim();
-    const base = seller ? { companyId, sellerCode: seller } : { companyId };
+    // Si se pasa `sellerCode` (aunque venga vacío) es porque el llamador quiere
+    // filtrar por vendedor: nunca se deben devolver todos los clientes. Solo el
+    // admin llama sin `sellerCode` (ve todos).
+    const filterBySeller = sellerCode !== undefined;
+    const seller = (sellerCode ?? '').trim();
+    const base = filterBySeller
+      ? { companyId, sellerCode: seller }
+      : { companyId };
 
     const where = term
       ? [
@@ -95,6 +103,7 @@ export class ClientsService {
 
   /** Devuelve un cliente por id dentro de la compañía. */
   async findOne(companyId: string, id: string): Promise<ClientRecord> {
+    companyId = baseCompanyId(companyId);
     const client = await this.repository.findOne({
       where: { id, companyId },
     });
@@ -140,6 +149,7 @@ export class ClientsService {
     removed: number;
     total: number;
   }> {
+    companyId = baseCompanyId(companyId);
     const raws = await this.client.fetchClients(companyId);
     const normalized = this.normalize(raws);
     this.logger.log(
@@ -310,6 +320,7 @@ export class ClientsService {
    * en una compañía. Devuelve los documentos y el saldo total pendiente.
    */
   async getPortfolio(companyId: string, nit: string): Promise<ClientPortfolio> {
+    companyId = baseCompanyId(companyId);
     const code = nit?.trim();
     if (!code) {
       throw new NotFoundException('Debe indicar el NIT del cliente.');

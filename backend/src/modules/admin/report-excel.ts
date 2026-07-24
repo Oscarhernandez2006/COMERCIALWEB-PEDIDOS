@@ -10,6 +10,7 @@ const COMPANY_NAMES: Record<string, string> = {
   '3': 'AGROPECUARIA SANTACRUZ',
   '8': 'CARNES FRIAS SANTACRUZ',
   '4': 'CARNES SANTACRUZ',
+  MTAT: 'MONTERIA TAT AGROPECUARIA',
 };
 
 /** Aplica un ancho de columnas razonable a una hoja. */

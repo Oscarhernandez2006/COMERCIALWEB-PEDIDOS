@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'seller' | 'cartera' | 'alistador';
+export type UserRole = 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion';
 
 export interface Company {
   id: string;

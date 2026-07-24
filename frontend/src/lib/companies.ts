@@ -7,6 +7,7 @@ import type { Company } from '@/types';
 export const COMPANIES: Company[] = [
   { id: '3', name: 'AGROPECUARIA' },
   { id: '8', name: 'CARNES FRIAS' },
+  { id: 'MTAT', name: 'MONTERIA TAT AGROPECUARIA' },
 ];
 
 /**
@@ -16,6 +17,7 @@ export const COMPANIES: Company[] = [
 export const MIN_ORDER_TOTAL: Record<string, number> = {
   '3': 150000, // AGROPECUARIA
   '8': 50000, // CARNES FRIAS
+  MTAT: 150000, // MONTERIA TAT AGROPECUARIA (catálogo de AGROPECUARIA)
 };
 
 /** Devuelve el monto mínimo de pedido de una compañía (0 si no tiene tope). */

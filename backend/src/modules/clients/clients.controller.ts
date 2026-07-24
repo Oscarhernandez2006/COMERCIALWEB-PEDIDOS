@@ -35,11 +35,13 @@ export class ClientsController {
       return this.clientsService.findAll(companyId, search);
     }
 
-    const sellerCode =
+    const sellerCode = (
       (await this.usersService.getSellerCode(user.id, companyId)) ??
-      user.siesaSellerCode;
+      user.siesaSellerCode ??
+      ''
+    ).trim();
 
-    // Sin código de vendedor no puede ver clientes (cartera vacía).
+    // Sin código de vendedor (o vacío) no puede ver clientes (cartera vacía).
     if (!sellerCode) return [];
 
     return this.clientsService.findAll(companyId, search, sellerCode);

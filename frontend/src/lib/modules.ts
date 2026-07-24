@@ -81,6 +81,7 @@ export function areaLabel(role: UserRole): string {
   if (role === 'admin') return 'Administrativa';
   if (role === 'seller') return 'Vendedor';
   if (role === 'alistador') return 'Alistador';
+  if (role === 'facturacion') return 'Facturación';
   return 'Cartera';
 }
 

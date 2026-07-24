@@ -6,6 +6,7 @@ export enum UserRole {
   SELLER = 'seller',
   CARTERA = 'cartera',
   ALISTADOR = 'alistador',
+  FACTURACION = 'facturacion',
 }
 
 @Entity('users')

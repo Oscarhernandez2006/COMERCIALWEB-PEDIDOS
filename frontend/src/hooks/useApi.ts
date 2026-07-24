@@ -57,15 +57,43 @@ export function useSellerDashboard(month: number, year: number, day = 0) {
  * referencia trae precio y unidad de medida) cruzado con el stock del
  * inventario. Solo se ejecuta si hay lista.
  */
-export function useProductsForList(search: string, priceList?: string | null) {
+export function useProductsForList(
+  search: string,
+  priceList?: string | null,
+  type?: string,
+) {
   const { company } = useCompany();
   return useQuery({
-    queryKey: ['products', 'by-list', company?.id, priceList, search],
+    queryKey: ['products', 'by-list', company?.id, priceList, search, type],
     enabled: Boolean(priceList),
     queryFn: async () => {
       const res = await api.get<SellableProduct[]>('/products', {
-        params: { priceList, ...(search ? { search } : {}) },
+        params: {
+          priceList,
+          ...(type ? { type } : {}),
+          ...(search ? { search } : {}),
+        },
       });
+      return res.data;
+    },
+  });
+}
+
+/** Vendedor seleccionable (para la toma de subproductos). */
+export interface SellerOption {
+  id: string;
+  name: string;
+  documentId: string;
+  siesaSellerCode: string;
+}
+
+/** Vendedores de la compañía con código de vendedor en Siesa. */
+export function useSellers() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['sellers', company?.id],
+    queryFn: async () => {
+      const res = await api.get<SellerOption[]>('/orders/sellers');
       return res.data;
     },
   });
@@ -224,6 +252,10 @@ interface CreateOrderInput {
   deliveryScheduleData?: DeliverySchedule;
   deliveryDate: string;
   items: { sku: string; quantity: number; discountPct: number }[];
+  /** Tipo de pedido: 'corte' (por defecto) o 'subproducto'. */
+  orderType?: 'corte' | 'subproducto';
+  /** Vendedor al que se asocia el pedido (solo subproductos). */
+  sellerId?: string;
 }
 
 export function useCreateOrder() {

@@ -8,6 +8,7 @@ import { UserCompany } from '../users/entities/user-company.entity';
 import { User } from '../users/entities/user.entity';
 import { bogotaToday } from '../orders/order-cortes';
 import { BudgetsService } from '../budgets/budgets.service';
+import { baseCompanyId } from '../../common/companies';
 import { ChannelSalesClient, ChannelSaleRaw } from '../channel-sales/channel-sales.client';
 
 /** Estados que representan una venta real (excluye borradores y cancelados). */
@@ -379,7 +380,7 @@ export class DashboardService {
     if (!sellerCode) return 0;
 
     return this.clientsRepository.count({
-      where: { companyId, sellerCode },
+      where: { companyId: baseCompanyId(companyId), sellerCode },
     });
   }
 

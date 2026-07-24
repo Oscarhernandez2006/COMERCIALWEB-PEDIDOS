@@ -30,6 +30,15 @@ export class Product extends BaseEntity {
   @Column({ nullable: true })
   category?: string;
 
+  /**
+   * Tipo de inventario: 'corte' (normal) o 'subproducto'. Permite manejar dos
+   * inventarios independientes dentro de la misma compañía (p. ej. MONTERIA TAT
+   * AGROPECUARIA tiene su inventario de cortes y otro de subproductos).
+   */
+  @Index()
+  @Column({ default: 'corte' })
+  type: string;
+
   @Column({ name: 'unit_of_measure', nullable: true })
   unitOfMeasure?: string;
 

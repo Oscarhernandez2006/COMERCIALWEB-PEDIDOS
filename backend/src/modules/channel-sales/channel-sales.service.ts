@@ -4,7 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Between, DataSource, Repository } from 'typeorm';
 import { ChannelSale } from './entities/channel-sale.entity';
 import { ChannelSalesClient } from './channel-sales.client';
-import { COMPANIES } from '../../common/companies';
+import { COMPANIES, baseCompanyId } from '../../common/companies';
 import { bogotaToday } from '../orders/order-cortes';
 
 /** Una fila del reporte de ventas por canal (agrupada por día/vendedor/canal). */
@@ -80,7 +80,10 @@ export class ChannelSalesService {
   /** Sincroniza todas las compañías para un rango. */
   async syncAll(from: string, to: string): Promise<{ rows: number }> {
     let rows = 0;
-    for (const c of COMPANIES) {
+    // Solo compañías reales de Siesa; las virtuales (p. ej. MONTERIA TAT)
+    // consultan el ERP de su base y no almacenan un duplicado.
+    const realCompanies = COMPANIES.filter((c) => baseCompanyId(c.id) === c.id);
+    for (const c of realCompanies) {
       try {
         const r = await this.syncRange(c.id, from, to);
         rows += r.rows;

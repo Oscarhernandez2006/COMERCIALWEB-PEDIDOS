@@ -4,6 +4,7 @@ import { DataSource, ILike, Repository } from 'typeorm';
 import { PriceListItem } from './entities/price-list-item.entity';
 import { PriceListsClient, PriceListRaw } from './price-lists.client';
 import { bogotaToday } from '../orders/order-cortes';
+import { baseCompanyId } from '../../common/companies';
 
 /** Resumen de una lista de precios (sin sus ítems). */
 export interface PriceListSummary {
@@ -25,6 +26,7 @@ export class PriceListsService {
 
   /** Lista los nombres de las listas de precios de una compañía. */
   async findLists(companyId: string): Promise<PriceListSummary[]> {
+    companyId = baseCompanyId(companyId);
     const rows = await this.repository
       .createQueryBuilder('i')
       .select('i.list_code', 'listCode')
@@ -48,6 +50,7 @@ export class PriceListsService {
    * Se usa para mostrar la descripción de la lista en lugar del código.
    */
   async findListNameMap(companyId: string): Promise<Map<string, string>> {
+    companyId = baseCompanyId(companyId);
     const rows = await this.repository
       .createQueryBuilder('i')
       .select('i.list_code', 'listCode')
@@ -69,6 +72,7 @@ export class PriceListsService {
     companyId: string,
     listCode: string,
   ): Promise<Map<string, PriceListItem>> {
+    companyId = baseCompanyId(companyId);
     const rows = await this.repository.find({
       where: { companyId, listCode },
     });
@@ -81,6 +85,7 @@ export class PriceListsService {
     listCode: string,
     search?: string,
   ): Promise<PriceListItem[]> {
+    companyId = baseCompanyId(companyId);
     const where = search
       ? [
           { companyId, listCode, productName: ILike(`%${search}%`) },
@@ -100,6 +105,7 @@ export class PriceListsService {
    * completo de la lista de precios.
    */
   findAllItems(companyId: string, listCode: string): Promise<PriceListItem[]> {
+    companyId = baseCompanyId(companyId);
     return this.repository.find({
       where: { companyId, listCode },
       order: { reference: 'ASC' },
@@ -125,6 +131,7 @@ export class PriceListsService {
     removed: number;
     total: number;
   }> {
+    companyId = baseCompanyId(companyId);
     const raws = await this.client.fetchPriceLists(companyId);
     const normalized = this.normalize(raws);
     this.logger.log(

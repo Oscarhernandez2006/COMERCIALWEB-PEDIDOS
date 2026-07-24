@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { baseCompanyId } from '../../common/companies';
 
 /** Fila cruda de ventas por canal/vendedor del endpoint del Grupo Santacruz. */
 export interface ChannelSaleRaw {
@@ -55,6 +56,8 @@ export class ChannelSalesClient {
     to: string,
     force = false,
   ): Promise<ChannelSaleRaw[]> {
+    // Compañías virtuales (p. ej. MONTERIA TAT) consultan el canal de su base.
+    companyId = baseCompanyId(companyId);
     const key = `${companyId}|${from}|${to}`;
     if (!force) {
       const cached = this.cache.get(key);

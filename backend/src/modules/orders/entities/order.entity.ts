@@ -46,6 +46,13 @@ export class Order extends BaseEntity {
   @Column({ name: 'order_number' })
   orderNumber: string;
 
+  /**
+   * Tipo de pedido: 'corte' (por defecto) o 'subproducto'. Los subproductos
+   * usan el inventario de subproductos y se cargan al ERP de Agropecuaria.
+   */
+  @Column({ default: 'corte' })
+  type: string;
+
   @ManyToOne(() => ClientRecord, { eager: true, nullable: false })
   @JoinColumn({ name: 'customer_id' })
   customer: ClientRecord;

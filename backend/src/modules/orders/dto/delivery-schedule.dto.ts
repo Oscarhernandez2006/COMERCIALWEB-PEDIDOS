@@ -7,7 +7,9 @@ import { ArrayNotEmpty, IsArray, IsInt, Matches, Max, Min } from 'class-validato
  */
 export class DeliveryScheduleDto {
   @IsArray()
-  @ArrayNotEmpty()
+  @ArrayNotEmpty({
+    message: 'No hay días seleccionados en los días de recibido.',
+  })
   @IsInt({ each: true })
   @Min(0, { each: true })
   @Max(6, { each: true })
