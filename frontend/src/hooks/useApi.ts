@@ -144,13 +144,16 @@ export function useCustomers(search: string) {
 }
 
 /** Clientes (módulo nuevo `clientes-por-cia`) para la toma de pedidos. */
-export function useClients(search: string) {
+export function useClients(search: string, sellerCode?: string) {
   const { company } = useCompany();
   return useQuery({
-    queryKey: ['clients', company?.id, search],
+    queryKey: ['clients', company?.id, search, sellerCode ?? ''],
     queryFn: async () => {
       const res = await api.get<Client[]>('/clients', {
-        params: search ? { search } : undefined,
+        params: {
+          ...(search ? { search } : {}),
+          ...(sellerCode ? { sellerCode } : {}),
+        },
       });
       return res.data;
     },

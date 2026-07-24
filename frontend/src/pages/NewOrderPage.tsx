@@ -154,13 +154,28 @@ export function NewOrderPage() {
       ? `de ${formatScheduleTime(orderSchedule.openHour, orderSchedule.openMinute)} a ${formatScheduleTime(orderSchedule.closeHour, orderSchedule.closeMinute)}`
       : '';
 
-  const { data: customers = [] } = useClients(customerSearch);
+  // Subproductos: al cambiar el vendedor seleccionado cambian sus clientes, así
+  // que se reinicia el cliente elegido y el carrito.
+  useEffect(() => {
+    if (!isSubproducto) return;
+    setCustomer(null);
+    setCustomerSearch('');
+    setCart([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerId]);
+
+  const { data: sellers = [] } = useSellers();
+  const { data: customers = [] } = useClients(
+    customerSearch,
+    isSubproducto
+      ? sellers.find((s) => s.id === sellerId)?.siesaSellerCode
+      : undefined,
+  );
   const { data: products = [] } = useProductsForList(
     productSearch,
     customer?.priceList,
     isSubproducto ? 'subproducto' : undefined,
   );
-  const { data: sellers = [] } = useSellers();
   const createOrder = useCreateOrder();
 
   const totals = useMemo(() => {
@@ -180,9 +195,10 @@ export function NewOrderPage() {
     };
   }, [cart]);
 
-  // Tope mínimo de pedido según la compañía activa.
+  // Tope mínimo de pedido según la compañía activa. Los subproductos no tienen
+  // monto mínimo.
   const { company } = useCompany();
-  const minOrderTotal = getMinOrderTotal(company?.id);
+  const minOrderTotal = isSubproducto ? 0 : getMinOrderTotal(company?.id);
   const belowMinimum = minOrderTotal > 0 && totals.subtotal < minOrderTotal;
 
   const totalUnits = useMemo(

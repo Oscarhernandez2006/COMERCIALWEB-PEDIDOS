@@ -30,7 +30,23 @@ export class ClientsController {
     @CompanyId() companyId: string,
     @CurrentUser() user: User,
     @Query('search') search?: string,
+    @Query('sellerCode') sellerCodeOverride?: string,
   ) {
+    // Subproductos: un remitente (admin o con permiso) puede ver los clientes
+    // del vendedor seleccionado (no los suyos), para montar el pedido a su
+    // nombre.
+    const override = sellerCodeOverride?.trim();
+    if (override !== undefined && override !== '') {
+      const canOverride = await this.usersService.hasPermissionInCompany(
+        user.id,
+        companyId,
+        '/pedidos/subproductos',
+      );
+      if (canOverride) {
+        return this.clientsService.findAll(companyId, search, override);
+      }
+    }
+
     if (user.role === UserRole.ADMIN) {
       return this.clientsService.findAll(companyId, search);
     }

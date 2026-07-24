@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User } from './entities/user.entity';
+import { User, UserRole } from './entities/user.entity';
 import { UserCompany } from './entities/user-company.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -157,6 +157,22 @@ export class UsersService {
       where: { userId, companyId, active: true },
     });
     return mapping?.siesaSellerCode;
+  }
+
+  /** ¿El usuario tiene un permiso de módulo (global o en la compañía)? */
+  async hasPermissionInCompany(
+    userId: string,
+    companyId: string,
+    permission: string,
+  ): Promise<boolean> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) return false;
+    if (user.role === UserRole.ADMIN) return true;
+    if ((user.permissions ?? []).includes(permission)) return true;
+    const mapping = await this.userCompaniesRepository.findOne({
+      where: { userId, companyId, active: true },
+    });
+    return (mapping?.permissions ?? []).includes(permission);
   }
 
   /**

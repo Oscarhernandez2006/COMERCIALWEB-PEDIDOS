@@ -119,7 +119,9 @@ export class OrdersService {
       // permite crear el pedido (la transacción se revierte y el stock no se
       // descuenta).
       const total = Number((subtotal + taxes).toFixed(2));
-      const minTotal = getMinOrderTotal(companyId);
+      // Los subproductos no tienen monto mínimo de pedido.
+      const minTotal =
+        orderType === 'subproducto' ? 0 : getMinOrderTotal(companyId);
       if (minTotal > 0 && total < minTotal) {
         throw new BadRequestException(
           `El pedido no alcanza el monto mínimo de ` +
