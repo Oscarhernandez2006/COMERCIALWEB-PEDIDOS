@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   ParseFloatPipe,
@@ -20,7 +21,9 @@ import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../users/entities/user.entity';
+import { UserRole, User } from '../users/entities/user.entity';
+import { UsersService } from '../users/users.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CompanyId } from '../../common/decorators/company-id.decorator';
 import {
   buildInventoryTemplate,
@@ -33,7 +36,10 @@ import { buildStockPdf } from './stock-pdf';
 @UseGuards(JwtAuthGuard)
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Get()
   findAll(
@@ -126,15 +132,28 @@ export class ProductsController {
     return this.productsService.replaceInventory(companyId, rows, type);
   }
 
-  /** Edición de stock (única edición permitida desde la web). */
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  /**
+   * Edición de stock (única edición permitida desde la web). Permitida a los
+   * administradores y a los usuarios con permiso del módulo de inventario
+   * (p. ej. vendedores de MONTERIA TAT habilitados para inventario).
+   */
   @Patch(':id/stock')
-  updateStock(
+  async updateStock(
     @CompanyId() companyId: string,
+    @CurrentUser() user: User,
     @Param('id') id: string,
     @Body('stock', ParseFloatPipe) stock: number,
   ) {
+    const allowed = await this.usersService.hasPermissionInCompany(
+      user.id,
+      companyId,
+      '/admin/inventario',
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        'No tienes permiso para editar el inventario.',
+      );
+    }
     return this.productsService.updateStock(companyId, id, stock);
   }
 }

@@ -85,6 +85,23 @@ export function InventoryPage() {
     [products],
   );
 
+  // Paginación: 50 productos por página.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(sortedProducts.length / PAGE_SIZE));
+  // Al cambiar de compañía, tipo o búsqueda, vuelve a la primera página.
+  useEffect(() => {
+    setPage(1);
+  }, [companyId, effectiveType, search]);
+  // Evita quedar en una página inexistente si baja el total de productos.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+  const pagedProducts = useMemo(
+    () => sortedProducts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [sortedProducts, page],
+  );
+
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     // No se carga de inmediato: primero se pide confirmación.
@@ -275,7 +292,7 @@ export function InventoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedProducts.map((p) => (
+                  {pagedProducts.map((p) => (
                     <StockRow
                       key={p.id}
                       product={p}
@@ -290,6 +307,37 @@ export function InventoryPage() {
             </div>
           )}
         </CardContent>
+        {/* Controles de paginación (50 productos por página) */}
+        {!isLoading && sortedProducts.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-3 text-sm">
+            <span className="text-muted-foreground">
+              Mostrando {(page - 1) * PAGE_SIZE + 1}–
+              {Math.min(page * PAGE_SIZE, sortedProducts.length)} de{' '}
+              {sortedProducts.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Anterior
+              </Button>
+              <span className="text-muted-foreground">
+                Página {page} de {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Modal de confirmación del cargue */}

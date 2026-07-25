@@ -45,13 +45,11 @@ export class ProductsService {
           { companyId, type, name: ILike(`%${search}%`), active: true },
           { companyId, type, sku: ILike(`%${search}%`), active: true },
         ],
-        take: 100,
         order: { name: 'ASC' },
       });
     }
     return this.productsRepository.find({
       where: { companyId, type, active: true },
-      take: 100,
       order: { name: 'ASC' },
     });
   }
