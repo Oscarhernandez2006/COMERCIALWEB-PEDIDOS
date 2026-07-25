@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Package,
   Check,
@@ -72,6 +72,18 @@ export function InventoryPage() {
   const updateStock = useUpdateStock();
 
   const company = companies.find((c) => c.id === companyId);
+
+  // Inventario ordenado por referencia (SKU) de menor a mayor.
+  const sortedProducts = useMemo(
+    () =>
+      [...products].sort((a, b) =>
+        a.sku.localeCompare(b.sku, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }),
+      ),
+    [products],
+  );
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -263,7 +275,7 @@ export function InventoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((p) => (
+                  {sortedProducts.map((p) => (
                     <StockRow
                       key={p.id}
                       product={p}

@@ -72,7 +72,9 @@ export class OrdersService {
     // aprobación de cartera y la subida a Siesa pueden ocurrir después sin
     // problema (no se revalida el horario allí).
     const schedule = await this.settingsService.getOrderSchedule();
-    if (!isOrderCreationOpenFor(schedule)) {
+    // En MONTERIA TAT AGROPECUARIA los vendedores pueden montar pedidos a
+    // cualquier hora (sin restricción de horario).
+    if (companyId !== 'MTAT' && !isOrderCreationOpenFor(schedule)) {
       throw new BadRequestException(
         `El pedido no se pudo realizar porque está fuera del horario de ` +
           `atención. La toma de pedidos está disponible de ` +

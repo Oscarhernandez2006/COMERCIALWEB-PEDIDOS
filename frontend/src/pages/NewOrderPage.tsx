@@ -200,6 +200,8 @@ export function NewOrderPage() {
   const { company } = useCompany();
   const minOrderTotal = isSubproducto ? 0 : getMinOrderTotal(company?.id);
   const belowMinimum = minOrderTotal > 0 && totals.subtotal < minOrderTotal;
+  // MONTERIA TAT AGROPECUARIA: se pueden montar pedidos a cualquier hora.
+  const hoursOk = withinHours || company?.id === 'MTAT';
 
   const totalUnits = useMemo(
     () => cart.reduce((acc, l) => acc + l.quantity, 0),
@@ -1206,7 +1208,7 @@ export function NewOrderPage() {
                   cart.length === 0 ||
                   !deliveryDate ||
                   belowMinimum ||
-                  !withinHours ||
+                  !hoursOk ||
                   createOrder.isPending
                 }
                 onClick={handleSubmit}
@@ -1225,7 +1227,7 @@ export function NewOrderPage() {
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>{submitError}</span>
                 </p>
-              ) : !withinHours ? (
+              ) : !hoursOk ? (
                 <p className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-center text-xs text-destructive">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>

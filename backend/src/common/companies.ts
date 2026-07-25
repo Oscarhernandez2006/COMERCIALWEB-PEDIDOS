@@ -47,11 +47,18 @@ export function baseCompanyId(companyId: string): string {
 export const MIN_ORDER_TOTAL: Record<string, number> = {
   '3': 150000, // AGROPECUARIA
   '8': 50000, // CARNES FRIAS
+  MTAT: 0, // MONTERIA TAT AGROPECUARIA: sin mínimo de pedido
 };
 
 /** Devuelve el monto mínimo de pedido de una compañía (0 si no tiene tope). */
 export function getMinOrderTotal(companyId: string): number {
-  return MIN_ORDER_TOTAL[baseCompanyId(companyId)] ?? 0;
+  // Primero el valor propio de la compañía (p. ej. MONTERIA = 0); si no tiene,
+  // el de su compañía base.
+  return (
+    MIN_ORDER_TOTAL[companyId] ??
+    MIN_ORDER_TOTAL[baseCompanyId(companyId)] ??
+    0
+  );
 }
 
 /**

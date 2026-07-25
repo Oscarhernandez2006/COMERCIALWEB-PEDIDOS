@@ -17,7 +17,7 @@ export const COMPANIES: Company[] = [
 export const MIN_ORDER_TOTAL: Record<string, number> = {
   '3': 150000, // AGROPECUARIA
   '8': 50000, // CARNES FRIAS
-  MTAT: 150000, // MONTERIA TAT AGROPECUARIA (catálogo de AGROPECUARIA)
+  MTAT: 0, // MONTERIA TAT AGROPECUARIA (sin mínimo de pedido)
 };
 
 /** Devuelve el monto mínimo de pedido de una compañía (0 si no tiene tope). */
