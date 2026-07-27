@@ -18,7 +18,7 @@ import { OrdersErpClient, ErpOrderRegistro, ErpOrderState } from './orders-erp.c
 import { UsersService } from '../users/users.service';
 import { User, UserRole } from '../users/entities/user.entity';
 import { Product } from '../products/entities/product.entity';
-import { getMinOrderTotal, getWarehouse, COMPANIES, baseCompanyId } from '../../common/companies';
+import { getMinOrderTotal, getWarehouse, COMPANIES, baseCompanyId, getOperationCenter, virtualOperationCentersForBase } from '../../common/companies';
 import { buildOrderPdf } from './order-pdf';
 import {
   bogotaToday,
@@ -661,7 +661,9 @@ export class OrdersService {
     if (orders.length === 0) return {};
 
     const states = await this.erpClient.getOrderStates(companyId);
-    const byReferencia = this.indexStatesByReferencia(states);
+    const byReferencia = this.indexStatesByReferencia(
+      this.filterStatesForCompany(companyId, states),
+    );
 
     const result: Record<string, SiesaOrderState> = {};
     for (const order of orders) {
@@ -676,6 +678,33 @@ export class OrdersService {
       };
     }
     return result;
+  }
+
+  /**
+   * Filtra la lista de estados del ERP para quedarse solo con los documentos
+   * que pertenecen a la compañía indicada, usando el centro de operación (CO).
+   *
+   * MONTERIA TAT comparte `cia` y `tipo_doc` con AGROPECUARIA, así que la
+   * consulta de estados devuelve documentos de ambas. Sin este filtro, un
+   * pedido de Montería (consecutivo propio) cruzaría por `NUM_REFERENCIA` con un
+   * documento de Agropecuaria que tenga el mismo número, mostrando estados que
+   * no le corresponden. El CO separa unos de otros:
+   *  - Compañía virtual (Montería): solo sus documentos (CO propio, p. ej. 302).
+   *  - Compañía base (Agropecuaria): todos menos los CO de sus virtuales.
+   */
+  private filterStatesForCompany(
+    companyId: string,
+    states: ErpOrderState[],
+  ): ErpOrderState[] {
+    const own = getOperationCenter(companyId);
+    if (own) {
+      return states.filter((s) => String(s.CO ?? '').trim() === own);
+    }
+    const exclude = virtualOperationCentersForBase(baseCompanyId(companyId));
+    if (exclude.length === 0) return states;
+    return states.filter(
+      (s) => !exclude.includes(String(s.CO ?? '').trim()),
+    );
   }
 
   /**
@@ -751,7 +780,9 @@ export class OrdersService {
     if (syncedOrders.length === 0) return 0;
 
     const states = await this.erpClient.getOrderStates(companyId);
-    const byReferencia = this.indexStatesByReferencia(states);
+    const byReferencia = this.indexStatesByReferencia(
+      this.filterStatesForCompany(companyId, states),
+    );
 
     let updated = 0;
     for (const order of syncedOrders) {

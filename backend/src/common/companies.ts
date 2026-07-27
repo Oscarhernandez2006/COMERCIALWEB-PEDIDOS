@@ -68,6 +68,7 @@ export function getMinOrderTotal(companyId: string): number {
 export const WAREHOUSE_BY_COMPANY: Record<string, string> = {
   '3': '30103', // AGROPECUARIA
   '8': '80101', // CARNES FRIAS
+  MTAT: '30202', // MONTERIA TAT AGROPECUARIA (bodega propia)
 };
 
 /**
@@ -75,7 +76,11 @@ export const WAREHOUSE_BY_COMPANY: Record<string, string> = {
  * para evitar enviar un pedido con una bodega inválida.
  */
 export function getWarehouse(companyId: string): string {
-  const warehouse = WAREHOUSE_BY_COMPANY[baseCompanyId(companyId)];
+  // Primero la bodega propia de la compañía (p. ej. MONTERIA = 30202); si no
+  // tiene, la de su compañía base.
+  const warehouse =
+    WAREHOUSE_BY_COMPANY[companyId] ??
+    WAREHOUSE_BY_COMPANY[baseCompanyId(companyId)];
   if (!warehouse) {
     throw new Error(
       `La compañía ${companyId} no tiene una bodega configurada para enviar pedidos al ERP.`,
@@ -125,4 +130,33 @@ export const ORDER_DOC_TYPE_BY_COMPANY: Record<string, string> = {
 /** Tipo de documento de pedidos en Siesa para una compañía (por defecto PVA). */
 export function getOrderDocType(companyId: string): string {
   return ORDER_DOC_TYPE_BY_COMPANY[baseCompanyId(companyId)] ?? 'PVA';
+}
+
+/**
+ * Centro de operación (CO) que identifica los documentos de cada compañía en
+ * Siesa. Las compañías virtuales (p. ej. MONTERIA TAT) comparten `cia` y
+ * `tipo_doc` con su base, pero se distinguen por su CO propio. Sirve para no
+ * cruzar los estados de una compañía con los documentos de otra.
+ */
+export const OPERATION_CENTER_BY_COMPANY: Record<string, string> = {
+  MTAT: '302', // MONTERIA TAT AGROPECUARIA
+};
+
+/** CO propio de una compañía (undefined si comparte el de su base). */
+export function getOperationCenter(companyId: string): string | undefined {
+  return OPERATION_CENTER_BY_COMPANY[companyId];
+}
+
+/**
+ * Centros de operación (CO) que pertenecen a compañías virtuales que comparten
+ * la misma compañía base. Se usan para EXCLUIRLOS al consultar los estados de
+ * la compañía base (p. ej. que AGROPECUARIA no cruce con documentos de
+ * MONTERIA, que comparten cia 3).
+ */
+export function virtualOperationCentersForBase(baseId: string): string[] {
+  return COMPANIES.filter(
+    (c) => c.id !== baseId && baseCompanyId(c.id) === baseId,
+  )
+    .map((c) => OPERATION_CENTER_BY_COMPANY[c.id])
+    .filter((co): co is string => Boolean(co));
 }
