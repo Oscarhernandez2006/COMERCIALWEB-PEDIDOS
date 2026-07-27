@@ -39,6 +39,7 @@ export class AdminOrdersController {
     UserRole.SELLER,
     UserRole.ALISTADOR,
     UserRole.CARTERA,
+    UserRole.FACTURACION,
   )
   listAll(
     @Query('companyId') companyId: string,
