@@ -14,7 +14,7 @@ import {
   ArrowDownRight,
 } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
-import { useSellerDashboard } from '@/hooks/useApi';
+import { useSellerDashboard, useSellers } from '@/hooks/useApi';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import {
   Card,
@@ -158,6 +158,25 @@ export function DashboardPage() {
   const [dateStr, setDateStr] = useState(() => todayISO());
   const [wholeMonth, setWholeMonth] = useState(true);
 
+  // Solo los administradores pueden ver el tablero de otro vendedor o el
+  // general. Por defecto, un administrador ve el general (todos los vendedores).
+  const isAdmin = user?.role === 'admin';
+  const [sellerId, setSellerId] = useState('all');
+  const [sellerSearch, setSellerSearch] = useState('');
+  const [sellerOpen, setSellerOpen] = useState(false);
+  const { data: sellers = [] } = useSellers();
+  // Solo usuarios con rol de vendedor.
+  const sellerOptions = useMemo(
+    () => sellers.filter((s) => s.role === 'seller'),
+    [sellers],
+  );
+  const filteredSellers = useMemo(() => {
+    const q = sellerSearch.trim().toLowerCase();
+    if (!q) return sellerOptions;
+    return sellerOptions.filter((s) => s.name.toLowerCase().includes(q));
+  }, [sellerOptions, sellerSearch]);
+  const effectiveSellerId = isAdmin ? sellerId : undefined;
+
   const selected = new Date(`${dateStr}T12:00:00`);
   const month = selected.getMonth() + 1;
   const year = selected.getFullYear();
@@ -167,6 +186,7 @@ export function DashboardPage() {
     month,
     year,
     day,
+    effectiveSellerId,
   );
 
   const daysInMonth = useMemo(
@@ -239,6 +259,71 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          {isAdmin && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Vendedor
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={sellerSearch}
+                  placeholder={
+                    sellerId && sellerId !== 'all'
+                      ? sellers.find((s) => s.id === sellerId)?.name ??
+                        'Buscar vendedor...'
+                      : 'Todos (general)'
+                  }
+                  onChange={(e) => {
+                    setSellerSearch(e.target.value);
+                    setSellerOpen(true);
+                  }}
+                  onFocus={() => setSellerOpen(true)}
+                  onBlur={() => setTimeout(() => setSellerOpen(false), 150)}
+                  className="h-9 w-56 rounded-md border border-input bg-background px-2 text-sm"
+                />
+                {sellerOpen && (
+                  <div className="absolute z-20 mt-1 max-h-64 w-56 overflow-auto rounded-md border border-border bg-background shadow-lg">
+                    <button
+                      type="button"
+                      className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSellerId('all');
+                        setSellerSearch('');
+                        setSellerOpen(false);
+                      }}
+                    >
+                      Todos (general)
+                    </button>
+                    {filteredSellers.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={cn(
+                          'flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent',
+                          s.id === sellerId && 'bg-accent/60 font-medium',
+                        )}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSellerId(s.id);
+                          setSellerSearch('');
+                          setSellerOpen(false);
+                        }}
+                      >
+                        {s.name}
+                      </button>
+                    ))}
+                    {filteredSellers.length === 0 && (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">
+                        Sin vendedores.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">
               Fecha
@@ -295,6 +380,15 @@ export function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {/* Aviso de carga: al cambiar de vendedor o fecha la consulta tarda; se
+          muestra un mensaje claro en lugar de dejar las tarjetas en "…". */}
+      {isFetching && (
+        <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-primary">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          Cargando información...
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

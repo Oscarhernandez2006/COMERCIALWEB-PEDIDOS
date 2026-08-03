@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { ClientRecord } from '../clients/entities/client-record.entity';
 import { UserCompany } from '../users/entities/user-company.entity';
-import { User } from '../users/entities/user.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 import { bogotaToday } from '../orders/order-cortes';
 import { BudgetsService } from '../budgets/budgets.service';
 import { baseCompanyId } from '../../common/companies';
@@ -124,6 +124,7 @@ export class DashboardService {
     month: number,
     year: number,
     day?: number,
+    allSellers = false,
   ): Promise<SellerCommercialDashboard> {
     // Si se indica un día, el tablero se limita a ese día (y compara contra el
     // día anterior); si no, es todo el mes (y compara contra el mes anterior).
@@ -151,37 +152,70 @@ export class DashboardService {
       prevTo = pr.to;
     }
 
-    const [seller, totalsRow, prevRevenue, activeCustomers, salesTrend, topCustomers, salesByCut, budget, kilosSold, prevKilos, channelRows, channelRowsPrev, sellerLink, projection] =
+    // Conjunto de vendedores a incluir y sus códigos de canal. En modo general
+    // se toman TODOS los vendedores ASIGNADOS (rol vendedor con mapping activo);
+    // para un vendedor concreto, solo él.
+    let seller: User | null = null;
+    let sellerIds: string[];
+    let channelCodes: Set<string>;
+    let activeCodes: string[];
+    if (allSellers) {
+      const base = baseCompanyId(companyId);
+      const mappings = await this.userCompaniesRepository.find({
+        where: { companyId: base, active: true },
+        relations: { user: true },
+      });
+      // Vendedores asignados: rol vendedor, activos y con código de Siesa
+      // (mismo criterio que el reporte de ventas por vendedor).
+      const assigned = mappings
+        .map((m) => ({
+          m,
+          code: (m.siesaSellerCode || m.user?.siesaSellerCode || '').trim(),
+        }))
+        .filter(
+          ({ m, code }) =>
+            m.user && m.user.active && m.user.role === UserRole.SELLER && code,
+        );
+      sellerIds = assigned.map(({ m }) => m.user.id);
+      channelCodes = new Set(assigned.map(({ code }) => code));
+      activeCodes = [...channelCodes];
+    } else {
+      seller = await this.usersRepository.findOne({ where: { id: sellerId } });
+      const link = await this.userCompaniesRepository.findOne({
+        where: { userId: sellerId, companyId },
+      });
+      const code = (
+        link?.siesaSellerCode ||
+        seller?.siesaSellerCode ||
+        ''
+      ).trim();
+      sellerIds = [sellerId];
+      channelCodes = new Set(code ? [code] : []);
+      activeCodes = code ? [code] : [];
+    }
+
+    const [totalsRow, prevRevenue, activeCustomers, salesTrend, topCustomers, salesByCut, budget, kilosSold, prevKilos, channelRows, channelRowsPrev, projectionConfig] =
       await Promise.all([
-        this.usersRepository.findOne({ where: { id: sellerId } }),
-        this.getTotals(companyId, sellerId, from, to),
-        this.getRevenue(companyId, sellerId, prevFrom, prevTo),
-        this.getActiveCustomers(companyId, sellerId),
-        this.getTrend(companyId, sellerId, from, to),
-        this.getTopCustomers(companyId, sellerId, from, to),
-        this.getSalesByCut(companyId, sellerId, from, to),
-        this.budgetsService.getSellerBudget(companyId, sellerId, month, year),
-        this.getKilosSold(companyId, sellerId, from, to),
-        this.getKilosSold(companyId, sellerId, prevFrom, prevTo),
+        this.getTotals(companyId, sellerIds, from, to),
+        this.getRevenue(companyId, sellerIds, prevFrom, prevTo),
+        this.getActiveCustomers(companyId, activeCodes),
+        this.getTrend(companyId, sellerIds, from, to),
+        this.getTopCustomers(companyId, sellerIds, from, to),
+        this.getSalesByCut(companyId, sellerIds, from, to),
+        allSellers
+          ? this.budgetsService.getCompanyBudget(companyId, month, year)
+          : this.budgetsService.getSellerBudget(companyId, sellerId, month, year),
+        this.getKilosSold(companyId, sellerIds, from, to),
+        this.getKilosSold(companyId, sellerIds, prevFrom, prevTo),
         this.channelSalesClient.fetch(companyId, from, to),
         this.channelSalesClient.fetch(companyId, prevFrom, prevTo),
-        this.userCompaniesRepository.findOne({
-          where: { userId: sellerId, companyId },
-        }),
-        this.budgetsService.getCompanyProjection(companyId, month, year),
+        this.budgetsService.getProjection(companyId, month, year),
       ]);
 
-    // Ventas por canal del vendedor: el endpoint las identifica por el CÓDIGO
-    // DE VENDEDOR EN SIESA (codigo_vendedor), no por la cédula. Se resuelve el
-    // código del vendedor en esta compañía (user_companies), con respaldo al
-    // global del usuario.
-    const sellerCode = (
-      sellerLink?.siesaSellerCode ||
-      seller?.siesaSellerCode ||
-      ''
-    ).trim();
-    const cur = this.summarizeChannels(channelRows, sellerCode);
-    const prevCh = this.summarizeChannels(channelRowsPrev, sellerCode);
+    // Ventas por canal: se identifican por el CÓDIGO DE VENDEDOR EN SIESA
+    // (codigo_vendedor). Solo se suman las de los vendedores incluidos.
+    const cur = this.summarizeChannels(channelRows, channelCodes);
+    const prevCh = this.summarizeChannels(channelRowsPrev, channelCodes);
 
     // Las ventas por canal también afectan la gráfica de tendencia: en la vista
     // mensual se suman al día correspondiente; en la vista por horas (un solo
@@ -207,6 +241,16 @@ export class DashboardService {
     const orders = totalsRow.orders;
     const revenue = totalsRow.revenue + cur.revenue;
     const totalKilos = kilosSold + cur.kilos;
+
+    // Proyección AUTOMÁTICA del mes según el ritmo de ventas sobre los días
+    // hábiles marcados: se toma el acumulado (pesos/kilos) del vendedor y se
+    // proyecta al total de días hábiles del mes. Solo aplica en la vista mensual.
+    const projection = this.computeProjection(
+      projectionConfig.workingDays,
+      revenue,
+      totalKilos,
+      singleDay,
+    );
     const revenuePct =
       prevRevenue + prevCh.revenue > 0
         ? Number(
@@ -239,7 +283,12 @@ export class DashboardService {
     return {
       period: { month, year, day: singleDay ? (day as number) : null, label },
       generatedAt: new Date().toISOString(),
-      seller: { id: sellerId, name: seller?.name ?? 'Vendedor' },
+      seller: {
+        id: allSellers ? 'all' : sellerId,
+        name: allSellers
+          ? 'General · Todos los vendedores'
+          : seller?.name ?? 'Vendedor',
+      },
       totals: {
         revenue,
         orders,
@@ -262,19 +311,60 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Proyección automática del mes a partir del acumulado de ventas y los días
+   * hábiles marcados. Estima el cierre del mes suponiendo que se mantiene el
+   * ritmo diario (promedio por día hábil transcurrido) por el total de días
+   * hábiles. Devuelve null en la vista por día o si no hay días hábiles/ventas.
+   */
+  private computeProjection(
+    workingDays: string[] | null,
+    revenue: number,
+    kilos: number,
+    singleDay: boolean,
+  ): { revenue: number; kilos: number } | null {
+    const days = Array.isArray(workingDays) ? workingDays : [];
+    const total = days.length;
+    if (singleDay || total === 0) return null;
+    // Días hábiles transcurridos: los que ya llegaron a hoy (mes en curso). En
+    // meses pasados, hoy es posterior a todos, así que cuentan todos.
+    const today = bogotaToday();
+    const elapsed = days.filter((d) => d <= today).length;
+    if (elapsed === 0) return null;
+    return {
+      revenue: (revenue / elapsed) * total,
+      kilos: (kilos / elapsed) * total,
+    };
+  }
+
+  /**
+   * Condición SQL para filtrar por un conjunto de vendedores.
+   *  - null: sin filtro (todos).
+   *  - lista vacía: no coincide con nadie (1=0).
+   *  - lista con ids: o.seller_id IN (...).
+   */
+  private sellerFilterSql(
+    sellerIds: string[] | null,
+  ): [string, Record<string, unknown>] {
+    if (!sellerIds) return ['1=1', {}];
+    if (sellerIds.length === 0) return ['1=0', {}];
+    return ['o.seller_id IN (:...sellerIds)', { sellerIds }];
+  }
+
   private async getTotals(
     companyId: string,
-    sellerId: string,
+    sellerIds: string[] | null,
     from: string,
     to: string,
   ): Promise<{ revenue: number; orders: number; customers: number }> {
+    const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
     const row = await this.ordersRepository
       .createQueryBuilder('o')
       .select('COALESCE(SUM(o.total), 0)', 'revenue')
       .addSelect('COUNT(*)', 'orders')
       .addSelect('COUNT(DISTINCT o.customer_id)', 'customers')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
       .andWhere(this.bogotaDateFilter, { from, to })
       .getRawOne<{ revenue: string; orders: string; customers: string }>();
@@ -288,15 +378,16 @@ export class DashboardService {
 
   private async getRevenue(
     companyId: string,
-    sellerId: string,
+    sellerIds: string[] | null,
     from: string,
     to: string,
   ): Promise<number> {
+    const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
     const row = await this.ordersRepository
       .createQueryBuilder('o')
       .select('COALESCE(SUM(o.total), 0)', 'revenue')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
       .andWhere(this.bogotaDateFilter, { from, to })
       .getRawOne<{ revenue: string }>();
@@ -304,13 +395,13 @@ export class DashboardService {
   }
 
   /**
-   * Resume las ventas por canal de un vendedor: filtra las filas por su cédula
-   * (codigo_vendedor), suma pesos (valor_neto) y kilos (cantidad), y agrupa por
-   * la descripción del canal.
+   * Resume las ventas por canal de un conjunto de vendedores: incluye solo las
+   * filas cuyo código de vendedor (codigo_vendedor) está en `codes`, suma pesos
+   * (valor_neto) y kilos (cantidad) y agrupa por la descripción del canal.
    */
   private summarizeChannels(
     rows: ChannelSaleRaw[],
-    sellerCode: string,
+    codes: Set<string>,
   ): {
     revenue: number;
     kilos: number;
@@ -322,9 +413,10 @@ export class DashboardService {
     const grouped = new Map<string, { kilos: number; revenue: number }>();
     const byDay = new Map<string, number>();
 
-    if (sellerCode) {
+    if (codes.size > 0) {
       for (const r of rows) {
-        if ((r.codigo_vendedor ?? '').trim() !== sellerCode) continue;
+        const code = (r.codigo_vendedor ?? '').trim();
+        if (!code || !codes.has(code)) continue;
         const val = Number(r.valor_neto ?? r.valor_bruto ?? 0);
         const qty = Number(r.cantidad ?? 0);
         revenue += val;
@@ -350,16 +442,17 @@ export class DashboardService {
   /** Kilos vendidos en el mes: suma de cantidades de ítems medidos en KG. */
   private async getKilosSold(
     companyId: string,
-    sellerId: string,
+    sellerIds: string[] | null,
     from: string,
     to: string,
   ): Promise<number> {
+    const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
     const row = await this.orderItemsRepository
       .createQueryBuilder('it')
       .innerJoin('it.order', 'o')
       .select('COALESCE(SUM(it.quantity), 0)', 'kilos')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
       .andWhere(this.bogotaDateFilter, { from, to })
       .andWhere("UPPER(TRIM(it.unit_of_measure)) = 'KG'")
@@ -367,41 +460,42 @@ export class DashboardService {
     return Number(row?.kilos ?? 0);
   }
 
-  /** Clientes de la cartera asignados al vendedor (por código de vendedor). */
+  /** Clientes de la cartera asignados a un conjunto de códigos de vendedor. */
   private async getActiveCustomers(
     companyId: string,
-    sellerId: string,
+    codes: string[] | null,
   ): Promise<number> {
-    const link = await this.userCompaniesRepository.findOne({
-      where: { userId: sellerId, companyId },
-    });
-    const user = await this.usersRepository.findOne({ where: { id: sellerId } });
-    const sellerCode = link?.siesaSellerCode || user?.siesaSellerCode;
-    if (!sellerCode) return 0;
-
+    // Sin restricción: todos los clientes de la compañía.
+    if (!codes) {
+      return this.clientsRepository.count({
+        where: { companyId: baseCompanyId(companyId) },
+      });
+    }
+    if (codes.length === 0) return 0;
     return this.clientsRepository.count({
-      where: { companyId: baseCompanyId(companyId), sellerCode },
+      where: { companyId: baseCompanyId(companyId), sellerCode: In(codes) },
     });
   }
 
   private async getTrend(
     companyId: string,
-    sellerId: string,
+    sellerIds: string[] | null,
     from: string,
     to: string,
   ): Promise<SellerCommercialDashboard['salesTrend']> {
     // Un único día: la tendencia se muestra por horas (06:00–17:00).
     if (from === to) {
-      return this.getHourlyTrend(companyId, sellerId, from);
+      return this.getHourlyTrend(companyId, sellerIds, from);
     }
 
+    const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
     const rows = await this.ordersRepository
       .createQueryBuilder('o')
       .select(this.bogotaDateExpr, 'date')
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .addSelect('COUNT(*)', 'orders')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
       .andWhere(this.bogotaDateFilter, { from, to })
       .groupBy('date')
@@ -438,16 +532,17 @@ export class DashboardService {
   /** Tendencia por horas (06:00–17:00) de un solo día para el vendedor. */
   private async getHourlyTrend(
     companyId: string,
-    sellerId: string,
+    sellerIds: string[] | null,
     day: string,
   ): Promise<SellerCommercialDashboard['salesTrend']> {
+    const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
     const rows = await this.ordersRepository
       .createQueryBuilder('o')
       .select(this.bogotaHourExpr, 'hour')
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .addSelect('COUNT(*)', 'orders')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
       .andWhere(this.bogotaDateFilter, { from: day, to: day })
       .groupBy('hour')
@@ -477,10 +572,11 @@ export class DashboardService {
 
   private async getTopCustomers(
     companyId: string,
-    sellerId: string,
+    sellerIds: string[] | null,
     from: string,
     to: string,
   ): Promise<SellerCommercialDashboard['topCustomers']> {
+    const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
     const rows = await this.ordersRepository
       .createQueryBuilder('o')
       .innerJoin('o.customer', 'c')
@@ -490,7 +586,7 @@ export class DashboardService {
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .addSelect('MAX(o.created_at)', 'lastPurchase')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
       .andWhere(this.bogotaDateFilter, { from, to })
       .groupBy('c.code')
@@ -518,10 +614,11 @@ export class DashboardService {
   /** Ventas por corte (producto) del mes: cantidad y venta por referencia. */
   private async getSalesByCut(
     companyId: string,
-    sellerId: string,
+    sellerIds: string[] | null,
     from: string,
     to: string,
   ): Promise<SellerCommercialDashboard['salesByCut']> {
+    const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
     const rows = await this.orderItemsRepository
       .createQueryBuilder('it')
       .innerJoin('it.order', 'o')
@@ -529,7 +626,7 @@ export class DashboardService {
       .addSelect('COALESCE(SUM(it.quantity), 0)', 'quantity')
       .addSelect('COALESCE(SUM(it.line_total), 0)', 'revenue')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere('o.seller_id = :sellerId', { sellerId })
+      .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
       .andWhere(this.bogotaDateFilter, { from, to })
       .groupBy('it.sku')

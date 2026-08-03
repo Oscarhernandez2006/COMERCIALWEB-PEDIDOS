@@ -37,15 +37,27 @@ export function useProducts(search: string) {
 /**
  * Tablero de gestión comercial del vendedor autenticado para un mes/año y,
  * opcionalmente, un día concreto (day > 0). La compañía se toma del contexto.
+ * Los administradores pueden consultar el tablero de otro vendedor pasando
+ * `sellerId`.
  */
-export function useSellerDashboard(month: number, year: number, day = 0) {
+export function useSellerDashboard(
+  month: number,
+  year: number,
+  day = 0,
+  sellerId?: string,
+) {
   const { company } = useCompany();
   return useQuery({
-    queryKey: ['dashboard', 'commercial', company?.id, month, year, day],
+    queryKey: ['dashboard', 'commercial', company?.id, month, year, day, sellerId],
     queryFn: async () => {
       const res = await api.get<SellerCommercialDashboard>(
         '/dashboard/commercial',
-        { params: day > 0 ? { month, year, day } : { month, year } },
+        {
+          params: {
+            ...(day > 0 ? { month, year, day } : { month, year }),
+            ...(sellerId ? { sellerId } : {}),
+          },
+        },
       );
       return res.data;
     },
@@ -85,6 +97,7 @@ export interface SellerOption {
   name: string;
   documentId: string;
   siesaSellerCode: string;
+  role: string;
 }
 
 /** Vendedores de la compañía con código de vendedor en Siesa. */

@@ -61,18 +61,7 @@ interface Draft {
   expectedRevenue: string;
 }
 
-/** Limpia una entrada numérica dejando dígitos y un único punto decimal. */
-function cleanNumeric(value: string): string {
-  let clean = value.replace(/[^\d.]/g, '');
-  const firstDot = clean.indexOf('.');
-  if (firstDot !== -1) {
-    clean =
-      clean.slice(0, firstDot + 1) +
-      clean.slice(firstDot + 1).replace(/\./g, '');
-  }
-  return clean;
-}
-
+/** Formatea un número de día a dos dígitos (p. ej. 3 → "03"). */
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /** Encabezados del calendario, semana iniciando en lunes. */
@@ -93,20 +82,14 @@ function ProjectionSection({
   month: number;
   year: number;
 }) {
-  const { data, isLoading } = useProjection(companyId, month, year);
+  const { data } = useProjection(companyId, month, year);
   const saveMutation = useSaveProjection();
 
-  const [mode, setMode] = useState<'month' | 'day'>('month');
-  const [revenue, setRevenue] = useState('');
-  const [kilos, setKilos] = useState('');
   const [days, setDays] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!data) return;
-    setMode(data.mode);
-    setRevenue(data.revenue ? String(data.revenue) : '');
-    setKilos(data.kilos ? String(data.kilos) : '');
     setDays(new Set(data.workingDays ?? []));
     setSaved(false);
   }, [data]);
@@ -147,19 +130,17 @@ function ProjectionSection({
   };
 
   // Total del mes proyectado: en modo "día" se multiplica por días hábiles.
-  const monthRevenue =
-    mode === 'day' ? Number(revenue || 0) * workingCount : Number(revenue || 0);
-  const monthKilos =
-    mode === 'day' ? Number(kilos || 0) * workingCount : Number(kilos || 0);
-
   const handleSave = async () => {
     await saveMutation.mutateAsync({
       companyId,
       month,
       year,
-      mode,
-      revenue: Number(revenue || 0),
-      kilos: Number(kilos || 0),
+      // La proyección ya no se ingresa a mano: solo se guardan los días
+      // hábiles. El cálculo lo hace el tablero según las ventas de cada
+      // vendedor. Se mantienen los campos por compatibilidad de la API.
+      mode: 'day',
+      revenue: 0,
+      kilos: 0,
       workingDays: Array.from(days).sort(),
     });
     setSaved(true);
@@ -185,105 +166,18 @@ function ProjectionSection({
               : 'Guardar proyección'}
         </Button>
       </CardHeader>
-      <CardContent className="grid gap-5 lg:grid-cols-2">
-        {/* Columna izquierda: modo + valores */}
-        <div className="space-y-4">
-          {/* Selector de modo (excluyente) */}
-          <div className="inline-flex rounded-lg border border-input p-1">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('month');
-                setSaved(false);
-              }}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                mode === 'month'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Proyección del mes
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('day');
-                setSaved(false);
-              }}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                mode === 'day'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Proyección diaria
-            </button>
-          </div>
+      <CardContent className="space-y-4">
+        <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+          <TrendingUp className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Marca los <strong>días hábiles</strong> del mes. La proyección se
+            calcula <strong>automáticamente</strong> en el tablero de cada
+            vendedor: toma sus ventas acumuladas, saca el promedio por día hábil
+            transcurrido y lo proyecta al total de días hábiles del mes.
+          </span>
+        </p>
 
-          <p className="text-xs text-muted-foreground">
-            {mode === 'month'
-              ? 'Ingresa el total proyectado para todo el mes.'
-              : 'Ingresa el valor de un día hábil; el total del mes se calcula multiplicándolo por los días hábiles seleccionados.'}
-          </p>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
-                {mode === 'month' ? 'Proyección Pesos (mes)' : 'Pesos por día'}
-              </label>
-              <input
-                inputMode="numeric"
-                value={revenue}
-                onChange={(e) => {
-                  setRevenue(cleanNumeric(e.target.value));
-                  setSaved(false);
-                }}
-                placeholder="0"
-                disabled={isLoading}
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">
-                {mode === 'month' ? 'Proyección Kilos (mes)' : 'Kilos por día'}
-              </label>
-              <input
-                inputMode="numeric"
-                value={kilos}
-                onChange={(e) => {
-                  setKilos(cleanNumeric(e.target.value));
-                  setSaved(false);
-                }}
-                placeholder="0"
-                disabled={isLoading}
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-          </div>
-
-          {/* Total proyectado del mes */}
-          <div className="rounded-lg border border-border bg-muted/40 p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Total proyectado del mes
-              {mode === 'day' ? ` · ${workingCount} días hábiles` : ''}
-            </p>
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <span className="text-lg font-bold">
-                {formatSigcom(monthRevenue)}
-              </span>
-              <span className="text-sm font-semibold text-muted-foreground">
-                {monthKilos.toLocaleString('en-US', {
-                  maximumFractionDigits: 2,
-                })}{' '}
-                kg
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Columna derecha: calendario de días hábiles */}
+        {/* Calendario de días hábiles */}
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-sm font-medium">

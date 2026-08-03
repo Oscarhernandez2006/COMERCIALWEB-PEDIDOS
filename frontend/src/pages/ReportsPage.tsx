@@ -17,6 +17,7 @@ import {
   Trophy,
   UserSearch,
   Crown,
+  BarChart3,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
@@ -32,12 +33,15 @@ import {
   downloadSellerProductExcel,
   downloadProductSellerReport,
   downloadProductSellerExcel,
+  downloadSellerSalesReport,
+  downloadSellerSalesExcel,
   useInventoryReport,
   useProductSalesReport,
   useSalesSummaryReport,
   useSellerRankingReport,
   useSellerProductReport,
   useProductSellerReport,
+  useSellerSalesReport,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -76,7 +80,8 @@ type ReportKey =
   | 'sales-summary'
   | 'seller-ranking'
   | 'seller-product'
-  | 'product-seller';
+  | 'product-seller'
+  | 'seller-sales';
 
 const REPORTS: {
   key: ReportKey;
@@ -125,6 +130,13 @@ const REPORTS: {
     description:
       'Por cada producto, quién fue el vendedor que más lo vendió (ranking).',
     icon: Crown,
+  },
+  {
+    key: 'seller-sales',
+    title: 'Ventas por vendedor (mensual)',
+    description:
+      'Presupuesto vs. ventas y kilos por vendedor, con cumplimiento y valor promedio por kilo.',
+    icon: BarChart3,
   },
 ];
 
@@ -221,6 +233,16 @@ export function ReportsPage() {
           onClose={() => setOpen(null)}
         >
           <ProductSellerReportBody />
+        </ReportModalShell>
+      )}
+
+      {open === 'seller-sales' && (
+        <ReportModalShell
+          title="Ventas por vendedor (mensual)"
+          icon={BarChart3}
+          onClose={() => setOpen(null)}
+        >
+          <SellerSalesReportBody />
         </ReportModalShell>
       )}
     </div>
@@ -2038,5 +2060,293 @@ function SummaryTile({
       </p>
       <p className="text-[11px] text-muted-foreground">{label}</p>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Ventas por vendedor (mensual)                                       */
+/* ------------------------------------------------------------------ */
+
+/** Mes actual en formato YYYY-MM (hora local). */
+function currentMonthStr(): string {
+  return todayStr().slice(0, 7);
+}
+
+/** Formatea un porcentaje o "—" si es nulo. */
+function pctText(value: number | null): string {
+  if (value == null) return '—';
+  return `${value.toFixed(2)}%`;
+}
+
+function SellerSalesReportBody() {
+  const [companyId, setCompanyId] = useState(COMPANIES[0].id);
+  const [monthStr, setMonthStr] = useState(currentMonthStr());
+
+  const [applied, setApplied] = useState<{
+    companyId: string;
+    month: number;
+    year: number;
+  } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [exporting, setExporting] = useState<null | 'pdf' | 'excel'>(null);
+  const [error, setError] = useState('');
+
+  const query = useSellerSalesReport(
+    applied?.companyId,
+    applied?.month,
+    applied?.year,
+    !!applied,
+  );
+
+  function parseMonth(): { month: number; year: number } {
+    const [y, m] = monthStr.split('-').map(Number);
+    return { month: m || 1, year: y || new Date().getFullYear() };
+  }
+
+  function handleToggle() {
+    if (showPreview) {
+      setShowPreview(false);
+      return;
+    }
+    setError('');
+    const { month, year } = parseMonth();
+    setApplied({ companyId, month, year });
+    setShowPreview(true);
+  }
+
+  async function handleExport(kind: 'pdf' | 'excel') {
+    setExporting(kind);
+    setError('');
+    try {
+      const { month, year } = parseMonth();
+      if (kind === 'pdf') {
+        await downloadSellerSalesReport(companyId, month, year);
+      } else {
+        await downloadSellerSalesExcel(companyId, month, year);
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  const data = query.data;
+
+  return (
+    <>
+      <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        <BarChart3 className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          Por cada vendedor: <strong>presupuesto vs. ventas y kilos</strong>,
+          cumplimiento y valor promedio por kilo del mes anterior y del actual.
+          La venta esperada es el presupuesto en pesos prorrateado a la fecha.
+        </span>
+      </p>
+
+      {/* Compañía */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Compañía</label>
+        <div className="flex flex-wrap gap-2">
+          {COMPANIES.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setCompanyId(c.id)}
+              className={cn(
+                'flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
+                companyId === c.id
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground hover:bg-accent',
+              )}
+            >
+              <Building2 className="h-4 w-4" />
+              {c.name}
+              <span className="text-xs opacity-70">#{c.id}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mes */}
+      <div className="max-w-xs space-y-2">
+        <label className="text-sm font-medium">Mes</label>
+        <div className="relative">
+          <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="month"
+            value={monthStr}
+            max={currentMonthStr()}
+            onChange={(e) => setMonthStr(e.target.value || currentMonthStr())}
+            className="pl-9"
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p className="flex items-center gap-1 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </p>
+      )}
+
+      {/* Acciones */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={handleToggle} disabled={query.isFetching}>
+          {query.isFetching ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : showPreview ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Search className="h-4 w-4" />
+          )}
+          {showPreview ? 'Ocultar' : 'Consultar'}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => handleExport('pdf')}
+          disabled={exporting !== null}
+        >
+          <Download
+            className={cn('h-4 w-4', exporting === 'pdf' && 'animate-pulse')}
+          />
+          Exportar PDF
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => handleExport('excel')}
+          disabled={exporting !== null}
+        >
+          <FileSpreadsheet
+            className={cn('h-4 w-4', exporting === 'excel' && 'animate-pulse')}
+          />
+          Exportar Excel
+        </Button>
+      </div>
+
+      {showPreview && data && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <SummaryTile
+              label="Kilos vendidos"
+              value={num(data.totals.kilosSold)}
+            />
+            <SummaryTile
+              label="Venta acumulada"
+              value={formatCurrency(data.totals.revenue)}
+              tone="ok"
+            />
+            <SummaryTile
+              label="% Cump. pesos"
+              value={pctText(data.totals.revenuePct)}
+            />
+            <SummaryTile
+              label="% Ideal a la fecha"
+              value={`${data.idealPct.toFixed(2)}%`}
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Vendedor</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    V. Kilo {data.prevMonthLabel}
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">Ppto Kilo</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    Kilos vend.
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">% Cump.</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    Venta acum.
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    Venta esp.
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">% Cump.</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    V. Kilo mes
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={9}
+                      className="px-3 py-8 text-center text-muted-foreground"
+                    >
+                      No hay vendedores con datos para este mes.
+                    </td>
+                  </tr>
+                ) : (
+                  data.rows.map((r) => (
+                    <tr key={r.sellerCode + r.name} className="border-t border-border">
+                      <td className="px-3 py-2">{r.name}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatCurrency(r.avgKiloPrev)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {num(r.budgetKilos)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {num(r.kilosSold)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {pctText(r.kilosPct)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatCurrency(r.revenue)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatCurrency(r.expectedRevenue)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {pctText(r.revenuePct)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatCurrency(r.avgKiloCur)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {data.rows.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/40 font-semibold">
+                    <td className="px-3 py-2">TOTAL</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatCurrency(data.totals.avgKiloPrev)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {num(data.totals.budgetKilos)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {num(data.totals.kilosSold)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {pctText(data.totals.kilosPct)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatCurrency(data.totals.revenue)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatCurrency(data.totals.expectedRevenue)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {pctText(data.totals.revenuePct)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatCurrency(data.totals.avgKiloCur)}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

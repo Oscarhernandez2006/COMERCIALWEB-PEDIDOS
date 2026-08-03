@@ -51,8 +51,18 @@ function bogotaDateStr(date: Date = new Date()): string {
 /** Filtro por estado de alistado. */
 type PickedFilter = 'all' | 'picked' | 'unpicked';
 
-export function DownloadOrdersPage() {
-  const [companyId, setCompanyId] = useState(COMPANIES[0].id);
+export function DownloadOrdersPage({
+  orderType = 'corte',
+}: {
+  orderType?: 'corte' | 'subproducto';
+}) {
+  // Los subproductos solo existen en AGROPECUARIA (#3), así que en esa vista
+  // solo se muestra esa compañía.
+  const availableCompanies =
+    orderType === 'subproducto'
+      ? COMPANIES.filter((c) => c.id === '3')
+      : COMPANIES;
+  const [companyId, setCompanyId] = useState(availableCompanies[0].id);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   // Filtros: por día (predeterminado hoy), por estado de alistado y búsqueda.
@@ -60,9 +70,9 @@ export function DownloadOrdersPage() {
   const [pickedFilter, setPickedFilter] = useState<PickedFilter>('all');
   const [search, setSearch] = useState('');
 
-  const company = COMPANIES.find((c) => c.id === companyId)!;
+  const company = availableCompanies.find((c) => c.id === companyId)!;
   const { data: orders, isLoading, isError, refetch, isFetching } =
-    useDownloadableOrders(companyId);
+    useDownloadableOrders(companyId, orderType);
   const download = useDownloadOrders();
   const setPicked = useSetOrderPicked();
   const setPickedBulk = useSetOrderPickedBulk();
@@ -130,6 +140,7 @@ export function DownloadOrdersPage() {
       companyId,
       orderIds: list.map((o) => o.id),
       picked,
+      type: orderType,
     });
   }
 
@@ -144,7 +155,7 @@ export function DownloadOrdersPage() {
     if (orderIds.length === 0) return;
     setError('');
     try {
-      await download.mutateAsync({ companyId, orderIds });
+      await download.mutateAsync({ companyId, orderIds, type: orderType });
       setSelected(new Set());
     } catch (err) {
       if (isAxiosError(err)) {
@@ -162,7 +173,10 @@ export function DownloadOrdersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Descargar pedidos</h2>
+        <h2 className="text-2xl font-bold tracking-tight">
+          Descargar pedidos{' '}
+          {orderType === 'subproducto' ? '· Subproductos' : '· Cortes'}
+        </h2>
         <p className="text-muted-foreground">
           Descarga masiva en PDF de los pedidos subidos a Siesa.
         </p>
@@ -192,7 +206,7 @@ export function DownloadOrdersPage() {
           <div className="space-y-2">
             <label className="text-sm font-medium">Compañía</label>
             <div className="flex flex-wrap gap-2">
-              {COMPANIES.map((c) => (
+              {availableCompanies.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => changeCompany(c.id)}
@@ -451,6 +465,7 @@ export function DownloadOrdersPage() {
                                 companyId,
                                 orderId: o.id,
                                 picked: e.target.checked,
+                                type: orderType,
                               });
                             }}
                             title={

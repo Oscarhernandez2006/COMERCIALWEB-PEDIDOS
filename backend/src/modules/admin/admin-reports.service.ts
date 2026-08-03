@@ -24,6 +24,7 @@ import {
   buildSellerRankingReportExcel,
   buildSellerProductReportExcel,
   buildProductSellerReportExcel,
+  buildSellerSalesReportExcel,
 } from './report-excel';
 import {
   buildSalesSummaryReportPdf,
@@ -47,6 +48,17 @@ import {
   ProductSellerReportData,
   ProductSellerRow,
 } from './product-seller-report';
+import {
+  buildSellerSalesReportPdf,
+  SellerSalesReportData,
+  SellerSalesRow,
+} from './seller-sales-report';
+import { BudgetsService } from '../budgets/budgets.service';
+import { UsersService } from '../users/users.service';
+import {
+  ChannelSalesClient,
+  ChannelSaleRaw,
+} from '../channel-sales/channel-sales.client';
 
 /** Estados que representan una venta real (descuentan inventario). */
 const SALE_STATUSES = [
@@ -65,6 +77,9 @@ export class AdminReportsService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(PriceListItem)
     private readonly priceListItemsRepository: Repository<PriceListItem>,
+    private readonly budgetsService: BudgetsService,
+    private readonly channelSalesClient: ChannelSalesClient,
+    private readonly usersService: UsersService,
   ) {}
 
   /**
@@ -831,5 +846,221 @@ export class AdminReportsService {
     const data = await this.getProductSellerReport(companyId, from, to, sku);
     const buffer = buildProductSellerReportExcel(data);
     return { buffer, from: data.from, to: data.to };
+  }
+
+  /** Suma las ventas por canal por código de vendedor (pesos y kilos). */
+  private sumChannelsByCode(
+    rows: ChannelSaleRaw[],
+  ): Map<string, { revenue: number; kilos: number }> {
+    const map = new Map<string, { revenue: number; kilos: number }>();
+    for (const r of rows) {
+      const code = (r.codigo_vendedor ?? '').trim();
+      if (!code) continue;
+      const revenue = Number(r.valor_neto ?? r.valor_bruto ?? 0);
+      const kilos = Number(r.cantidad ?? 0);
+      const acc = map.get(code) ?? { revenue: 0, kilos: 0 };
+      acc.revenue += revenue;
+      acc.kilos += kilos;
+      map.set(code, acc);
+    }
+    return map;
+  }
+
+  /**
+   * Reporte de ventas por vendedor de una compañía para un mes: por cada
+   * vendedor (rol vendedor) muestra el valor promedio por kilo del mes anterior
+   * y del actual, el presupuesto de kilos y los kilos vendidos con su
+   * cumplimiento, y la venta acumulada frente a la esperada (presupuesto en
+   * pesos prorrateado a la fecha). Las ventas suman pedidos de la app + ventas
+   * por canal del ERP (por código de vendedor).
+   */
+  async getSellerSalesReport(
+    companyId: string,
+    month: number,
+    year: number,
+  ): Promise<SellerSalesReportData> {
+    if (!isValidCompany(companyId)) {
+      throw new BadRequestException('Compañía inválida.');
+    }
+    if (!month || month < 1 || month > 12 || !year) {
+      throw new BadRequestException('Mes o año inválido.');
+    }
+    const company = COMPANIES.find((c) => c.id === companyId)!;
+
+    const mm = String(month).padStart(2, '0');
+    const monthStart = `${year}-${mm}-01`;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthEnd = `${year}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+
+    const today = bogotaToday();
+    const isCurrentMonth = today.slice(0, 7) === `${year}-${mm}`;
+    const isFuture = monthStart > today;
+    // Fecha de corte: hoy si es el mes en curso; el fin de mes si ya pasó.
+    const asOfDate = isFuture ? monthStart : isCurrentMonth ? today : monthEnd;
+    const daysElapsed = isFuture
+      ? 0
+      : isCurrentMonth
+        ? Number(today.slice(8, 10))
+        : daysInMonth;
+    const idealPct = daysInMonth > 0 ? (daysElapsed / daysInMonth) * 100 : 0;
+    const proration = daysInMonth > 0 ? daysElapsed / daysInMonth : 0;
+
+    // Mes anterior (completo).
+    const pMonth = month === 1 ? 12 : month - 1;
+    const pYear = month === 1 ? year - 1 : year;
+    const pmm = String(pMonth).padStart(2, '0');
+    const prevStart = `${pYear}-${pmm}-01`;
+    const prevDays = new Date(pYear, pMonth, 0).getDate();
+    const prevEnd = `${pYear}-${pmm}-${String(prevDays).padStart(2, '0')}`;
+
+    const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('es-CO', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const prevMonthLabel = new Date(pYear, pMonth - 1, 1).toLocaleDateString(
+      'es-CO',
+      { month: 'long', year: 'numeric' },
+    );
+
+    // Vendedores (rol vendedor) de la compañía con su código de Siesa.
+    const sellers = (
+      await this.usersService.getCompanySellers(companyId)
+    ).filter((s) => s.role === 'seller');
+
+    // Pedidos de la app agrupados por vendedor: venta (pesos) y kilos (KG).
+    const orders = await this.ordersRepository.find({
+      where: { companyId, status: In(SALE_STATUSES) },
+    });
+    const appCur = new Map<string, { revenue: number; kilos: number }>();
+    const appPrev = new Map<string, { revenue: number; kilos: number }>();
+    for (const order of orders) {
+      const { date } = bogotaParts(order.createdAt);
+      let target: Map<string, { revenue: number; kilos: number }> | null = null;
+      if (date >= monthStart && date <= asOfDate) target = appCur;
+      else if (date >= prevStart && date <= prevEnd) target = appPrev;
+      if (!target) continue;
+      // Los pedidos sin vendedor se agrupan aparte para que cuenten en el
+      // total de la compañía (fila "Otros"), aunque no se atribuyan a nadie.
+      const key = order.seller?.id ?? '__none__';
+      const kilos = (order.items ?? []).reduce(
+        (acc, it) =>
+          acc +
+          ((it.unitOfMeasure ?? '').trim().toUpperCase() === 'KG'
+            ? Number(it.quantity)
+            : 0),
+        0,
+      );
+      const cur = target.get(key) ?? { revenue: 0, kilos: 0 };
+      cur.revenue += Number(order.total);
+      cur.kilos += kilos;
+      target.set(key, cur);
+    }
+
+    // Ventas por canal del ERP (por código de vendedor).
+    const [chCurRows, chPrevRows] = await Promise.all([
+      this.channelSalesClient.fetch(companyId, monthStart, asOfDate),
+      this.channelSalesClient.fetch(companyId, prevStart, prevEnd),
+    ]);
+    const chCur = this.sumChannelsByCode(chCurRows);
+    const chPrev = this.sumChannelsByCode(chPrevRows);
+
+    let totalPrevRevenue = 0;
+    let totalPrevKilos = 0;
+    const rows: SellerSalesRow[] = [];
+    for (const s of sellers) {
+      const code = (s.siesaSellerCode ?? '').trim();
+      const aCur = appCur.get(s.id) ?? { revenue: 0, kilos: 0 };
+      const aPrev = appPrev.get(s.id) ?? { revenue: 0, kilos: 0 };
+      const cCur = chCur.get(code) ?? { revenue: 0, kilos: 0 };
+      const cPrev = chPrev.get(code) ?? { revenue: 0, kilos: 0 };
+
+      const revenue = aCur.revenue + cCur.revenue;
+      const kilosSold = aCur.kilos + cCur.kilos;
+      const prevRevenue = aPrev.revenue + cPrev.revenue;
+      const prevKilos = aPrev.kilos + cPrev.kilos;
+      totalPrevRevenue += prevRevenue;
+      totalPrevKilos += prevKilos;
+
+      const budget = await this.budgetsService.getSellerBudget(
+        companyId,
+        s.id,
+        month,
+        year,
+      );
+      const budgetKilos = budget?.targetKilos ?? 0;
+      const budgetRevenue = budget?.expectedRevenue ?? 0;
+      const expectedRevenue = budgetRevenue * proration;
+
+      rows.push({
+        name: s.name,
+        sellerCode: code,
+        avgKiloPrev: prevKilos > 0 ? prevRevenue / prevKilos : 0,
+        budgetKilos,
+        kilosSold,
+        kilosPct: budgetKilos > 0 ? (kilosSold / budgetKilos) * 100 : null,
+        revenue,
+        expectedRevenue,
+        revenuePct:
+          expectedRevenue > 0 ? (revenue / expectedRevenue) * 100 : null,
+        avgKiloCur: kilosSold > 0 ? revenue / kilosSold : 0,
+      });
+    }
+
+    rows.sort(
+      (a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name, 'es'),
+    );
+
+    // Totales: solo la suma de los vendedores asignados (no incluye ventas sin
+    // vendedor ni canal sin código).
+    const totalBudgetKilos = rows.reduce((s, r) => s + r.budgetKilos, 0);
+    const totalKilos = rows.reduce((s, r) => s + r.kilosSold, 0);
+    const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+    const totalExpected = rows.reduce((s, r) => s + r.expectedRevenue, 0);
+
+    return {
+      month,
+      year,
+      monthLabel,
+      prevMonthLabel,
+      companyId,
+      companyName: company.name,
+      asOfDate,
+      idealPct,
+      rows,
+      totals: {
+        budgetKilos: totalBudgetKilos,
+        kilosSold: totalKilos,
+        kilosPct:
+          totalBudgetKilos > 0 ? (totalKilos / totalBudgetKilos) * 100 : null,
+        revenue: totalRevenue,
+        expectedRevenue: totalExpected,
+        revenuePct:
+          totalExpected > 0 ? (totalRevenue / totalExpected) * 100 : null,
+        avgKiloPrev: totalPrevKilos > 0 ? totalPrevRevenue / totalPrevKilos : 0,
+        avgKiloCur: totalKilos > 0 ? totalRevenue / totalKilos : 0,
+      },
+    };
+  }
+
+  /** Genera el PDF del reporte de ventas por vendedor. */
+  async getSellerSalesReportPdf(
+    companyId: string,
+    month: number,
+    year: number,
+  ): Promise<{ buffer: Buffer; month: number; year: number }> {
+    const data = await this.getSellerSalesReport(companyId, month, year);
+    const buffer = await buildSellerSalesReportPdf(data);
+    return { buffer, month: data.month, year: data.year };
+  }
+
+  /** Genera el Excel del reporte de ventas por vendedor. */
+  async getSellerSalesReportExcel(
+    companyId: string,
+    month: number,
+    year: number,
+  ): Promise<{ buffer: Buffer; month: number; year: number }> {
+    const data = await this.getSellerSalesReport(companyId, month, year);
+    const buffer = buildSellerSalesReportExcel(data);
+    return { buffer, month: data.month, year: data.year };
   }
 }

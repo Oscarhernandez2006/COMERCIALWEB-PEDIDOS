@@ -94,6 +94,14 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
+  /** Actualiza la contraseña de un usuario y marca que ya no necesita cambiarla. */
+  async updatePassword(id: string, newPassword: string): Promise<User> {
+    const user = await this.findById(id);
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.mustChangePassword = false;
+    return this.usersRepository.save(user);
+  }
+
   /** Elimina un usuario (sus accesos por compañía se borran en cascada). */
   async remove(id: string): Promise<void> {
     const user = await this.findById(id);
@@ -182,7 +190,13 @@ export class UsersService {
    * AGROPECUARIA).
    */
   async getCompanySellers(companyId: string): Promise<
-    { id: string; name: string; documentId: string; siesaSellerCode: string }[]
+    {
+      id: string;
+      name: string;
+      documentId: string;
+      siesaSellerCode: string;
+      role: string;
+    }[]
   > {
     const base = baseCompanyId(companyId);
     const mappings = await this.userCompaniesRepository.find({
@@ -200,6 +214,7 @@ export class UsersService {
         name: mapping.user.name,
         documentId: mapping.user.documentId,
         siesaSellerCode: code,
+        role: mapping.user.role,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }

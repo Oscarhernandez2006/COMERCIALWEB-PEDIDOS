@@ -15,6 +15,7 @@ import type {
   SellerRankingReportData,
   SellerProductReportData,
   ProductSellerReportData,
+  SellerSalesReportData,
 } from '@/types';
 
 /** KPIs consolidados de ambas compañías para el panel de administración. */
@@ -730,6 +731,74 @@ export async function downloadSellerRankingExcel(
   window.URL.revokeObjectURL(url);
 }
 
+/* ---- Ventas por vendedor (mensual) ---- */
+
+/** Consulta el reporte de ventas por vendedor de un mes. */
+export function useSellerSalesReport(
+  companyId: string | undefined,
+  month: number | undefined,
+  year: number | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'seller-sales', companyId, month, year],
+    enabled,
+    queryFn: async () => {
+      const res = await api.get<SellerSalesReportData>(
+        '/admin/reports/seller-sales/data',
+        {
+          params: {
+            ...(companyId ? { companyId } : {}),
+            ...(month ? { month } : {}),
+            ...(year ? { year } : {}),
+          },
+        },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Descarga el PDF del reporte de ventas por vendedor. */
+export async function downloadSellerSalesReport(
+  companyId: string,
+  month: number,
+  year: number,
+) {
+  const res = await api.get('/admin/reports/seller-sales/pdf', {
+    params: { companyId, month, year },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ventas-vendedor-${companyId}-${year}-${String(month).padStart(2, '0')}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga el reporte de ventas por vendedor en Excel (.xlsx). */
+export async function downloadSellerSalesExcel(
+  companyId: string,
+  month: number,
+  year: number,
+) {
+  const res = await api.get('/admin/reports/seller-sales/excel', {
+    params: { companyId, month, year },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ventas-vendedor-${companyId}-${year}-${String(month).padStart(2, '0')}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 /**
  * Consulta el reporte vendedor–producto (cuánto vendió cada vendedor de cada
  * producto) en un rango de fechas, con filtros opcionales de vendedor y
@@ -1052,12 +1121,15 @@ export interface DownloadableOrder {
 }
 
 /** Pedidos subidos a Siesa (no rebotados ni anulados) de una compañía. */
-export function useDownloadableOrders(companyId: string) {
+export function useDownloadableOrders(
+  companyId: string,
+  type: 'corte' | 'subproducto' = 'corte',
+) {
   return useQuery({
-    queryKey: ['admin', 'downloadable-orders', companyId],
+    queryKey: ['admin', 'downloadable-orders', companyId, type],
     queryFn: async () => {
       const res = await api.get<DownloadableOrder[]>('/admin/orders/downloadable', {
-        params: { companyId },
+        params: { companyId, type },
       });
       return res.data;
     },
@@ -1071,14 +1143,18 @@ export function useDownloadableOrders(companyId: string) {
 export function useDownloadOrders() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { companyId: string; orderIds: string[] }) => {
+    mutationFn: async (input: {
+      companyId: string;
+      orderIds: string[];
+      type: 'corte' | 'subproducto';
+    }) => {
       const res = await api.post('/admin/orders/download', input, {
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(res.data as Blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `pedidos-${input.companyId}.pdf`;
+      link.download = `pedidos-${input.type}-${input.companyId}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1086,7 +1162,7 @@ export function useDownloadOrders() {
     },
     onSuccess: (_data, input) => {
       qc.invalidateQueries({
-        queryKey: ['admin', 'downloadable-orders', input.companyId],
+        queryKey: ['admin', 'downloadable-orders', input.companyId, input.type],
       });
     },
   });
@@ -1104,6 +1180,7 @@ export function useSetOrderPicked() {
       companyId: string;
       orderId: string;
       picked: boolean;
+      type: 'corte' | 'subproducto';
     }) => {
       const res = await api.patch(
         `/admin/orders/${input.orderId}/picked`,
@@ -1113,7 +1190,12 @@ export function useSetOrderPicked() {
       return res.data;
     },
     onMutate: async (input) => {
-      const key = ['admin', 'downloadable-orders', input.companyId];
+      const key = [
+        'admin',
+        'downloadable-orders',
+        input.companyId,
+        input.type,
+      ];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<DownloadableOrder[]>(key);
       qc.setQueryData<DownloadableOrder[]>(key, (old) =>
@@ -1130,7 +1212,7 @@ export function useSetOrderPicked() {
     },
     onSettled: (_data, _err, input) => {
       qc.invalidateQueries({
-        queryKey: ['admin', 'downloadable-orders', input.companyId],
+        queryKey: ['admin', 'downloadable-orders', input.companyId, input.type],
       });
     },
   });
@@ -1147,6 +1229,7 @@ export function useSetOrderPickedBulk() {
       companyId: string;
       orderIds: string[];
       picked: boolean;
+      type: 'corte' | 'subproducto';
     }) => {
       const res = await api.patch<{ updated: number }>(
         '/admin/orders/picked-bulk',
@@ -1156,7 +1239,12 @@ export function useSetOrderPickedBulk() {
       return res.data;
     },
     onMutate: async (input) => {
-      const key = ['admin', 'downloadable-orders', input.companyId];
+      const key = [
+        'admin',
+        'downloadable-orders',
+        input.companyId,
+        input.type,
+      ];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<DownloadableOrder[]>(key);
       const ids = new Set(input.orderIds);
@@ -1174,7 +1262,7 @@ export function useSetOrderPickedBulk() {
     },
     onSettled: (_data, _err, input) => {
       qc.invalidateQueries({
-        queryKey: ['admin', 'downloadable-orders', input.companyId],
+        queryKey: ['admin', 'downloadable-orders', input.companyId, input.type],
       });
     },
   });

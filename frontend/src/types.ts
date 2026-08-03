@@ -15,6 +15,7 @@ export interface User {
   role: UserRole;
   siesaSellerCode?: string;
   permissions?: string[];
+  mustChangePassword?: boolean;
 }
 
 export interface Customer {
@@ -307,6 +308,8 @@ export interface CanalItemDef {
   ref: string;
   name: string;
   especie: string;
+  /** Rangos de kilos disponibles para este ítem (selección). */
+  specs: string[];
 }
 
 /** Línea (ítem) de un pedido de canales. */
@@ -480,6 +483,43 @@ export interface SellerRankingReportData {
     totalOrders: number;
     totalUnits: number;
     totalRevenue: number;
+  };
+}
+
+/** Fila (un vendedor) del reporte de ventas por vendedor. */
+export interface SellerSalesRow {
+  name: string;
+  sellerCode: string;
+  avgKiloPrev: number;
+  budgetKilos: number;
+  kilosSold: number;
+  kilosPct: number | null;
+  revenue: number;
+  expectedRevenue: number;
+  revenuePct: number | null;
+  avgKiloCur: number;
+}
+
+/** Datos del reporte de ventas por vendedor. */
+export interface SellerSalesReportData {
+  month: number;
+  year: number;
+  monthLabel: string;
+  prevMonthLabel: string;
+  companyId: string;
+  companyName: string;
+  asOfDate: string;
+  idealPct: number;
+  rows: SellerSalesRow[];
+  totals: {
+    budgetKilos: number;
+    kilosSold: number;
+    kilosPct: number | null;
+    revenue: number;
+    expectedRevenue: number;
+    revenuePct: number | null;
+    avgKiloPrev: number;
+    avgKiloCur: number;
   };
 }
 

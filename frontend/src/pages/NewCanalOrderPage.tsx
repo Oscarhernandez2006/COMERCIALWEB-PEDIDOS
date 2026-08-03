@@ -114,6 +114,10 @@ export function NewCanalOrderPage() {
       setError('Agrega al menos una línea con cantidad.');
       return;
     }
+    if (validLines.some((l) => !l.specifications.trim())) {
+      setError('Selecciona el rango de kilos en cada línea con cantidad.');
+      return;
+    }
 
     try {
       await createMutation.mutateAsync({
@@ -324,7 +328,12 @@ export function NewCanalOrderPage() {
                         <select
                           value={l.itemRef}
                           onChange={(e) =>
-                            setLine(l.id, { itemRef: e.target.value })
+                            setLine(l.id, {
+                              itemRef: e.target.value,
+                              // Al cambiar de ítem se limpia el rango elegido
+                              // porque las opciones dependen del ítem.
+                              specifications: '',
+                            })
                           }
                           className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                         >
@@ -354,14 +363,20 @@ export function NewCanalOrderPage() {
                         />
                       </td>
                       <td className="px-2 py-2">
-                        <input
+                        <select
                           value={l.specifications}
                           onChange={(e) =>
                             setLine(l.id, { specifications: e.target.value })
                           }
-                          placeholder="Ej. CERDO 60 A 70 KG"
-                          className="w-full rounded-md border border-input bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-primary/40"
-                        />
+                          className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                        >
+                          <option value="">Selecciona el rango...</option>
+                          {(def?.specs ?? []).map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-2 py-2">
                         <input

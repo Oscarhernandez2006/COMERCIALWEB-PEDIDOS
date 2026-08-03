@@ -6,6 +6,8 @@ import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { PriceListItem } from '../price-lists/entities/price-list-item.entity';
 import { UsersModule } from '../users/users.module';
+import { BudgetsModule } from '../budgets/budgets.module';
+import { ChannelSalesModule } from '../channel-sales/channel-sales.module';
 import { AdminStatsService } from './admin-stats.service';
 import { AdminStatsController } from './admin-stats.controller';
 import { AdminUsersController } from './admin-users.controller';
@@ -18,6 +20,8 @@ import { AdminOrdersController } from './admin-orders.controller';
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem, Customer, Product, PriceListItem]),
     UsersModule,
+    BudgetsModule,
+    ChannelSalesModule,
   ],
   controllers: [
     AdminStatsController,

@@ -64,31 +64,42 @@ export class AdminOrdersController {
   /** Pedidos descargables (subidos a Siesa, no rebotados ni anulados). */
   @Get('downloadable')
   @Roles(UserRole.ADMIN, UserRole.ALISTADOR)
-  listDownloadable(@Query('companyId') companyId: string) {
-    return this.adminOrdersService.listDownloadable(companyId);
+  listDownloadable(
+    @Query('companyId') companyId: string,
+    @CurrentUser() user: User,
+    @Query('type') type?: string,
+  ) {
+    return this.adminOrdersService.listDownloadable(companyId, type, user);
   }
 
   /** Genera un PDF con los pedidos seleccionados y los marca como descargados. */
   @Post('download')
   @Roles(UserRole.ADMIN, UserRole.ALISTADOR)
   async download(
-    @Body() body: { companyId: string; orderIds: string[] },
+    @Body() body: { companyId: string; orderIds: string[]; type?: string },
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
-    const { companyId, orderIds } = body ?? {};
+    const { companyId, orderIds, type } = body ?? {};
     if (!companyId) {
       throw new BadRequestException('Falta la compañía.');
     }
+    const orderType = type === 'subproducto' ? 'subproducto' : 'corte';
+    await this.adminOrdersService.assertCanDownloadType(
+      user,
+      companyId,
+      orderType,
+    );
     const buffer = await this.adminOrdersService.downloadPdf(
       companyId,
       orderIds,
       user.name,
+      orderType,
     );
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="pedidos-${companyId}.pdf"`,
+      `attachment; filename="pedidos-${orderType}-${companyId}.pdf"`,
     );
     res.send(buffer);
   }

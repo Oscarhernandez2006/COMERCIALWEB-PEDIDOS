@@ -58,6 +58,10 @@ function App() {
         <Route path="pedidos" element={<AdminOrdersPage />} />
         <Route path="reportes" element={<ReportsPage />} />
         <Route path="descargar-pedidos" element={<DownloadOrdersPage />} />
+        <Route
+          path="descargar-pedidos-subproductos"
+          element={<DownloadOrdersPage orderType="subproducto" />}
+        />
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="presupuestos" element={<BudgetsPage />} />

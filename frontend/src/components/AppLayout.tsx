@@ -44,7 +44,12 @@ const adminNav = [
   { to: '/admin/inventario', label: 'Inventario', icon: Package },
   { to: '/admin/pedidos', label: 'Administración de pedidos', icon: ClipboardList },
   { to: '/admin/reportes', label: 'Reportes', icon: FileBarChart },
-  { to: '/admin/descargar-pedidos', label: 'Descargar pedidos', icon: FileDown },
+  { to: '/admin/descargar-pedidos', label: 'Descargar pedidos · Cortes', icon: FileDown },
+  {
+    to: '/admin/descargar-pedidos-subproductos',
+    label: 'Descargar pedidos · Subproductos',
+    icon: FileDown,
+  },
   { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
   { to: '/admin/clientes', label: 'Clientes', icon: Users },
   { to: '/admin/presupuestos', label: 'Presupuestos', icon: Target },

@@ -44,4 +44,8 @@ export class User extends BaseEntity {
 
   @Column({ default: true })
   active: boolean;
+
+  /** Si es true, el usuario debe cambiar su contraseña antes de usar el sistema. */
+  @Column({ name: 'must_change_password', default: true })
+  mustChangePassword: boolean;
 }

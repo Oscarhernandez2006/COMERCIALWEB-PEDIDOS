@@ -135,6 +135,28 @@ export class BudgetsService {
   }
 
   /**
+   * Presupuesto agregado de TODA la compañía (suma de todos los vendedores) para
+   * un mes. Se usa en el tablero cuando un administrador consulta el general.
+   */
+  async getCompanyBudget(
+    companyId: string,
+    month: number,
+    year: number,
+  ): Promise<{ targetKilos: number; expectedRevenue: number } | null> {
+    const rows = await this.budgetsRepository.find({
+      where: { companyId, month, year },
+    });
+    if (rows.length === 0) return null;
+    return {
+      targetKilos: rows.reduce((sum, b) => sum + Number(b.targetKilos), 0),
+      expectedRevenue: rows.reduce(
+        (sum, b) => sum + Number(b.expectedRevenue),
+        0,
+      ),
+    };
+  }
+
+  /**
    * Configuración de la proyección de una compañía para un mes (para el editor
    * del presupuesto). Devuelve valores por defecto si aún no se ha creado.
    */

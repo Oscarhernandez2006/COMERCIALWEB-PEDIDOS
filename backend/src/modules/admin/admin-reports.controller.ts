@@ -418,4 +418,72 @@ export class AdminReportsController {
     );
     res.send(buffer);
   }
+
+  /**
+   * Reporte de ventas por vendedor de una compañía para un mes: valor prom.
+   * por kilo (mes anterior y actual), presupuesto y kilos vendidos con su
+   * cumplimiento, y venta acumulada frente a la esperada.
+   */
+  @Get('seller-sales/data')
+  sellerSalesData(
+    @Query('companyId') companyId: string,
+    @Query('month') month: string,
+    @Query('year') year: string,
+  ) {
+    const now = new Date();
+    const m = Number(month) || now.getMonth() + 1;
+    const y = Number(year) || now.getFullYear();
+    return this.reportsService.getSellerSalesReport(companyId, m, y);
+  }
+
+  /** Reporte de ventas por vendedor en PDF. */
+  @Get('seller-sales/pdf')
+  async sellerSalesPdf(
+    @Query('companyId') companyId: string,
+    @Query('month') month: string,
+    @Query('year') year: string,
+    @Res() res: Response,
+  ) {
+    const now = new Date();
+    const m = Number(month) || now.getMonth() + 1;
+    const y = Number(year) || now.getFullYear();
+    const { buffer } = await this.reportsService.getSellerSalesReportPdf(
+      companyId,
+      m,
+      y,
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="ventas-vendedor-${companyId}-${y}-${String(m).padStart(2, '0')}.pdf"`,
+    );
+    res.send(buffer);
+  }
+
+  /** Reporte de ventas por vendedor en Excel (.xlsx). */
+  @Get('seller-sales/excel')
+  async sellerSalesExcel(
+    @Query('companyId') companyId: string,
+    @Query('month') month: string,
+    @Query('year') year: string,
+    @Res() res: Response,
+  ) {
+    const now = new Date();
+    const m = Number(month) || now.getMonth() + 1;
+    const y = Number(year) || now.getFullYear();
+    const { buffer } = await this.reportsService.getSellerSalesReportExcel(
+      companyId,
+      m,
+      y,
+    );
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="ventas-vendedor-${companyId}-${y}-${String(m).padStart(2, '0')}.xlsx"`,
+    );
+    res.send(buffer);
+  }
 }

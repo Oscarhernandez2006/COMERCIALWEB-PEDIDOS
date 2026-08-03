@@ -2,6 +2,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@keyframes sigcom-in {
+  from { opacity: 0; transform: translateY(10px); letter-spacing: 0.5em; }
+  to   { opacity: 1; transform: translateY(0);    letter-spacing: 0.18em; }
+}
+
 :root {
   --radius: 0.75rem;
 

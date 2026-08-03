@@ -16,6 +16,15 @@ import { User, UserRole } from '../users/entities/user.entity';
 /** Clave del módulo (permiso) de la administración de pedidos. */
 const ADMIN_ORDERS_PERMISSION = '/admin/pedidos';
 
+/** Permisos de descarga de pedidos, separados por tipo. */
+const DOWNLOAD_CORTES_PERMISSION = '/admin/descargar-pedidos';
+const DOWNLOAD_SUBPRODUCTOS_PERMISSION = '/admin/descargar-pedidos-subproductos';
+
+/** Normaliza el tipo de pedido recibido ('corte' por defecto). */
+function normalizeOrderType(type?: string): 'corte' | 'subproducto' {
+  return type === 'subproducto' ? 'subproducto' : 'corte';
+}
+
 /** Resumen de un pedido descargable (para la tabla del administrador). */
 export interface DownloadableOrder {
   id: string;
@@ -140,6 +149,36 @@ export class AdminOrdersService {
   }
 
   /**
+   * Verifica que el usuario pueda descargar/ver pedidos de un tipo concreto
+   * (cortes o subproductos). Cada tipo tiene su propio permiso, de modo que un
+   * usuario puede tener acceso solo a cortes, solo a subproductos o a ambos.
+   * Los administradores ven ambos; los alistadores conservan el acceso a
+   * cortes por compatibilidad.
+   */
+  async assertCanDownloadType(
+    user: User,
+    companyId: string,
+    type: 'corte' | 'subproducto',
+  ): Promise<void> {
+    if (user.role === UserRole.ADMIN) return;
+    const permission =
+      type === 'subproducto'
+        ? DOWNLOAD_SUBPRODUCTOS_PERMISSION
+        : DOWNLOAD_CORTES_PERMISSION;
+    const allowed = await this.usersService.hasPermissionInCompany(
+      user.id,
+      companyId,
+      permission,
+    );
+    if (allowed) return;
+    // Compatibilidad: los alistadores mantienen el acceso a cortes.
+    if (type !== 'subproducto' && user.role === UserRole.ALISTADOR) return;
+    throw new ForbiddenException(
+      'No tienes permiso para descargar estos pedidos.',
+    );
+  }
+
+  /**
    * Listado administrativo de todos los pedidos de una compañía con toda la
    * información de seguimiento (quién lo generó, cartera, Siesa y descargas).
    * Permite filtrar por rango de días (hora de Colombia), estado y búsqueda.
@@ -244,12 +283,18 @@ export class AdminOrdersService {
    * Lista los pedidos que ya se subieron a Siesa (SYNCED) y que no están
    * rebotados ni anulados, para que el administrador los pueda descargar.
    */
-  async listDownloadable(companyId: string): Promise<DownloadableOrder[]> {
+  async listDownloadable(
+    companyId: string,
+    type: string | undefined,
+    user: User,
+  ): Promise<DownloadableOrder[]> {
     if (!isValidCompany(companyId)) {
       throw new BadRequestException('Compañía inválida.');
     }
+    const orderType = normalizeOrderType(type);
+    await this.assertCanDownloadType(user, companyId, orderType);
     const orders = await this.ordersRepository.find({
-      where: { companyId, status: OrderStatus.SYNCED },
+      where: { companyId, status: OrderStatus.SYNCED, type: orderType },
       order: { orderNumber: 'ASC' },
     });
 
@@ -277,6 +322,7 @@ export class AdminOrdersService {
     companyId: string,
     orderIds: string[],
     downloadedBy?: string,
+    type?: string,
   ): Promise<Buffer> {
     if (!isValidCompany(companyId)) {
       throw new BadRequestException('Compañía inválida.');
@@ -290,6 +336,7 @@ export class AdminOrdersService {
         id: In(orderIds),
         companyId,
         status: OrderStatus.SYNCED,
+        type: normalizeOrderType(type),
       },
       order: { orderNumber: 'ASC' },
     });

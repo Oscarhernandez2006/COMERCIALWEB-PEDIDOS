@@ -24,7 +24,11 @@ export const ADMIN_MODULES: ModuleDef[] = [
   { key: '/admin/inventario', label: 'Inventario' },
   { key: '/admin/pedidos', label: 'Administración de pedidos' },
   { key: '/admin/reportes', label: 'Reportes' },
-  { key: '/admin/descargar-pedidos', label: 'Descargar pedidos' },
+  { key: '/admin/descargar-pedidos', label: 'Descargar pedidos · Cortes' },
+  {
+    key: '/admin/descargar-pedidos-subproductos',
+    label: 'Descargar pedidos · Subproductos',
+  },
   { key: '/admin/listas-precios', label: 'Listas de precios' },
   { key: '/admin/clientes', label: 'Clientes' },
   { key: '/admin/presupuestos', label: 'Presupuestos' },

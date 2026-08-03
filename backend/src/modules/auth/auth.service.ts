@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { User } from '../users/entities/user.entity';
 
@@ -29,6 +30,25 @@ export class AuthService {
     };
   }
 
+  async changePassword(user: User, dto: ChangePasswordDto) {
+    const valid = await this.usersService.validatePassword(user, dto.currentPassword);
+    if (!valid) {
+      throw new BadRequestException('La contraseña actual es incorrecta.');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('La nueva contraseña debe ser diferente a la actual.');
+    }
+
+    await this.usersService.updatePassword(user.id, dto.newPassword);
+    const updatedUser = await this.usersService.findById(user.id);
+    
+    return {
+      accessToken: this.signToken(updatedUser),
+      user: this.toPublicUser(updatedUser),
+    };
+  }
+
   private signToken(user: User): string {
     const payload: JwtPayload = {
       sub: user.id,
@@ -47,6 +67,7 @@ export class AuthService {
       role: user.role,
       siesaSellerCode: user.siesaSellerCode,
       permissions: user.permissions ?? [],
+      mustChangePassword: user.mustChangePassword ?? false,
     };
   }
 }

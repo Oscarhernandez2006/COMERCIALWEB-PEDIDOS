@@ -5,6 +5,7 @@ import { SalesSummaryReportData } from './sales-summary-report';
 import { SellerRankingReportData } from './seller-ranking-report';
 import { SellerProductReportData } from './seller-product-report';
 import { ProductSellerReportData } from './product-seller-report';
+import { SellerSalesReportData } from './seller-sales-report';
 
 const COMPANY_NAMES: Record<string, string> = {
   '3': 'AGROPECUARIA SANTACRUZ',
@@ -277,6 +278,69 @@ export function buildProductSellerReportExcel(
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Producto-Vendedor');
+
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}
+
+/** Genera el Excel del reporte de ventas por vendedor. */
+export function buildSellerSalesReportExcel(
+  data: SellerSalesReportData,
+): Buffer {
+  const aoa: (string | number)[][] = [
+    ['Ventas por vendedor'],
+    [data.companyName],
+    [`Mes: ${data.monthLabel}`],
+    [`Corte: ${data.asOfDate}  ·  % ideal: ${data.idealPct.toFixed(2)}%`],
+    [],
+    [
+      'Vendedor',
+      `Valor Prom. Kilo (${data.prevMonthLabel})`,
+      'Ppto Kilo',
+      'Kilos Vendidos',
+      '% Cump. Kilos',
+      'Venta Acumulada',
+      'Venta Esperada',
+      '% Cump. Pesos',
+      `Valor Prom. Kilo (${data.monthLabel})`,
+    ],
+  ];
+
+  for (const r of data.rows) {
+    aoa.push([
+      r.name,
+      Math.round(r.avgKiloPrev),
+      r.budgetKilos,
+      r.kilosSold,
+      r.kilosPct == null ? '' : Number(r.kilosPct.toFixed(2)),
+      Math.round(r.revenue),
+      Math.round(r.expectedRevenue),
+      r.revenuePct == null ? '' : Number(r.revenuePct.toFixed(2)),
+      Math.round(r.avgKiloCur),
+    ]);
+  }
+
+  aoa.push([]);
+  aoa.push([
+    'TOTAL',
+    Math.round(data.totals.avgKiloPrev),
+    data.totals.budgetKilos,
+    data.totals.kilosSold,
+    data.totals.kilosPct == null
+      ? ''
+      : Number(data.totals.kilosPct.toFixed(2)),
+    Math.round(data.totals.revenue),
+    Math.round(data.totals.expectedRevenue),
+    data.totals.revenuePct == null
+      ? ''
+      : Number(data.totals.revenuePct.toFixed(2)),
+    Math.round(data.totals.avgKiloCur),
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  setColumnWidths(ws, [32, 18, 12, 14, 12, 18, 18, 12, 18]);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ventas por vendedor');
 
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }

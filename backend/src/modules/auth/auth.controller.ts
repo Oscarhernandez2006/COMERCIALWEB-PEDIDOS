@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { User, UserRole } from '../users/entities/user.entity';
@@ -33,7 +34,15 @@ export class AuthController {
       role: user.role,
       siesaSellerCode: user.siesaSellerCode,
       permissions: user.permissions ?? [],
+      mustChangePassword: user.mustChangePassword ?? false,
     };
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  changePassword(@CurrentUser() user: User, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(user, dto);
   }
 
   /** Compañías a las que el usuario puede entrar (toma de pedidos). */

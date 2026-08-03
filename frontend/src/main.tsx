@@ -6,6 +6,7 @@ import './index.css';
 import App from './App.tsx';
 import { AuthProvider } from './auth/AuthProvider.tsx';
 import { CompanyProvider } from './company/CompanyProvider.tsx';
+import { RequirePasswordChange } from './components/RequirePasswordChange.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,9 +19,11 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <CompanyProvider>
-            <App />
-          </CompanyProvider>
+          <RequirePasswordChange>
+            <CompanyProvider>
+              <App />
+            </CompanyProvider>
+          </RequirePasswordChange>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
