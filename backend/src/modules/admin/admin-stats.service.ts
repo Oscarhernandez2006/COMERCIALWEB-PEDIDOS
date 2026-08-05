@@ -73,6 +73,12 @@ export interface ManagerialCompanyStats {
     orders: number;
     revenue: number;
   }[];
+  topSellers: {
+    name: string;
+    documentId: string;
+    orders: number;
+    revenue: number;
+  }[];
 }
 
 /** Dashboard gerencial: las mismas métricas divididas por compañía y por rango. */
@@ -374,12 +380,13 @@ export class AdminStatsService {
     const revenue = Number(sale?.revenue ?? 0);
     const orders = Number(sale?.orders ?? 0);
 
-    const [salesTrend, ordersByStatus, topProducts, topCustomers] =
+    const [salesTrend, ordersByStatus, topProducts, topCustomers, topSellers] =
       await Promise.all([
         this.getCompanyTrend(companyId, from, to),
         this.getCompanyStatuses(companyId, from, to),
         this.getCompanyTopProducts(companyId, from, to),
         this.getCompanyTopCustomers(companyId, from, to),
+        this.getCompanyTopSellers(companyId, from, to),
       ]);
 
     return {
@@ -396,6 +403,7 @@ export class AdminStatsService {
       ordersByStatus,
       topProducts,
       topCustomers,
+      topSellers,
     };
   }
 
@@ -565,6 +573,39 @@ export class AdminStatsService {
     return rows.map((r) => ({
       name: r.name,
       code: r.code,
+      orders: Number(r.orders),
+      revenue: Number(r.revenue),
+    }));
+  }
+
+  private async getCompanyTopSellers(
+    companyId: string,
+    from: string,
+    to: string,
+  ): Promise<ManagerialCompanyStats['topSellers']> {
+    const rows = await this.ordersRepository
+      .createQueryBuilder('o')
+      .innerJoin('o.seller', 's')
+      .select('s.name', 'name')
+      .addSelect('s.document_id', 'documentId')
+      .addSelect('COUNT(*)', 'orders')
+      .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      .andWhere(this.bogotaDateFilter, { from, to })
+      .groupBy('s.name')
+      .addGroupBy('s.document_id')
+      .orderBy('revenue', 'DESC')
+      .getRawMany<{
+        name: string;
+        documentId: string;
+        orders: string;
+        revenue: string;
+      }>();
+
+    return rows.map((r) => ({
+      name: r.name,
+      documentId: r.documentId,
       orders: Number(r.orders),
       revenue: Number(r.revenue),
     }));

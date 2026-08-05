@@ -374,6 +374,12 @@ export interface ManagerialCompanyStats {
     orders: number;
     revenue: number;
   }[];
+  topSellers: {
+    name: string;
+    documentId: string;
+    orders: number;
+    revenue: number;
+  }[];
 }
 
 /** Dashboard gerencial: mismas métricas divididas por compañía y por rango. */

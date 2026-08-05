@@ -63,7 +63,7 @@ export function LoginPage() {
               </div>
               <div className="flex h-24 items-center justify-center border-l border-border/70 p-3">
                 <img
-                  src="/CARNESFRIAS.png"
+                  src="/CARNESFRIASLETRASNEGRAS.png"
                   alt="Carnes Frías Santacruz"
                   className="max-h-full max-w-full object-contain"
                 />
@@ -171,12 +171,18 @@ export function LoginPage() {
           >
             SIGCOM · Sistema de Gestión Comercial
           </p>
+          <p className="mx-auto mt-2 max-w-xs text-center text-xs italic text-muted-foreground/80">
+            «Encomienda a Jehová tus obras, y tus pensamientos serán afirmados.»
+            <span className="mt-0.5 block not-italic font-medium">
+              Proverbios 16:3
+            </span>
+          </p>
         </div>
 
         {/* Logo Carnes Frías — mural derecho (solo en pantallas grandes) */}
         <div className="hidden h-96 w-72 shrink-0 items-center justify-center lg:flex">
           <img
-            src="/CARNESFRIAS.png"
+            src="/CARNESFRIASLETRASNEGRAS.png"
             alt="Carnes Frías Santacruz"
             className="max-h-full max-w-full object-contain drop-shadow-xl"
           />

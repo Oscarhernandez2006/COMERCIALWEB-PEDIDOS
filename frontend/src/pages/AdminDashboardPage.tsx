@@ -20,12 +20,8 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { OrderStatusBadge } from '@/components/OrderStatusBadge';
 import { SalesTrendChart } from '@/components/SalesTrendChart';
-import type {
-  ManagerialCompanyStats,
-  OrderStatus,
-} from '@/types';
+import type { ManagerialCompanyStats } from '@/types';
 
 const COMPANY_ACCENT: Record<
   string,
@@ -98,8 +94,9 @@ function prettyRange(from: string, to: string): string {
 }
 
 export function AdminDashboardPage() {
-  const [from, setFrom] = useState(() => addDays(todayStr(), -13));
+  const [from, setFrom] = useState(() => todayStr());
   const [to, setTo] = useState(() => todayStr());
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
 
   const { data, isLoading, isFetching, refetch } = useManagerialDashboard(
     from,
@@ -107,13 +104,10 @@ export function AdminDashboardPage() {
   );
 
   const companies = data?.companies ?? [];
-  const maxRevenue = useMemo(
-    () => Math.max(1, ...companies.map((c) => c.totals.revenue)),
-    [companies],
-  );
-  const grandTotal = useMemo(
-    () => companies.reduce((acc, c) => acc + c.totals.revenue, 0),
-    [companies],
+  const selectedCompany = useMemo(
+    () =>
+      companies.find((c) => c.companyId === selectedCompanyId) ?? companies[0],
+    [companies, selectedCompanyId],
   );
 
   type Preset = { label: string; from: string; to: string };
@@ -140,7 +134,7 @@ export function AdminDashboardPage() {
             Panel de control
           </h2>
           <p className="text-muted-foreground">
-            Comparativa por compañía · {prettyRange(from, to)}
+            {selectedCompany?.name ?? 'Panel'} · {prettyRange(from, to)}
           </p>
         </div>
         <Button
@@ -213,88 +207,46 @@ export function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Comparativa de ingresos (barras) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Ingresos por compañía
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isLoading ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Cargando…
-            </p>
-          ) : companies.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Sin datos en el rango seleccionado.
-            </p>
-          ) : (
-            <>
-              {companies.map((c) => {
-                const accent = accentFor(c.companyId);
-                const share = Math.round(
-                  (c.totals.revenue / maxRevenue) * 100,
-                );
-                const pctTotal =
-                  grandTotal > 0
-                    ? Math.round((c.totals.revenue / grandTotal) * 100)
-                    : 0;
-                return (
-                  <div key={c.companyId} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2 font-medium">
-                        <span
-                          className={cn('h-2.5 w-2.5 rounded-full', accent.dot)}
-                        />
-                        {c.name}
-                        <span className="text-xs text-muted-foreground">
-                          #{c.companyId}
-                        </span>
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className={cn('font-bold', accent.text)}>
-                          {formatCurrency(c.totals.revenue)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {pctTotal}%
-                        </span>
-                      </span>
-                    </div>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={cn('h-full rounded-full', accent.bar)}
-                        style={{ width: `${share}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
-                <span className="font-medium text-muted-foreground">
-                  Total general
-                </span>
-                <span className="text-base font-bold">
-                  {formatCurrency(grandTotal)}
-                </span>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Una columna por compañía, lado a lado para comparar */}
-      <div className="grid gap-5 xl:grid-cols-2">
-        {isLoading && companies.length === 0
-          ? [0, 1].map((i) => (
-              <Card key={i} className="animate-pulse">
-                <CardContent className="h-96" />
-              </Card>
-            ))
-          : companies.map((c) => (
-              <CompanyColumn key={c.companyId} company={c} />
-            ))}
+      {/* Selector de compañía */}
+      <div className="flex flex-wrap gap-2">
+        {companies.map((c) => {
+          const accent = accentFor(c.companyId);
+          const isActive = selectedCompany?.companyId === c.companyId;
+          return (
+            <button
+              key={c.companyId}
+              onClick={() => setSelectedCompanyId(c.companyId)}
+              className={cn(
+                'flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors',
+                isActive
+                  ? cn(accent.ring, accent.soft, accent.text)
+                  : 'border-border text-muted-foreground hover:bg-accent',
+              )}
+            >
+              <span className={cn('h-2.5 w-2.5 rounded-full', accent.dot)} />
+              {c.name}
+              <span className="text-xs font-normal text-muted-foreground">
+                #{c.companyId}
+              </span>
+            </button>
+          );
+        })}
       </div>
+
+      {/* Vista de la compañía seleccionada */}
+      {isLoading && !selectedCompany ? (
+        <Card className="animate-pulse">
+          <CardContent className="h-96" />
+        </Card>
+      ) : selectedCompany ? (
+        <CompanyColumn company={selectedCompany} />
+      ) : (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            Sin datos en el rango seleccionado.
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -330,6 +282,10 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
   const maxProductQty = Math.max(
     1,
     ...company.topProducts.map((p) => p.quantity),
+  );
+  const maxSellerRevenue = Math.max(
+    1,
+    ...company.topSellers.map((s) => s.revenue),
   );
 
   return (
@@ -379,20 +335,55 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
         </CardContent>
       </Card>
 
-      {/* Tendencia de ventas */}
+      {/* Pedidos por vendedor y productos, lado a lado */}
+      <div className="grid gap-4 xl:grid-cols-2">
+      {/* Pedidos y ventas por vendedor */}
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">
-            <TrendingUp className={cn('h-4 w-4', accent.text)} />
-            Tendencia de ventas
+            <Users className={cn('h-4 w-4', accent.text)} />
+            Pedidos por vendedor
           </CardTitle>
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={cn('h-2.5 w-2.5 rounded-full', accent.dot)} />
-            Ingresos
-          </span>
         </CardHeader>
         <CardContent>
-          <SalesTrendChart data={company.salesTrend} />
+          {company.topSellers.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Sin ventas en el rango.
+            </p>
+          ) : (
+            <ol className="space-y-2.5">
+              {company.topSellers.map((s, i) => (
+                <li key={`${s.documentId}-${i}`} className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                        {i + 1}
+                      </span>
+                      <span className="truncate text-sm font-medium">
+                        {s.name}
+                      </span>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={cn('text-sm font-semibold', accent.text)}>
+                        {formatCurrency(s.revenue)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {s.orders.toLocaleString('es-CO')} pedido(s)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn('h-full rounded-full', accent.bar)}
+                      style={{
+                        width: `${Math.round((s.revenue / maxSellerRevenue) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </CardContent>
       </Card>
 
@@ -445,6 +436,24 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
           )}
         </CardContent>
       </Card>
+      </div>
+
+      {/* Tendencia de ventas */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <TrendingUp className={cn('h-4 w-4', accent.text)} />
+            Tendencia de ventas
+          </CardTitle>
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className={cn('h-2.5 w-2.5 rounded-full', accent.dot)} />
+            Ingresos
+          </span>
+        </CardHeader>
+        <CardContent>
+          <SalesTrendChart data={company.salesTrend} />
+        </CardContent>
+      </Card>
 
       {/* Clientes que más pidieron */}
       <Card>
@@ -491,26 +500,6 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
           )}
         </CardContent>
       </Card>
-
-      {/* Pedidos por estado */}
-      {company.ordersByStatus.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Pedidos por estado</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {company.ordersByStatus.map((s) => (
-              <span
-                key={s.status}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs"
-              >
-                <OrderStatusBadge status={s.status as OrderStatus} />
-                <span className="font-semibold">{s.count}</span>
-              </span>
-            ))}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
