@@ -7,6 +7,7 @@ import { OrderItem } from './entities/order-item.entity';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { CarteraOrdersController } from './cartera-orders.controller';
+import { ControladorSubproductosController } from './controlador-subproductos.controller';
 import { OrderApprovalScheduler } from './order-approval.scheduler';
 import { OrdersErpClient } from './orders-erp.client';
 import { ClientsModule } from '../clients/clients.module';
@@ -26,7 +27,11 @@ import { SettingsModule } from '../settings/settings.module';
     PriceListsModule,
     SettingsModule,
   ],
-  controllers: [OrdersController, CarteraOrdersController],
+  controllers: [
+    OrdersController,
+    CarteraOrdersController,
+    ControladorSubproductosController,
+  ],
   providers: [OrdersService, OrderApprovalScheduler, OrdersErpClient],
   exports: [OrdersService],
 })

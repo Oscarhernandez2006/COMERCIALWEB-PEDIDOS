@@ -146,6 +146,75 @@ export class OrdersErpClient {
   }
 
   /**
+   * Sube un pedido de subproductos al ERP dividido por categoría:
+   *  - RES (bovino) → /ventas/pedidos-subproductos-bovino
+   *  - CERDO (porcino) → /ventas/pedidos-subproductos-porcino
+   * Ambas partes comparten el mismo documento_venta (consecutivo). Devuelve el
+   * consecutivo que asignó Siesa (de la primera respuesta que lo traiga).
+   */
+  async uploadSubproductos(
+    bovino: ErpOrderRegistro[],
+    porcino: ErpOrderRegistro[],
+  ): Promise<ErpUploadResult> {
+    const baseUrl = this.config.get<string>('priceLists.baseUrl');
+    const token = this.config.get<string>('priceLists.token');
+    const timeout = this.config.get<number>('priceLists.timeoutMs');
+
+    const post = async (
+      path: string,
+      registros: ErpOrderRegistro[],
+    ): Promise<unknown> => {
+      this.logger.log(
+        `Payload subproductos (${path}): ` +
+          JSON.stringify(
+            registros.map((r) => ({
+              documento_venta: r.documento_venta,
+              cliente: r.cliente,
+              referencia: r.referencia,
+              cantidad: r.cantidad,
+            })),
+          ),
+      );
+      const response = await firstValueFrom(
+        this.http.post<unknown>(
+          `${baseUrl}/${path}`,
+          { registros },
+          { params: { token }, timeout },
+        ),
+      );
+      this.logger.log(
+        `Respuesta subproductos (${path}): ${JSON.stringify(response.data)}`,
+      );
+      return response.data;
+    };
+
+    try {
+      const raw: { bovino?: unknown; porcino?: unknown } = {};
+      let consecutivo: string | undefined;
+
+      if (porcino.length > 0) {
+        raw.porcino = await post(
+          'ventas/pedidos-subproductos-porcino',
+          porcino,
+        );
+        consecutivo = consecutivo ?? this.extractConsecutivo(raw.porcino);
+      }
+      if (bovino.length > 0) {
+        raw.bovino = await post('ventas/pedidos-subproductos-bovino', bovino);
+        consecutivo = consecutivo ?? this.extractConsecutivo(raw.bovino);
+      }
+
+      // La carga invalida los estados cacheados de Agropecuaria (compañía 3).
+      this.statesCache.delete('3');
+      return { consecutivo, raw };
+    } catch (error) {
+      const message = this.describeError(error);
+      this.logger.error(`Error subiendo subproductos al ERP: ${message}`);
+      throw new Error(message);
+    }
+  }
+
+  /**
    * Intenta extraer el consecutivo que Siesa asignó al pedido desde la
    * respuesta de carga. Busca claves habituales (consecutivo, documento, etc.)
    * de forma recursiva y tolerante a mayúsculas/minúsculas.

@@ -116,11 +116,14 @@ export interface SellableProduct {
   stock: number;
   /** Tasa de IVA (%) del producto. El IVA se agrega solo para mostrarlo. */
   taxRate: number;
+  /** Categoría del subproducto (CERDO / RES). Solo aplica a subproductos. */
+  category?: string;
 }
 
 export type OrderStatus =
   | 'draft'
   | 'pending_approval'
+  | 'pending_control'
   | 'confirmed'
   | 'syncing'
   | 'synced'

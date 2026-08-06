@@ -19,6 +19,8 @@ import {
   FileText,
   Clock,
   Target,
+  ClipboardCheck,
+  ChevronDown,
   Menu,
   X,
 } from 'lucide-react';
@@ -39,23 +41,62 @@ const sellerNav = [
   { to: '/disponibilidad', label: 'Disponibilidad', icon: Boxes },
 ];
 
-const adminNav = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/inventario', label: 'Inventario', icon: Package },
-  { to: '/admin/pedidos', label: 'Administración de pedidos', icon: ClipboardList },
-  { to: '/admin/reportes', label: 'Reportes', icon: FileBarChart },
-  { to: '/admin/descargar-pedidos', label: 'Descargar pedidos · Cortes', icon: FileDown },
+/**
+ * Menú administrativo agrupado en subsecciones plegables por afinidad, para
+ * ahorrar espacio y agrupar módulos que se usan en conjunto.
+ */
+const adminSections: { label: string; items: typeof sellerNav }[] = [
   {
-    to: '/admin/descargar-pedidos-subproductos',
-    label: 'Descargar pedidos · Subproductos',
-    icon: FileDown,
+    label: 'General',
+    items: [
+      { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/admin/reportes', label: 'Reportes', icon: FileBarChart },
+    ],
   },
-  { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
-  { to: '/admin/clientes', label: 'Clientes', icon: Users },
-  { to: '/admin/presupuestos', label: 'Presupuestos', icon: Target },
-  { to: '/admin/cartera', label: 'Aprobación de cartera', icon: Wallet },
-  { to: '/admin/horario-pedidos', label: 'Horario de pedidos', icon: Clock },
-  { to: '/admin/usuarios', label: 'Usuarios', icon: Users },
+  {
+    label: 'Pedidos',
+    items: [
+      { to: '/admin/pedidos', label: 'Administración de pedidos', icon: ClipboardList },
+      { to: '/admin/cartera', label: 'Aprobación de cartera', icon: Wallet },
+      {
+        to: '/admin/controlador-subproductos',
+        label: 'Controlador Subproductos',
+        icon: ClipboardCheck,
+      },
+    ],
+  },
+  {
+    label: 'Despachos',
+    items: [
+      { to: '/admin/descargar-pedidos', label: 'Descargar pedidos · Cortes', icon: FileDown },
+      {
+        to: '/admin/descargar-pedidos-subproductos-cerdo',
+        label: 'Descargar subproductos · Cerdo',
+        icon: FileDown,
+      },
+      {
+        to: '/admin/descargar-pedidos-subproductos-res',
+        label: 'Descargar subproductos · Res',
+        icon: FileDown,
+      },
+    ],
+  },
+  {
+    label: 'Catálogo',
+    items: [
+      { to: '/admin/inventario', label: 'Inventario', icon: Package },
+      { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
+      { to: '/admin/clientes', label: 'Clientes', icon: Users },
+      { to: '/admin/presupuestos', label: 'Presupuestos', icon: Target },
+    ],
+  },
+  {
+    label: 'Configuración',
+    items: [
+      { to: '/admin/horario-pedidos', label: 'Horario de pedidos', icon: Clock },
+      { to: '/admin/usuarios', label: 'Usuarios', icon: Users },
+    ],
+  },
 ];
 
 export function AppLayout() {
@@ -98,8 +139,27 @@ export function AppLayout() {
 
   const navGroups = [
     { label: 'Operativo', items: visibleOf(sellerNav) },
-    { label: 'Administrativo', items: visibleOf(adminNav) },
+    ...adminSections.map((s) => ({
+      label: s.label,
+      items: visibleOf(s.items),
+    })),
   ].filter((group) => group.items.length > 0);
+
+  // Grupos plegables: por defecto se abre el grupo que contiene la ruta actual
+  // y se pliegan los demás, para ahorrar espacio con muchos módulos.
+  const pathInGroup = (items: typeof sellerNav) =>
+    items.some((i) =>
+      i.end
+        ? location.pathname === i.to
+        : location.pathname === i.to || location.pathname.startsWith(`${i.to}/`),
+    );
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const state: Record<string, boolean> = { Operativo: pathInGroup(sellerNav) };
+    for (const s of adminSections) state[s.label] = pathInGroup(s.items);
+    return state;
+  });
+  const toggleGroup = (label: string) =>
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
 
   const handleExit = () => {
     // Todos (incl. admin) vuelven a la selección de compañía; desde ahí pueden
@@ -155,32 +215,46 @@ export function AppLayout() {
       )}
 
       <nav className="flex-1 space-y-4 overflow-y-auto p-3">
-        {navGroups.map((group) => (
-          <div key={group.label} className="space-y-1">
-            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              {group.label}
-            </p>
-            {group.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={() => setMobileOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                  )
-                }
+        {navGroups.map((group) => {
+          const open = openGroups[group.label] ?? true;
+          return (
+            <div key={group.label} className="space-y-1">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label)}
+                className="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 transition-colors hover:text-foreground"
               >
-                <item.icon className="h-4 w-4 shrink-0" />
-                {item.label}
-              </NavLink>
-            ))}
-          </div>
-        ))}
+                {group.label}
+                <ChevronDown
+                  className={cn(
+                    'h-3.5 w-3.5 transition-transform',
+                    open ? 'rotate-0' : '-rotate-90',
+                  )}
+                />
+              </button>
+              {open &&
+                group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    onClick={() => setMobileOpen(false)}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                      )
+                    }
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    {item.label}
+                  </NavLink>
+                ))}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="space-y-2 border-t border-border p-3">

@@ -15,6 +15,8 @@ import { OrderItem } from './order-item.entity';
 export enum OrderStatus {
   DRAFT = 'draft',
   PENDING_APPROVAL = 'pending_approval',
+  /** Subproducto pendiente de revisión/aprobación por el controlador. */
+  PENDING_CONTROL = 'pending_control',
   CONFIRMED = 'confirmed',
   SYNCING = 'syncing',
   SYNCED = 'synced',

@@ -24,6 +24,8 @@ export interface SellableProduct {
   stock: number;
   /** Tasa de IVA (%) del producto. El IVA se agrega solo para mostrarlo. */
   taxRate: number;
+  /** Categoría del subproducto (CERDO / RES). Solo para type='subproducto'. */
+  category?: string;
 }
 
 @Injectable()
@@ -119,6 +121,13 @@ export class ProductsService {
     // subproductos (no todo el catálogo de la lista de precios).
     if (type === 'subproducto') {
       sellable = sellable.filter((s) => stockBySku.has(s.sku));
+      // Enriquecer con la categoría (CERDO / RES) desde el ERP para dividir el
+      // catálogo por especie en la toma de subproductos.
+      const categories =
+        await this.priceListsService.getSubproductoCategories(companyId);
+      for (const s of sellable) {
+        s.category = categories.get(s.sku);
+      }
     }
 
     // Prioridad: primero los que tienen stock (mayor stock arriba), luego el

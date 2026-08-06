@@ -9,6 +9,7 @@ import {
   Building2,
   Trophy,
   Calendar,
+  BarChart3,
 } from 'lucide-react';
 import { useManagerialDashboard } from '@/hooks/useAdminApi';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -96,7 +97,8 @@ function prettyRange(from: string, to: string): string {
 export function AdminDashboardPage() {
   const [from, setFrom] = useState(() => todayStr());
   const [to, setTo] = useState(() => todayStr());
-  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  // 'comparativo' = vista general que compara todas las compañías (predeterminada).
+  const [selectedCompanyId, setSelectedCompanyId] = useState('comparativo');
 
   const { data, isLoading, isFetching, refetch } = useManagerialDashboard(
     from,
@@ -104,10 +106,18 @@ export function AdminDashboardPage() {
   );
 
   const companies = data?.companies ?? [];
+  const isComparativo = selectedCompanyId === 'comparativo';
   const selectedCompany = useMemo(
-    () =>
-      companies.find((c) => c.companyId === selectedCompanyId) ?? companies[0],
+    () => companies.find((c) => c.companyId === selectedCompanyId),
     [companies, selectedCompanyId],
+  );
+  const maxRevenue = useMemo(
+    () => Math.max(1, ...companies.map((c) => c.totals.revenue)),
+    [companies],
+  );
+  const grandTotal = useMemo(
+    () => companies.reduce((acc, c) => acc + c.totals.revenue, 0),
+    [companies],
   );
 
   type Preset = { label: string; from: string; to: string };
@@ -134,7 +144,10 @@ export function AdminDashboardPage() {
             Panel de control
           </h2>
           <p className="text-muted-foreground">
-            {selectedCompany?.name ?? 'Panel'} · {prettyRange(from, to)}
+            {isComparativo
+              ? 'Comparativa por compañía'
+              : (selectedCompany?.name ?? 'Panel')}{' '}
+            · {prettyRange(from, to)}
           </p>
         </div>
         <Button
@@ -209,9 +222,21 @@ export function AdminDashboardPage() {
 
       {/* Selector de compañía */}
       <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setSelectedCompanyId('comparativo')}
+          className={cn(
+            'flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors',
+            isComparativo
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border text-muted-foreground hover:bg-accent',
+          )}
+        >
+          <BarChart3 className="h-4 w-4" />
+          Comparativo
+        </button>
         {companies.map((c) => {
           const accent = accentFor(c.companyId);
-          const isActive = selectedCompany?.companyId === c.companyId;
+          const isActive = selectedCompanyId === c.companyId;
           return (
             <button
               key={c.companyId}
@@ -233,11 +258,77 @@ export function AdminDashboardPage() {
         })}
       </div>
 
-      {/* Vista de la compañía seleccionada */}
-      {isLoading && !selectedCompany ? (
+      {/* Vista */}
+      {isLoading && companies.length === 0 ? (
         <Card className="animate-pulse">
           <CardContent className="h-96" />
         </Card>
+      ) : companies.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            Sin datos en el rango seleccionado.
+          </CardContent>
+        </Card>
+      ) : isComparativo ? (
+        <>
+          {/* Comparativa de ingresos (barras) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Ingresos por compañía</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {companies.map((c) => {
+                const accent = accentFor(c.companyId);
+                const share = Math.round((c.totals.revenue / maxRevenue) * 100);
+                const pctTotal =
+                  grandTotal > 0
+                    ? Math.round((c.totals.revenue / grandTotal) * 100)
+                    : 0;
+                return (
+                  <div key={c.companyId} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2 font-medium">
+                        <span
+                          className={cn('h-2.5 w-2.5 rounded-full', accent.dot)}
+                        />
+                        {c.name}
+                        <span className="text-xs text-muted-foreground">
+                          #{c.companyId}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className={cn('font-bold', accent.text)}>
+                          {formatCurrency(c.totals.revenue)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {pctTotal}%
+                        </span>
+                      </span>
+                    </div>
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn('h-full rounded-full', accent.bar)}
+                        style={{ width: `${share}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
+                <span className="font-medium text-muted-foreground">
+                  Total general
+                </span>
+                <span className="text-base font-bold">
+                  {formatCurrency(grandTotal)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Columnas por compañía con las filas alineadas (cada sección al
+              mismo nivel para poder comparar mientras se baja). */}
+          <ComparativoGrid companies={companies} />
+        </>
       ) : selectedCompany ? (
         <CompanyColumn company={selectedCompany} />
       ) : (
@@ -501,5 +592,282 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Vista comparativa: una columna por compañía con las filas alineadas. Cada
+ * sección (encabezado, vendedores, productos, tendencia, clientes) se renderiza
+ * en fila para las N compañías, así todas quedan al mismo nivel al bajar.
+ */
+function ComparativoGrid({
+  companies,
+}: {
+  companies: ManagerialCompanyStats[];
+}) {
+  const colsClass =
+    companies.length >= 3
+      ? 'lg:grid-cols-3'
+      : companies.length === 2
+        ? 'lg:grid-cols-2'
+        : 'lg:grid-cols-1';
+  return (
+    <div className={cn('grid grid-cols-1 items-start gap-4', colsClass)}>
+      {companies.map((c) => (
+        <HeaderKpisCard key={`h-${c.companyId}`} company={c} />
+      ))}
+      {companies.map((c) => (
+        <SellersCard key={`s-${c.companyId}`} company={c} />
+      ))}
+      {companies.map((c) => (
+        <ProductsCard key={`p-${c.companyId}`} company={c} />
+      ))}
+      {companies.map((c) => (
+        <TrendCard key={`t-${c.companyId}`} company={c} />
+      ))}
+      {companies.map((c) => (
+        <CustomersCard key={`cu-${c.companyId}`} company={c} />
+      ))}
+    </div>
+  );
+}
+
+function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
+  const accent = accentFor(company.companyId);
+  const t = company.totals;
+  const kpis = [
+    { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
+    { label: 'Ticket promedio', value: formatCurrency(t.avgTicket), icon: Receipt },
+    { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
+    { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
+  ];
+  return (
+    <Card className={cn('border', accent.ring)}>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                'flex h-11 w-11 items-center justify-center rounded-xl',
+                accent.soft,
+              )}
+            >
+              <Building2 className={cn('h-5 w-5', accent.text)} />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">
+                Compañía {company.companyId}
+              </p>
+              <p className="font-semibold">{company.name}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">Ventas</p>
+            <p className={cn('text-xl font-bold', accent.text)}>
+              {formatCurrency(t.revenue)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {kpis.map((k) => (
+            <div
+              key={k.label}
+              className="rounded-lg border border-border bg-background/60 p-3"
+            >
+              <k.icon className="h-4 w-4 text-muted-foreground" />
+              <p className="mt-2 text-sm font-bold tracking-tight">{k.value}</p>
+              <p className="text-[11px] text-muted-foreground">{k.label}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SellersCard({ company }: { company: ManagerialCompanyStats }) {
+  const accent = accentFor(company.companyId);
+  const maxSellerRevenue = Math.max(
+    1,
+    ...company.topSellers.map((s) => s.revenue),
+  );
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Users className={cn('h-4 w-4', accent.text)} />
+          Pedidos por vendedor
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {company.topSellers.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Sin ventas en el rango.
+          </p>
+        ) : (
+          <ol className="space-y-2.5">
+            {company.topSellers.map((s, i) => (
+              <li key={`${s.documentId}-${i}`} className="space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                      {i + 1}
+                    </span>
+                    <span className="truncate text-sm font-medium">
+                      {s.name}
+                    </span>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className={cn('text-sm font-semibold', accent.text)}>
+                      {formatCurrency(s.revenue)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {s.orders.toLocaleString('es-CO')} pedido(s)
+                    </p>
+                  </div>
+                </div>
+                <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn('h-full rounded-full', accent.bar)}
+                    style={{
+                      width: `${Math.round((s.revenue / maxSellerRevenue) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProductsCard({ company }: { company: ManagerialCompanyStats }) {
+  const accent = accentFor(company.companyId);
+  const maxProductQty = Math.max(
+    1,
+    ...company.topProducts.map((p) => p.quantity),
+  );
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Trophy className="h-4 w-4 text-amber-500" />
+          Productos más vendidos
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {company.topProducts.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Sin ventas en el rango.
+          </p>
+        ) : (
+          <ol className="space-y-2.5">
+            {company.topProducts.map((p, i) => (
+              <li key={p.sku} className="space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                      {i + 1}
+                    </span>
+                    <span className="truncate text-sm font-medium">
+                      {p.name}
+                    </span>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold tabular-nums">
+                      {p.quantity.toLocaleString('es-CO')}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {formatCurrency(p.revenue)}
+                    </p>
+                  </div>
+                </div>
+                <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn('h-full rounded-full', accent.bar)}
+                    style={{
+                      width: `${Math.round((p.quantity / maxProductQty) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrendCard({ company }: { company: ManagerialCompanyStats }) {
+  const accent = accentFor(company.companyId);
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <TrendingUp className={cn('h-4 w-4', accent.text)} />
+          Tendencia de ventas
+        </CardTitle>
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className={cn('h-2.5 w-2.5 rounded-full', accent.dot)} />
+          Ingresos
+        </span>
+      </CardHeader>
+      <CardContent>
+        <SalesTrendChart data={company.salesTrend} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function CustomersCard({ company }: { company: ManagerialCompanyStats }) {
+  const accent = accentFor(company.companyId);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Users className={cn('h-4 w-4', accent.text)} />
+          Clientes que más pidieron
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {company.topCustomers.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Sin ventas en el rango.
+          </p>
+        ) : (
+          <ol className="space-y-2.5">
+            {company.topCustomers.map((cu, i) => (
+              <li
+                key={`${cu.code}-${i}`}
+                className="flex items-center justify-between gap-3"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{cu.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {cu.code}
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm font-semibold">
+                    {formatCurrency(cu.revenue)}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {cu.orders} pedido(s)
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
   );
 }

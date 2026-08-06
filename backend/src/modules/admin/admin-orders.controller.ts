@@ -48,6 +48,7 @@ export class AdminOrdersController {
     @Query('to') to?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('type') type?: string,
   ) {
     return this.adminOrdersService.listAll(
       companyId,
@@ -56,6 +57,7 @@ export class AdminOrdersController {
         to,
         status,
         search,
+        type,
       },
       user,
     );
@@ -68,38 +70,56 @@ export class AdminOrdersController {
     @Query('companyId') companyId: string,
     @CurrentUser() user: User,
     @Query('type') type?: string,
+    @Query('category') category?: string,
   ) {
-    return this.adminOrdersService.listDownloadable(companyId, type, user);
+    return this.adminOrdersService.listDownloadable(
+      companyId,
+      type,
+      user,
+      category,
+    );
   }
 
   /** Genera un PDF con los pedidos seleccionados y los marca como descargados. */
   @Post('download')
   @Roles(UserRole.ADMIN, UserRole.ALISTADOR)
   async download(
-    @Body() body: { companyId: string; orderIds: string[]; type?: string },
+    @Body()
+    body: {
+      companyId: string;
+      orderIds: string[];
+      type?: string;
+      category?: string;
+    },
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
-    const { companyId, orderIds, type } = body ?? {};
+    const { companyId, orderIds, type, category } = body ?? {};
     if (!companyId) {
       throw new BadRequestException('Falta la compañía.');
     }
     const orderType = type === 'subproducto' ? 'subproducto' : 'corte';
+    const cat =
+      (category ?? '').toUpperCase() === 'RES' ? 'RES' : 'CERDO';
     await this.adminOrdersService.assertCanDownloadType(
       user,
       companyId,
       orderType,
+      orderType === 'subproducto' ? cat : undefined,
     );
     const buffer = await this.adminOrdersService.downloadPdf(
       companyId,
       orderIds,
       user.name,
       orderType,
+      orderType === 'subproducto' ? cat : undefined,
     );
     res.setHeader('Content-Type', 'application/pdf');
+    const suffix =
+      orderType === 'subproducto' ? `${orderType}-${cat.toLowerCase()}` : orderType;
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="pedidos-${orderType}-${companyId}.pdf"`,
+      `attachment; filename="pedidos-${suffix}-${companyId}.pdf"`,
     );
     res.send(buffer);
   }

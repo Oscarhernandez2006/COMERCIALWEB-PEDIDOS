@@ -25,6 +25,7 @@ import { UsersPage } from '@/pages/UsersPage';
 import { OrderSchedulePage } from '@/pages/OrderSchedulePage';
 import { CarteraPage } from '@/pages/CarteraPage';
 import { BudgetsPage } from '@/pages/BudgetsPage';
+import { ControladorSubproductosPage } from '@/pages/ControladorSubproductosPage';
 
 function App() {
   return (
@@ -59,13 +60,21 @@ function App() {
         <Route path="reportes" element={<ReportsPage />} />
         <Route path="descargar-pedidos" element={<DownloadOrdersPage />} />
         <Route
-          path="descargar-pedidos-subproductos"
-          element={<DownloadOrdersPage orderType="subproducto" />}
+          path="descargar-pedidos-subproductos-cerdo"
+          element={<DownloadOrdersPage orderType="subproducto" category="CERDO" />}
+        />
+        <Route
+          path="descargar-pedidos-subproductos-res"
+          element={<DownloadOrdersPage orderType="subproducto" category="RES" />}
         />
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="presupuestos" element={<BudgetsPage />} />
         <Route path="cartera" element={<CarteraPage />} />
+        <Route
+          path="controlador-subproductos"
+          element={<ControladorSubproductosPage />}
+        />
         <Route path="horario-pedidos" element={<OrderSchedulePage />} />
         <Route path="usuarios" element={<UsersPage />} />
       </Route>

@@ -8,6 +8,7 @@ import { PriceListItem } from '../price-lists/entities/price-list-item.entity';
 import { UsersModule } from '../users/users.module';
 import { BudgetsModule } from '../budgets/budgets.module';
 import { ChannelSalesModule } from '../channel-sales/channel-sales.module';
+import { PriceListsModule } from '../price-lists/price-lists.module';
 import { AdminStatsService } from './admin-stats.service';
 import { AdminStatsController } from './admin-stats.controller';
 import { AdminUsersController } from './admin-users.controller';
@@ -22,6 +23,7 @@ import { AdminOrdersController } from './admin-orders.controller';
     UsersModule,
     BudgetsModule,
     ChannelSalesModule,
+    PriceListsModule,
   ],
   controllers: [
     AdminStatsController,
