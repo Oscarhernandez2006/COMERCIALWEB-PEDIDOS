@@ -1589,11 +1589,69 @@ export function useRejectControlSubproducto() {
   });
 }
 
+/* ---- Rutas / geolocalización de vendedores ---- */
+
+export interface RouteSeller {
+  id: string;
+  name: string;
+}
+
+export interface RoutePoint {
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  capturedAt: string;
+}
+
+export interface RouteOrderPoint {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  type: string;
+  latitude: number;
+  longitude: number;
+  createdAt: string;
+}
+
+/** Vendedores de una compañía (para el selector del mapa de rutas). */
+export function useRouteSellers(companyId: string) {
+  return useQuery({
+    queryKey: ['admin', 'geo', 'sellers', companyId],
+    enabled: Boolean(companyId),
+    queryFn: async () => {
+      const res = await api.get<RouteSeller[]>('/admin/geo/sellers', {
+        params: { companyId },
+      });
+      return res.data;
+    },
+  });
+}
+
+/** Recorrido (puntos + pedidos geolocalizados) de un vendedor en un día. */
+export function useSellerRoute(
+  companyId: string,
+  sellerId: string,
+  date: string,
+) {
+  return useQuery({
+    queryKey: ['admin', 'geo', 'route', companyId, sellerId, date],
+    enabled: Boolean(companyId && sellerId && date),
+    queryFn: async () => {
+      const res = await api.get<{
+        points: RoutePoint[];
+        orders: RouteOrderPoint[];
+      }>('/admin/geo/route', {
+        params: { companyId, sellerId, date },
+      });
+      return res.data;
+    },
+  });
+}
+
 /* ---- Horario de toma de pedidos (configurable) ---- */
 
 export interface OrderSchedule {
-  enabled: boolean;
-  openHour: number;
+  enabled: boolean;  openHour: number;
   openMinute: number;
   closeHour: number;
   closeMinute: number;

@@ -7,6 +7,8 @@ import App from './App.tsx';
 import { AuthProvider } from './auth/AuthProvider.tsx';
 import { CompanyProvider } from './company/CompanyProvider.tsx';
 import { RequirePasswordChange } from './components/RequirePasswordChange.tsx';
+import { GeoProvider } from './geo/GeoProvider.tsx';
+import { RequireGeolocation } from './components/RequireGeolocation.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,9 +22,13 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <AuthProvider>
           <RequirePasswordChange>
-            <CompanyProvider>
-              <App />
-            </CompanyProvider>
+            <GeoProvider>
+              <RequireGeolocation>
+                <CompanyProvider>
+                  <App />
+                </CompanyProvider>
+              </RequireGeolocation>
+            </GeoProvider>
           </RequirePasswordChange>
         </AuthProvider>
       </BrowserRouter>

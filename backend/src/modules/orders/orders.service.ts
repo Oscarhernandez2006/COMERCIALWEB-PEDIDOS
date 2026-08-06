@@ -165,6 +165,9 @@ export class OrdersService {
         deliveryType: dto.deliveryType,
         deliverySchedule: dto.deliverySchedule,
         deliveryDate: dto.deliveryDate,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        geoAccuracy: dto.geoAccuracy,
       });
 
       // Guarda el horario de recibido en el cliente para que quede

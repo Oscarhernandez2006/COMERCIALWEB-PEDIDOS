@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import { useClients, useCreateCanalOrder } from '@/hooks/useApi';
+import { useGeo } from '@/geo/useGeo';
 import { CANAL_ITEMS } from '@/lib/canal-items';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,7 @@ export function NewCanalOrderPage() {
 
   const { data: clients = [], isLoading } = useClients(customerSearch);
   const createMutation = useCreateCanalOrder();
+  const { coords } = useGeo();
 
   const setLine = (id: number, patch: Partial<Line>) => {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
@@ -126,6 +128,9 @@ export function NewCanalOrderPage() {
         clientName: customer.name,
         clientAddress: customer.address,
         clientCity: customer.city,
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
+        geoAccuracy: coords?.accuracy,
         items: validLines.map((l) => {
           const def =
             CANAL_ITEMS.find((i) => i.ref === l.itemRef) ?? CANAL_ITEMS[0];

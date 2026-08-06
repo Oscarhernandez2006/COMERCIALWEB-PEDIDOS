@@ -26,6 +26,7 @@ import { OrderSchedulePage } from '@/pages/OrderSchedulePage';
 import { CarteraPage } from '@/pages/CarteraPage';
 import { BudgetsPage } from '@/pages/BudgetsPage';
 import { ControladorSubproductosPage } from '@/pages/ControladorSubproductosPage';
+import { RoutesPage } from '@/pages/RoutesPage';
 
 function App() {
   return (
@@ -75,6 +76,7 @@ function App() {
           path="controlador-subproductos"
           element={<ControladorSubproductosPage />}
         />
+        <Route path="rutas" element={<RoutesPage />} />
         <Route path="horario-pedidos" element={<OrderSchedulePage />} />
         <Route path="usuarios" element={<UsersPage />} />
       </Route>
