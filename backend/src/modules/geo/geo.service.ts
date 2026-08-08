@@ -6,7 +6,6 @@ import { RecordLocationDto } from './dto/record-location.dto';
 import { Order } from '../orders/entities/order.entity';
 import { CanalOrder } from '../canal-orders/entities/canal-order.entity';
 import { UsersService } from '../users/users.service';
-import { baseCompanyId } from '../../common/companies';
 
 /** Punto del recorrido devuelto al mapa. */
 export interface RoutePoint {
@@ -65,25 +64,22 @@ export class GeoService {
 
   /**
    * Recorrido de un vendedor en un día: los puntos de ubicación (línea/trazo) y
-   * los pedidos geolocalizados (marcadores), de una compañía y fecha (Bogotá).
+   * los pedidos geolocalizados (marcadores). Se toma TODO el recorrido del
+   * vendedor ese día sin fragmentar por compañía (el vendedor es una sola
+   * persona y su ruta es una sola, aunque tome pedidos de varias compañías).
    */
   async route(
-    companyId: string,
+    _companyId: string,
     sellerId: string,
     date: string,
   ): Promise<{ points: RoutePoint[]; orders: RouteOrder[] }> {
-    const base = baseCompanyId(companyId);
-
     const points = await this.locationsRepository
       .createQueryBuilder('l')
       .select(['l.latitude', 'l.longitude', 'l.accuracy', 'l.capturedAt'])
       .where('l.user_id = :sellerId', { sellerId })
-      .andWhere('l.company_id IN (:...companies)', {
-        companies: [companyId, base],
-      })
       .andWhere(
-        "(l.captured_at AT TIME ZONE 'America/Bogota')::date = :date",
-        { date },
+        "CAST((l.captured_at AT TIME ZONE 'America/Bogota') AS date) = :day",
+        { day: date },
       )
       .orderBy('l.captured_at', 'ASC')
       .getMany();
@@ -100,13 +96,10 @@ export class GeoService {
       .addSelect('o.longitude', 'longitude')
       .addSelect('o.created_at', 'createdAt')
       .where('o.seller_id = :sellerId', { sellerId })
-      .andWhere('o.company_id IN (:...companies)', {
-        companies: [companyId, base],
-      })
       .andWhere('o.latitude IS NOT NULL')
       .andWhere(
-        "(o.created_at AT TIME ZONE 'America/Bogota')::date = :date",
-        { date },
+        "CAST((o.created_at AT TIME ZONE 'America/Bogota') AS date) = :day",
+        { day: date },
       )
       .orderBy('o.created_at', 'ASC')
       .getRawMany();
@@ -121,13 +114,10 @@ export class GeoService {
       .addSelect('o.longitude', 'longitude')
       .addSelect('o.created_at', 'createdAt')
       .where('o.seller_id = :sellerId', { sellerId })
-      .andWhere('o.company_id IN (:...companies)', {
-        companies: [companyId, base],
-      })
       .andWhere('o.latitude IS NOT NULL')
       .andWhere(
-        "(o.created_at AT TIME ZONE 'America/Bogota')::date = :date",
-        { date },
+        "CAST((o.created_at AT TIME ZONE 'America/Bogota') AS date) = :day",
+        { day: date },
       )
       .orderBy('o.created_at', 'ASC')
       .getRawMany();

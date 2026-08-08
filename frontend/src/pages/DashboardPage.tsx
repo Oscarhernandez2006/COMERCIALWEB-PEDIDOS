@@ -153,10 +153,12 @@ function KpiCard({ label, value, icon: Icon, accent, subLabel, subValue }: KpiPr
 
 export function DashboardPage() {
   const { user } = useAuth();
-  // Fecha seleccionada en el calendario y si se ve el mes completo o solo ese
-  // día. De la fecha se derivan mes, año y día.
+  // Fecha seleccionada y modo de vista: mes completo, un día, o un rango de
+  // fechas (desde/hasta). De la fecha se derivan mes, año y día.
   const [dateStr, setDateStr] = useState(() => todayISO());
-  const [wholeMonth, setWholeMonth] = useState(true);
+  const [view, setView] = useState<'month' | 'day' | 'range'>('month');
+  const [fromStr, setFromStr] = useState(() => todayISO());
+  const [toStr, setToStr] = useState(() => todayISO());
 
   // Solo los administradores pueden ver el tablero de otro vendedor o el
   // general. Por defecto, un administrador ve el general (todos los vendedores).
@@ -180,20 +182,26 @@ export function DashboardPage() {
   const selected = new Date(`${dateStr}T12:00:00`);
   const month = selected.getMonth() + 1;
   const year = selected.getFullYear();
-  const day = wholeMonth ? 0 : selected.getDate();
+  const day = view === 'day' ? selected.getDate() : 0;
+  // En modo rango se envían desde/hasta; en mes/día se usan mes/año/día.
+  const isRange = view === 'range';
+  const rangeFrom = isRange ? (fromStr <= toStr ? fromStr : toStr) : undefined;
+  const rangeTo = isRange ? (fromStr <= toStr ? toStr : fromStr) : undefined;
 
   const { data, isLoading, isFetching, refetch } = useSellerDashboard(
     month,
     year,
     day,
     effectiveSellerId,
+    rangeFrom,
+    rangeTo,
   );
 
   const daysInMonth = useMemo(
     () => new Date(year, month, 0).getDate(),
     [month, year],
   );
-  const isSingleDay = day > 0;
+  const isSingleDay = day > 0 || (isRange && rangeFrom === rangeTo);
 
   const totals = data?.totals;
   const growth = data?.growth.revenuePct ?? null;
@@ -324,50 +332,83 @@ export function DashboardPage() {
               </div>
             </div>
           )}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">
-              Fecha
-            </label>
-            <div className="relative">
-              <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="date"
-                value={dateStr}
-                max={todayISO()}
-                onChange={(e) => setDateStr(e.target.value || todayISO())}
-                className="h-9 rounded-md border border-input bg-background pl-8 pr-2 text-sm"
-              />
+          {view === 'range' ? (
+            <>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Desde
+                </label>
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={fromStr}
+                    max={toStr || todayISO()}
+                    onChange={(e) => setFromStr(e.target.value || todayISO())}
+                    className="h-9 rounded-md border border-input bg-background pl-8 pr-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Hasta
+                </label>
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={toStr}
+                    min={fromStr || undefined}
+                    max={todayISO()}
+                    onChange={(e) => setToStr(e.target.value || todayISO())}
+                    className="h-9 rounded-md border border-input bg-background pl-8 pr-2 text-sm"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Fecha
+              </label>
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="date"
+                  value={dateStr}
+                  max={todayISO()}
+                  onChange={(e) => setDateStr(e.target.value || todayISO())}
+                  className="h-9 rounded-md border border-input bg-background pl-8 pr-2 text-sm"
+                />
+              </div>
             </div>
-          </div>
+          )}
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">
               Ver
             </label>
             <div className="inline-flex h-9 overflow-hidden rounded-md border border-input">
-              <button
-                type="button"
-                onClick={() => setWholeMonth(true)}
-                className={cn(
-                  'px-3 text-sm font-medium transition-colors',
-                  wholeMonth
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background text-muted-foreground hover:bg-accent',
-                )}
-              >
-                Mes
-              </button>
-              <button
-                type="button"
-                onClick={() => setWholeMonth(false)}
-                className={cn(
-                  'px-3 text-sm font-medium transition-colors',
-                  !wholeMonth
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background text-muted-foreground hover:bg-accent',
-                )}
-              >
-                Día
-              </button>
+              {(
+                [
+                  ['month', 'Mes'],
+                  ['day', 'Día'],
+                  ['range', 'Rango'],
+                ] as const
+              ).map(([key, txt]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setView(key)}
+                  className={cn(
+                    'px-3 text-sm font-medium transition-colors',
+                    view === key
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-background text-muted-foreground hover:bg-accent',
+                  )}
+                >
+                  {txt}
+                </button>
+              ))}
             </div>
           </div>
           <Button

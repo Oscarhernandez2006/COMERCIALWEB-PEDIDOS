@@ -10,8 +10,12 @@ import {
   Trophy,
   Calendar,
   BarChart3,
+  Loader2,
 } from 'lucide-react';
-import { useManagerialDashboard } from '@/hooks/useAdminApi';
+import {
+  useManagerialDashboard,
+  useVendorProductSalesReport,
+} from '@/hooks/useAdminApi';
 import { formatCurrency, cn } from '@/lib/utils';
 import {
   Card,
@@ -219,6 +223,9 @@ export function AdminDashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Venta acumulada del mes por vendedor (ERP) */}
+      <VentaAcumuladaSection />
 
       {/* Selector de compañía */}
       <div className="flex flex-wrap gap-2">
@@ -789,6 +796,136 @@ function ProductsCard({ company }: { company: ManagerialCompanyStats }) {
                     className={cn('h-full rounded-full', accent.bar)}
                     style={{
                       width: `${Math.round((p.quantity / maxProductQty) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Mes actual en formato YYYY-MM (para el input type="month"). */
+function currentMonthStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Venta acumulada del mes por vendedor, tomada del ERP (cortes, subproductos y
+ * canales). La suma de todos los vendedores es la venta acumulada del período.
+ */
+function VentaAcumuladaSection() {
+  const [monthStr, setMonthStr] = useState(currentMonthStr());
+  // Día opcional (YYYY-MM-DD). Si está vacío se muestra el mes completo.
+  const [dayStr, setDayStr] = useState('');
+  const periodo = dayStr
+    ? dayStr.slice(0, 4) + dayStr.slice(5, 7)
+    : monthStr.replace('-', '');
+  const { data, isFetching } = useVendorProductSalesReport(
+    periodo,
+    dayStr || undefined,
+    true,
+  );
+
+  const sellers = data?.sellers ?? [];
+  const maxNet = Math.max(1, ...sellers.map((s) => s.totalNet));
+  const periodLabel = data?.periodLabel ?? monthStr;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            {dayStr
+              ? 'Venta del día por vendedor'
+              : 'Venta acumulada del mes por vendedor'}
+          </CardTitle>
+          <p className="mt-1 text-sm capitalize text-muted-foreground">
+            {periodLabel}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end justify-end gap-2">
+          <div className="relative w-36 shrink-0">
+            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="month"
+              value={monthStr}
+              max={currentMonthStr()}
+              disabled={!!dayStr}
+              onChange={(e) => setMonthStr(e.target.value || currentMonthStr())}
+              className="pl-9"
+            />
+          </div>
+          <div className="relative w-40 shrink-0">
+            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="date"
+              value={dayStr}
+              max={todayStr()}
+              onChange={(e) => setDayStr(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          {dayStr && (
+            <Button variant="outline" size="sm" onClick={() => setDayStr('')}>
+              <RefreshCw className="h-4 w-4" />
+              Mes completo
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {dayStr ? 'Venta del día' : 'Venta acumulada del período'}
+          </p>
+          <p className="mt-1 text-3xl font-bold tabular-nums text-primary">
+            {isFetching && !data ? (
+              <Loader2 className="h-7 w-7 animate-spin" />
+            ) : (
+              formatCurrency(data?.grandTotalNet ?? 0)
+            )}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {sellers.length} vendedor(es) · suma de todas las ventas del mes
+          </p>
+        </div>
+
+        {isFetching && !data ? (
+          <p className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Cargando ventas…
+          </p>
+        ) : sellers.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Sin ventas registradas para este período.
+          </p>
+        ) : (
+          <ol className="space-y-2.5">
+            {sellers.map((s, i) => (
+              <li key={s.nit} className="space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                      {i + 1}
+                    </span>
+                    <span className="truncate text-sm font-medium">
+                      {s.name}
+                    </span>
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">
+                    {formatCurrency(s.totalNet)}
+                  </p>
+                </div>
+                <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{
+                      width: `${Math.round((s.totalNet / maxNet) * 100)}%`,
                     }}
                   />
                 </div>

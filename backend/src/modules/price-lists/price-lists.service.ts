@@ -29,6 +29,11 @@ export class PriceListsService {
     return this.client.fetchSubproductoCategories(baseCompanyId(companyId));
   }
 
+  /** Ventas por vendedor y producto de un mes (YYYYMM), desde el ERP. */
+  getVendorProductSales(periodo: string) {
+    return this.client.fetchVendorProductSales(periodo);
+  }
+
   /** Lista los nombres de las listas de precios de una compañía. */
   async findLists(companyId: string): Promise<PriceListSummary[]> {
     companyId = baseCompanyId(companyId);

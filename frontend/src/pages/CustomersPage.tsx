@@ -44,10 +44,24 @@ export function CustomersPage() {
   const { user } = useAuth();
   const { company } = useCompany();
 
+  // La cartera es por NIT (misma para todas las sucursales). Se muestra un solo
+  // cliente por código/NIT para no repetir la misma información.
+  const uniqueCustomers = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Client[] = [];
+    for (const c of customers) {
+      const key = c.code.trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+    }
+    return out;
+  }, [customers]);
+
   // Saldos de cartera de todos los clientes, para ordenar por deuda.
   const nits = useMemo(
-    () => customers.map((c) => c.code.trim()),
-    [customers],
+    () => uniqueCustomers.map((c) => c.code.trim()),
+    [uniqueCustomers],
   );
   const { balances, portfolios, isLoading: isLoadingBalances } =
     useClientPortfolios(nits);
@@ -55,18 +69,18 @@ export function CustomersPage() {
   // Los clientes en deuda van primero (mayor saldo arriba); el resto conserva
   // su orden original.
   const sortedCustomers = useMemo(() => {
-    return [...customers].sort((a, b) => {
+    return [...uniqueCustomers].sort((a, b) => {
       const balanceA = balances[a.code.trim()] ?? 0;
       const balanceB = balances[b.code.trim()] ?? 0;
       return balanceB - balanceA;
     });
-  }, [customers, balances]);
+  }, [uniqueCustomers, balances]);
 
   const handleExportSeller = () => {
     exportSellerPortfolioPdf({
       sellerName: user?.name ?? 'Vendedor',
       companyName: company?.name ?? '',
-      clients: customers,
+      clients: uniqueCustomers,
       portfolios,
     });
   };

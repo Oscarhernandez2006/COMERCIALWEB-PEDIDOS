@@ -35,6 +35,8 @@ import {
   downloadProductSellerExcel,
   downloadSellerSalesReport,
   downloadSellerSalesExcel,
+  downloadVendorProductSalesReport,
+  downloadVendorProductSalesExcel,
   useInventoryReport,
   useProductSalesReport,
   useSalesSummaryReport,
@@ -42,6 +44,7 @@ import {
   useSellerProductReport,
   useProductSellerReport,
   useSellerSalesReport,
+  useVendorProductSalesReport,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -81,7 +84,8 @@ type ReportKey =
   | 'seller-ranking'
   | 'seller-product'
   | 'product-seller'
-  | 'seller-sales';
+  | 'seller-sales'
+  | 'vendor-product-sales';
 
 const REPORTS: {
   key: ReportKey;
@@ -137,6 +141,13 @@ const REPORTS: {
     description:
       'Presupuesto vs. ventas y kilos por vendedor, con cumplimiento y valor promedio por kilo.',
     icon: BarChart3,
+  },
+  {
+    key: 'vendor-product-sales',
+    title: 'Ventas acumuladas por vendedor por producto',
+    description:
+      'Por cada vendedor, el desglose de productos vendidos en el mes (cantidad y venta neta) con totales.',
+    icon: UserSearch,
   },
 ];
 
@@ -243,6 +254,16 @@ export function ReportsPage() {
           onClose={() => setOpen(null)}
         >
           <SellerSalesReportBody />
+        </ReportModalShell>
+      )}
+
+      {open === 'vendor-product-sales' && (
+        <ReportModalShell
+          title="Ventas acumuladas por vendedor por producto"
+          icon={UserSearch}
+          onClose={() => setOpen(null)}
+        >
+          <VendorProductSalesReportBody />
         </ReportModalShell>
       )}
     </div>
@@ -2345,6 +2366,260 @@ function SellerSalesReportBody() {
               )}
             </table>
           </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Ventas acumuladas por vendedor por producto (ERP, mensual)          */
+/* ------------------------------------------------------------------ */
+
+function VendorProductSalesReportBody() {
+  const [monthStr, setMonthStr] = useState(currentMonthStr());
+  // Día opcional (YYYY-MM-DD). Si está vacío se muestra el mes completo.
+  const [dayStr, setDayStr] = useState('');
+  const [applied, setApplied] = useState<{
+    periodo: string;
+    fecha?: string;
+  } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [exporting, setExporting] = useState<null | 'pdf' | 'excel'>(null);
+  const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Si hay día, el período se deriva de ese día; si no, del selector de mes.
+  const periodo = dayStr
+    ? dayStr.slice(0, 4) + dayStr.slice(5, 7)
+    : monthStr.replace('-', '');
+  const fecha = dayStr || undefined;
+  const query = useVendorProductSalesReport(
+    applied?.periodo,
+    applied?.fecha,
+    !!applied,
+  );
+
+  function handleToggle() {
+    if (showPreview) {
+      setShowPreview(false);
+      return;
+    }
+    setError('');
+    setApplied({ periodo, fecha });
+    setShowPreview(true);
+  }
+
+  async function handleExport(kind: 'pdf' | 'excel') {
+    setExporting(kind);
+    setError('');
+    try {
+      if (kind === 'pdf') {
+        await downloadVendorProductSalesReport(periodo, fecha);
+      } else {
+        await downloadVendorProductSalesExcel(periodo, fecha);
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  function toggleSeller(nit: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(nit)) next.delete(nit);
+      else next.add(nit);
+      return next;
+    });
+  }
+
+  const data = query.data;
+
+  return (
+    <>
+      <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        <UserSearch className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          Ventas del mes tomadas del ERP (cortes, subproductos y canales).
+          Por cada vendedor se muestra el <strong>desglose de productos</strong>{' '}
+          con cantidad y <strong>venta neta</strong>, más los totales.
+        </span>
+      </p>
+
+      {/* Mes y día */}
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Mes (período)</label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="month"
+              value={monthStr}
+              max={currentMonthStr()}
+              disabled={!!dayStr}
+              onChange={(e) => setMonthStr(e.target.value || currentMonthStr())}
+              className="pl-9"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Día (opcional)</label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="date"
+              value={dayStr}
+              max={todayStr()}
+              onChange={(e) => setDayStr(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+        {dayStr && (
+          <Button variant="outline" onClick={() => setDayStr('')}>
+            <X className="h-4 w-4" />
+            Ver mes completo
+          </Button>
+        )}
+      </div>
+
+      {error && (
+        <p className="flex items-center gap-1 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </p>
+      )}
+
+      {/* Acciones */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={handleToggle} disabled={query.isFetching}>
+          {query.isFetching ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : showPreview ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Search className="h-4 w-4" />
+          )}
+          {showPreview ? 'Ocultar' : 'Consultar'}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => handleExport('pdf')}
+          disabled={exporting !== null}
+        >
+          <Download
+            className={cn('h-4 w-4', exporting === 'pdf' && 'animate-pulse')}
+          />
+          Exportar PDF
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => handleExport('excel')}
+          disabled={exporting !== null}
+        >
+          <FileSpreadsheet
+            className={cn('h-4 w-4', exporting === 'excel' && 'animate-pulse')}
+          />
+          Exportar Excel
+        </Button>
+      </div>
+
+      {showPreview && data && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <SummaryTile label="Vendedores" value={num(data.sellers.length)} />
+            <SummaryTile
+              label="Cantidad total"
+              value={num(data.grandTotalQuantity)}
+            />
+            <SummaryTile
+              label="Venta acumulada"
+              value={formatCurrency(data.grandTotalNet)}
+              tone="ok"
+            />
+          </div>
+
+          {data.sellers.length === 0 ? (
+            <p className="rounded-lg border border-border px-3 py-8 text-center text-muted-foreground">
+              No hay ventas registradas para este período.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {data.sellers.map((seller) => {
+                const isOpen = expanded.has(seller.nit);
+                return (
+                  <div
+                    key={seller.nit}
+                    className="overflow-hidden rounded-lg border border-border"
+                  >
+                    <button
+                      onClick={() => toggleSeller(seller.nit)}
+                      className="flex w-full items-center gap-3 bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+                          isOpen && 'rotate-90',
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">
+                          {seller.name}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          NIT {seller.nit} · {seller.products.length} productos ·{' '}
+                          {num(seller.totalQuantity)} und
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-semibold tabular-nums">
+                        {formatCurrency(seller.totalNet)}
+                      </span>
+                    </button>
+
+                    {isOpen && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/20 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2 font-medium">Ref.</th>
+                              <th className="px-3 py-2 font-medium">Producto</th>
+                              <th className="px-3 py-2 text-right font-medium">
+                                Cantidad
+                              </th>
+                              <th className="px-3 py-2 text-right font-medium">
+                                Venta neta
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {seller.products.map((p) => (
+                              <tr
+                                key={p.referencia}
+                                className="border-t border-border"
+                              >
+                                <td className="px-3 py-2 text-muted-foreground">
+                                  {p.referencia}
+                                </td>
+                                <td className="px-3 py-2">{p.descripcion}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {num(p.quantity)}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatCurrency(p.net)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </>

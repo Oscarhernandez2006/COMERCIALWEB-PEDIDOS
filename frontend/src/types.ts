@@ -532,6 +532,33 @@ export interface SellerSalesReportData {
   };
 }
 
+/** Producto dentro de un vendedor en el reporte de ventas acumuladas. */
+export interface VendorSalesProductRow {
+  referencia: string;
+  descripcion: string;
+  quantity: number;
+  net: number;
+}
+
+/** Un vendedor con su desglose de productos y totales. */
+export interface VendorSalesGroup {
+  nit: string;
+  name: string;
+  products: VendorSalesProductRow[];
+  totalQuantity: number;
+  totalNet: number;
+}
+
+/** Datos del reporte "Ventas acumuladas por vendedor por producto". */
+export interface VendorProductSalesReportData {
+  periodo: string;
+  fecha?: string;
+  periodLabel: string;
+  sellers: VendorSalesGroup[];
+  grandTotalQuantity: number;
+  grandTotalNet: number;
+}
+
 /** Fila del reporte vendedor–producto. */
 export interface SellerProductRow {
   sellerId: string;

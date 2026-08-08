@@ -10,6 +10,8 @@ import { bogotaToday } from '../orders/order-cortes';
 import { BudgetsService } from '../budgets/budgets.service';
 import { baseCompanyId } from '../../common/companies';
 import { ChannelSalesClient, ChannelSaleRaw } from '../channel-sales/channel-sales.client';
+import { PriceListsService } from '../price-lists/price-lists.service';
+import { VendorProductSaleRaw } from '../price-lists/price-lists.client';
 
 /** Estados que representan una venta real (excluye borradores y cancelados). */
 const SALE_STATUSES = [
@@ -89,6 +91,7 @@ export class DashboardService {
     private readonly usersRepository: Repository<User>,
     private readonly budgetsService: BudgetsService,
     private readonly channelSalesClient: ChannelSalesClient,
+    private readonly priceListsService: PriceListsService,
   ) {}
 
   /** Pasa created_at a fecha local de Colombia y la limita a un rango. */
@@ -118,6 +121,148 @@ export class DashboardService {
     return d.toISOString().slice(0, 10);
   }
 
+  /** Número de días entre dos fechas YYYY-MM-DD (to - from). */
+  private daysBetween(from: string, to: string): number {
+    const a = new Date(`${from}T12:00:00`).getTime();
+    const b = new Date(`${to}T12:00:00`).getTime();
+    return Math.round((b - a) / 86400000);
+  }
+
+  private prettyDay(date: string): string {
+    return new Date(`${date}T12:00:00`).toLocaleDateString('es-CO', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+
+  /** Lista de períodos (YYYYMM) que cubre un rango de fechas. */
+  private periodsBetween(from: string, to: string): string[] {
+    const res: string[] = [];
+    let y = Number(from.slice(0, 4));
+    let m = Number(from.slice(5, 7));
+    const ey = Number(to.slice(0, 4));
+    const em = Number(to.slice(5, 7));
+    let guard = 0;
+    while ((y < ey || (y === ey && m <= em)) && guard < 36) {
+      res.push(`${y}${String(m).padStart(2, '0')}`);
+      m++;
+      if (m > 12) {
+        m = 1;
+        y++;
+      }
+      guard++;
+    }
+    return res;
+  }
+
+  /**
+   * Ventas del/los vendedor(es) desde el ERP (vendedor-productos-mes) para un
+   * rango de fechas: filtra por NIT (documento del vendedor) y por la fecha del
+   * movimiento, y agrega pesos (valor_neto), kilos (cantidad_base), total por
+   * día, por producto y por criterio (canal).
+   */
+  private async getErpSales(
+    nits: Set<string>,
+    from: string,
+    to: string,
+  ): Promise<{
+    revenue: number;
+    kilos: number;
+    byDay: Map<string, number>;
+    byProduct: { name: string; quantity: number; revenue: number }[];
+    byCanal: { name: string; kilos: number; revenue: number }[];
+  }> {
+    const rows: VendorProductSaleRaw[] = [];
+    for (const periodo of this.periodsBetween(from, to)) {
+      const r = await this.priceListsService.getVendorProductSales(periodo);
+      rows.push(...r);
+    }
+
+    let revenue = 0;
+    let kilos = 0;
+    const byDay = new Map<string, number>();
+    // Cortes (todo lo que NO es un canal entero) y canales (CANAL DE ...) por
+    // separado, cada uno agrupado por referencia de producto.
+    const prodMap = new Map<
+      string,
+      { name: string; quantity: number; revenue: number }
+    >();
+    const canalMap = new Map<
+      string,
+      { name: string; kilos: number; revenue: number }
+    >();
+
+    const filterByNit = nits.size > 0;
+    for (const row of rows) {
+      const nit = (row.nit_vendedor ?? '').trim();
+      if (filterByNit && !nits.has(nit)) continue;
+      const day = (row.fecha ?? '').slice(0, 10);
+      if (!day) continue;
+      const net = Number(row.valor_neto) || 0;
+      // La tendencia diaria usa TODOS los días del período consultado (sin
+      // filtrar por el rango), para poder graficar la evolución del mes.
+      byDay.set(day, (byDay.get(day) ?? 0) + net);
+      if (day < from || day > to) continue;
+      const qty = Number(row.cantidad_base) || 0;
+      revenue += net;
+      kilos += qty;
+      const ref = (row.referencia ?? '').trim() || '—';
+      const name = (row.descripcion ?? '').trim() || ref;
+      // Los canales enteros (CANAL DE CERDO/NOVILLA/NOVILLO/VACA) van a su
+      // propia tarjeta; el resto son cortes.
+      if (name.toUpperCase().startsWith('CANAL')) {
+        // CANAL DE VACA no se maneja en SIGCOM; no se lista en canales.
+        if (name.toUpperCase().includes('VACA')) continue;
+        const cg = canalMap.get(ref) ?? { name, kilos: 0, revenue: 0 };
+        cg.kilos += qty;
+        cg.revenue += net;
+        canalMap.set(ref, cg);
+      } else {
+        const pg = prodMap.get(ref) ?? { name, quantity: 0, revenue: 0 };
+        pg.quantity += qty;
+        pg.revenue += net;
+        prodMap.set(ref, pg);
+      }
+    }
+
+    const byProduct = [...prodMap.values()]
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 12);
+    const byCanal = [...canalMap.values()]
+      .map((c) => ({ name: c.name, kilos: c.kilos, revenue: c.revenue }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return { revenue, kilos, byDay, byProduct, byCanal };
+  }
+
+  /** Último día (YYYY-MM-DD) del mes de una fecha. */
+  private endOfMonth(date: string): string {
+    const y = Number(date.slice(0, 4));
+    const m = Number(date.slice(5, 7));
+    const last = new Date(y, m, 0).getDate();
+    return `${date.slice(0, 7)}-${String(last).padStart(2, '0')}`;
+  }
+
+  /** Construye la tendencia diaria (pesos por día) a partir de las ventas ERP. */
+  private buildErpTrend(
+    from: string,
+    to: string,
+    byDay: Map<string, number>,
+  ): SellerCommercialDashboard['salesTrend'] {
+    const today = bogotaToday();
+    const end = to < today ? to : today;
+    const trend: SellerCommercialDashboard['salesTrend'] = [];
+    let cursor = from;
+    let guard = 0;
+    while (cursor <= end && guard < 400) {
+      trend.push({ date: cursor, revenue: byDay.get(cursor) ?? 0, orders: 0 });
+      cursor = this.shiftDate(cursor, 1);
+      guard++;
+    }
+    return trend;
+  }
+
   async getSellerDashboard(
     companyId: string,
     sellerId: string,
@@ -125,31 +270,44 @@ export class DashboardService {
     year: number,
     day?: number,
     allSellers = false,
+    rangeFrom?: string,
+    rangeTo?: string,
   ): Promise<SellerCommercialDashboard> {
-    // Si se indica un día, el tablero se limita a ese día (y compara contra el
-    // día anterior); si no, es todo el mes (y compara contra el mes anterior).
-    const singleDay = !!day && day >= 1 && day <= 31;
+    // El rango puede venir explícito (desde/hasta) o derivarse de mes/día. El
+    // período anterior (para el crecimiento) es el rango de igual longitud
+    // inmediatamente anterior.
     let from: string;
     let to: string;
     let prevFrom: string;
     let prevTo: string;
-    if (singleDay) {
-      const mm = String(month).padStart(2, '0');
-      const dd = String(day).padStart(2, '0');
-      from = `${year}-${mm}-${dd}`;
-      to = from;
-      prevFrom = this.shiftDate(from, -1);
-      prevTo = prevFrom;
+    let singleDay: boolean;
+    if (rangeFrom && rangeTo) {
+      from = rangeFrom <= rangeTo ? rangeFrom : rangeTo;
+      to = rangeFrom <= rangeTo ? rangeTo : rangeFrom;
+      singleDay = from === to;
+      const len = this.daysBetween(from, to) + 1;
+      prevTo = this.shiftDate(from, -1);
+      prevFrom = this.shiftDate(prevTo, -(len - 1));
     } else {
-      const r = this.monthRange(month, year);
-      from = r.from;
-      to = r.to;
-      const pr = this.monthRange(
-        month === 1 ? 12 : month - 1,
-        month === 1 ? year - 1 : year,
-      );
-      prevFrom = pr.from;
-      prevTo = pr.to;
+      singleDay = !!day && day >= 1 && day <= 31;
+      if (singleDay) {
+        const mm = String(month).padStart(2, '0');
+        const dd = String(day).padStart(2, '0');
+        from = `${year}-${mm}-${dd}`;
+        to = from;
+        prevFrom = this.shiftDate(from, -1);
+        prevTo = prevFrom;
+      } else {
+        const r = this.monthRange(month, year);
+        from = r.from;
+        to = r.to;
+        const pr = this.monthRange(
+          month === 1 ? 12 : month - 1,
+          month === 1 ? year - 1 : year,
+        );
+        prevFrom = pr.from;
+        prevTo = pr.to;
+      }
     }
 
     // Conjunto de vendedores a incluir y sus códigos de canal. En modo general
@@ -159,6 +317,7 @@ export class DashboardService {
     let sellerIds: string[];
     let channelCodes: Set<string>;
     let activeCodes: string[];
+    let nitSet: Set<string>;
     if (allSellers) {
       const base = baseCompanyId(companyId);
       const mappings = await this.userCompaniesRepository.find({
@@ -179,6 +338,10 @@ export class DashboardService {
       sellerIds = assigned.map(({ m }) => m.user.id);
       channelCodes = new Set(assigned.map(({ code }) => code));
       activeCodes = [...channelCodes];
+      // En modo general las ventas del ERP incluyen a TODOS los vendedores (el
+      // ERP no separa por compañía ni exige código Siesa), así que no se filtra
+      // por NIT: se suma todo lo facturado del período/rango.
+      nitSet = new Set();
     } else {
       seller = await this.usersRepository.findOne({ where: { id: sellerId } });
       const link = await this.userCompaniesRepository.findOne({
@@ -192,96 +355,146 @@ export class DashboardService {
       sellerIds = [sellerId];
       channelCodes = new Set(code ? [code] : []);
       activeCodes = code ? [code] : [];
+      const nit = (seller?.documentId ?? '').trim();
+      nitSet = new Set(nit ? [nit] : []);
     }
 
-    const [totalsRow, prevRevenue, activeCustomers, salesTrend, topCustomers, salesByCut, budget, kilosSold, prevKilos, channelRows, channelRowsPrev, projectionConfig] =
+    // Las ventas del ERP (vendedor-productos-mes) SOLO están disponibles para
+    // AGROPECUARIA (compañía 3): ese es el único tenant que trae ese endpoint.
+    // Para las demás compañías las ventas se calculan como pedidos de la app
+    // más las ventas por canal (comportamiento anterior).
+    const useErp = companyId === '3';
+
+    const [totalsRow, activeCustomers, topCustomers, budget, appKilos, projectionConfig] =
       await Promise.all([
         this.getTotals(companyId, sellerIds, from, to),
-        this.getRevenue(companyId, sellerIds, prevFrom, prevTo),
         this.getActiveCustomers(companyId, activeCodes),
-        this.getTrend(companyId, sellerIds, from, to),
         this.getTopCustomers(companyId, sellerIds, from, to),
-        this.getSalesByCut(companyId, sellerIds, from, to),
         allSellers
           ? this.budgetsService.getCompanyBudget(companyId, month, year)
           : this.budgetsService.getSellerBudget(companyId, sellerId, month, year),
         this.getKilosSold(companyId, sellerIds, from, to),
-        this.getKilosSold(companyId, sellerIds, prevFrom, prevTo),
-        this.channelSalesClient.fetch(companyId, from, to),
-        this.channelSalesClient.fetch(companyId, prevFrom, prevTo),
         this.budgetsService.getProjection(companyId, month, year),
       ]);
 
-    // Ventas por canal: se identifican por el CÓDIGO DE VENDEDOR EN SIESA
-    // (codigo_vendedor). Solo se suman las de los vendedores incluidos.
-    const cur = this.summarizeChannels(channelRows, channelCodes);
-    const prevCh = this.summarizeChannels(channelRowsPrev, channelCodes);
+    const orders = totalsRow.orders;
 
-    // Las ventas por canal también afectan la gráfica de tendencia: en la vista
-    // mensual se suman al día correspondiente; en la vista por horas (un solo
-    // día) se reparten entre las horas mostradas (el ERP no da la hora).
-    const trend = salesTrend.map((p) => ({ ...p }));
-    const isHourly = trend.length > 0 && trend[0].label != null;
-    if (isHourly) {
-      const dayTotal = cur.byDay.get(from) ?? 0;
-      if (dayTotal > 0 && trend.length > 0) {
-        const per = dayTotal / trend.length;
+    let revenue: number;
+    let totalKilos: number;
+    let salesTrend: SellerCommercialDashboard['salesTrend'];
+    let salesByCut: SellerCommercialDashboard['salesByCut'];
+    let salesByChannel: SellerCommercialDashboard['salesByChannel'];
+    let revenuePct: number | null;
+    let kilosPct: number | null;
+
+    if (useErp) {
+      // AGROPECUARIA: ventas facturadas en Siesa (valor_neto) y kilos.
+      const [erp, erpPrev] = await Promise.all([
+        this.getErpSales(nitSet, from, to),
+        this.getErpSales(nitSet, prevFrom, prevTo),
+      ]);
+      revenue = erp.revenue;
+      totalKilos = erp.kilos;
+      // La tendencia siempre grafica la venta diaria del MES (aunque se filtre
+      // un solo día o un rango dentro del mes).
+      const trendFrom = singleDay ? `${from.slice(0, 7)}-01` : from;
+      const trendTo = singleDay ? this.endOfMonth(from) : to;
+      salesTrend = this.buildErpTrend(trendFrom, trendTo, erp.byDay);
+      salesByCut = erp.byProduct;
+      salesByChannel = erp.byCanal;
+      revenuePct =
+        erpPrev.revenue > 0
+          ? Number(
+              (((revenue - erpPrev.revenue) / erpPrev.revenue) * 100).toFixed(1),
+            )
+          : null;
+      kilosPct =
+        erpPrev.kilos > 0
+          ? Number(
+              (((totalKilos - erpPrev.kilos) / erpPrev.kilos) * 100).toFixed(1),
+            )
+          : null;
+    } else {
+      // Otras compañías: pedidos de la app + ventas por canal.
+      const [prevRevenue, appTrend, appCut, prevKilos, channelRows, channelRowsPrev] =
+        await Promise.all([
+          this.getRevenue(companyId, sellerIds, prevFrom, prevTo),
+          this.getTrend(companyId, sellerIds, from, to),
+          this.getSalesByCut(companyId, sellerIds, from, to),
+          this.getKilosSold(companyId, sellerIds, prevFrom, prevTo),
+          this.channelSalesClient.fetch(companyId, from, to),
+          this.channelSalesClient.fetch(companyId, prevFrom, prevTo),
+        ]);
+      const cur = this.summarizeChannels(channelRows, channelCodes);
+      const prevCh = this.summarizeChannels(channelRowsPrev, channelCodes);
+      const trend = appTrend.map((p) => ({ ...p }));
+      const isHourly = trend.length > 0 && trend[0].label != null;
+      if (isHourly) {
+        const dayTotal = cur.byDay.get(from) ?? 0;
+        if (dayTotal > 0 && trend.length > 0) {
+          const per = dayTotal / trend.length;
+          trend.forEach((p) => {
+            p.revenue += per;
+          });
+        }
+      } else {
         trend.forEach((p) => {
-          p.revenue += per;
+          p.revenue += cur.byDay.get(p.date) ?? 0;
         });
       }
-    } else {
-      trend.forEach((p) => {
-        p.revenue += cur.byDay.get(p.date) ?? 0;
-      });
+      revenue = totalsRow.revenue + cur.revenue;
+      totalKilos = appKilos + cur.kilos;
+      salesTrend = trend;
+      salesByCut = appCut;
+      salesByChannel = cur.byChannel;
+      revenuePct =
+        prevRevenue + prevCh.revenue > 0
+          ? Number(
+              (((revenue - (prevRevenue + prevCh.revenue)) /
+                (prevRevenue + prevCh.revenue)) *
+                100).toFixed(1),
+            )
+          : null;
+      kilosPct =
+        prevKilos + prevCh.kilos > 0
+          ? Number(
+              (((totalKilos - (prevKilos + prevCh.kilos)) /
+                (prevKilos + prevCh.kilos)) *
+                100).toFixed(1),
+            )
+          : null;
     }
 
-    // Las ventas por canal SUMAN a las ventas y kilos del vendedor (y por tanto
-    // cuentan para el presupuesto/cumplimiento).
-    const orders = totalsRow.orders;
-    const revenue = totalsRow.revenue + cur.revenue;
-    const totalKilos = kilosSold + cur.kilos;
-
     // Proyección AUTOMÁTICA del mes según el ritmo de ventas sobre los días
-    // hábiles marcados: se toma el acumulado (pesos/kilos) del vendedor y se
-    // proyecta al total de días hábiles del mes. Solo aplica en la vista mensual.
+    // hábiles marcados. Solo aplica en la vista mensual (no por día/rango).
     const projection = this.computeProjection(
       projectionConfig.workingDays,
       revenue,
       totalKilos,
       singleDay,
     );
-    const revenuePct =
-      prevRevenue + prevCh.revenue > 0
-        ? Number(
-            (((revenue - (prevRevenue + prevCh.revenue)) /
-              (prevRevenue + prevCh.revenue)) *
-              100).toFixed(1),
-          )
-        : null;
-    const kilosPct =
-      prevKilos + prevCh.kilos > 0
-        ? Number(
-            (((totalKilos - (prevKilos + prevCh.kilos)) /
-              (prevKilos + prevCh.kilos)) *
-              100).toFixed(1),
-          )
-        : null;
 
     const label = singleDay
-      ? new Date(year, month - 1, day).toLocaleDateString('es-CO', {
+      ? new Date(`${from}T12:00:00`).toLocaleDateString('es-CO', {
           weekday: 'long',
           day: 'numeric',
           month: 'long',
           year: 'numeric',
         })
-      : new Date(year, month - 1, 1).toLocaleDateString('es-CO', {
-          month: 'long',
-          year: 'numeric',
-        });
+      : rangeFrom && rangeTo
+        ? `${this.prettyDay(from)} — ${this.prettyDay(to)}`
+        : new Date(year, month - 1, 1).toLocaleDateString('es-CO', {
+            month: 'long',
+            year: 'numeric',
+          });
 
     return {
-      period: { month, year, day: singleDay ? (day as number) : null, label },
+      period: {
+        month,
+        year,
+        day: singleDay ? Number(from.slice(8, 10)) : null,
+        label,
+      },
       generatedAt: new Date().toISOString(),
       seller: {
         id: allSellers ? 'all' : sellerId,
@@ -299,13 +512,13 @@ export class DashboardService {
           orders > 0 ? Number((totalsRow.revenue / orders).toFixed(2)) : 0,
         kilosSold: totalKilos,
         orderRevenue: totalsRow.revenue,
-        orderKilos: kilosSold,
+        orderKilos: appKilos,
       },
       growth: { revenuePct, kilosPct },
-      salesTrend: trend,
+      salesTrend,
       topCustomers,
       salesByCut,
-      salesByChannel: cur.byChannel,
+      salesByChannel,
       budget,
       projection,
     };

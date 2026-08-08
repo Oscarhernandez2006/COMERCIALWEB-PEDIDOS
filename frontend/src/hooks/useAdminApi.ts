@@ -16,6 +16,7 @@ import type {
   SellerProductReportData,
   ProductSellerReportData,
   SellerSalesReportData,
+  VendorProductSalesReportData,
   SellableProduct,
 } from '@/types';
 
@@ -794,6 +795,65 @@ export async function downloadSellerSalesExcel(
   const link = document.createElement('a');
   link.href = url;
   link.download = `ventas-vendedor-${companyId}-${year}-${String(month).padStart(2, '0')}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/* ---- Ventas acumuladas por vendedor por producto (ERP, mensual) ---- */
+
+/** Consulta el reporte de ventas acumuladas por vendedor por producto (YYYYMM). */
+export function useVendorProductSalesReport(
+  periodo: string | undefined,
+  fecha: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'vendor-product-sales', periodo, fecha],
+    enabled: enabled && !!periodo,
+    queryFn: async () => {
+      const res = await api.get<VendorProductSalesReportData>(
+        '/admin/reports/vendor-product-sales/data',
+        { params: { periodo, ...(fecha ? { fecha } : {}) } },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Descarga el PDF del reporte de ventas acumuladas por vendedor por producto. */
+export async function downloadVendorProductSalesReport(
+  periodo: string,
+  fecha?: string,
+) {
+  const res = await api.get('/admin/reports/vendor-product-sales/pdf', {
+    params: { periodo, ...(fecha ? { fecha } : {}) },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ventas-vendedor-producto-${fecha || periodo}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga el Excel del reporte de ventas acumuladas por vendedor por producto. */
+export async function downloadVendorProductSalesExcel(
+  periodo: string,
+  fecha?: string,
+) {
+  const res = await api.get('/admin/reports/vendor-product-sales/excel', {
+    params: { periodo, ...(fecha ? { fecha } : {}) },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ventas-vendedor-producto-${fecha || periodo}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();

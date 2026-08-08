@@ -36,6 +36,28 @@ interface SubproductoResponse {
   data: SubproductoRaw[];
 }
 
+/** Fila cruda del endpoint de ventas por vendedor y producto (mensual). */
+export interface VendorProductSaleRaw {
+  fecha?: string;
+  nit_vendedor?: string;
+  razon_social_vendedor?: string;
+  referencia?: string;
+  descripcion?: string;
+  periodo?: number;
+  cantidad_base?: number;
+  costo_total?: number;
+  valor_bruto?: number;
+  valor_neto?: number;
+  criterio?: string;
+  descripcion_criterio?: string;
+}
+
+interface VendorProductSalesResponse {
+  total: number;
+  has_more?: boolean;
+  data: VendorProductSaleRaw[];
+}
+
 /**
  * Cliente del endpoint de listas de precios del Grupo Santacruz.
  *
@@ -131,6 +153,46 @@ export class PriceListsClient {
       );
       // Si falla, se devuelve un mapa vacío para no romper el listado.
       return new Map();
+    }
+  }
+
+  /**
+   * Ventas por vendedor y producto de un mes (cortes, subproductos y canales).
+   * GET {baseUrl}/ventas/vendedor-productos-mes?periodo={YYYYMM}&token={token}
+   */
+  async fetchVendorProductSales(
+    periodo: string,
+  ): Promise<VendorProductSaleRaw[]> {
+    const baseUrl = this.config.get<string>('priceLists.baseUrl');
+    const token = this.config.get<string>('priceLists.token');
+    const timeout = this.config.get<number>('priceLists.timeoutMs');
+    try {
+      // El ERP pagina con `limit` por defecto de 1000 y su paginación por
+      // `offset` es inestable (duplica/salta filas), así que se pide todo en
+      // una sola llamada con el límite máximo permitido (5000).
+      const response = await firstValueFrom(
+        this.http.get<VendorProductSalesResponse>(
+          `${baseUrl}/ventas/vendedor-productos-mes`,
+          { params: { periodo, limit: 5000, token }, timeout },
+        ),
+      );
+      if (response.data?.has_more) {
+        this.logger.warn(
+          `Ventas por vendedor (periodo ${periodo}) supera 5000 filas; el total puede quedar incompleto.`,
+        );
+      }
+      return response.data?.data ?? [];
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? (error as { message: string }).message
+          : 'Error desconocido';
+      this.logger.error(
+        `Error consultando ventas por vendedor (periodo ${periodo}): ${message}`,
+      );
+      throw new InternalServerErrorException(
+        'Error consultando las ventas por vendedor en Siesa.',
+      );
     }
   }
 }
