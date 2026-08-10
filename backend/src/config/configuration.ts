@@ -3,6 +3,9 @@ export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   apiPrefix: process.env.API_PREFIX ?? 'api',
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
+  // Modo local: no se llama a Siesa/apiconsulta. Los pedidos quedan guardados
+  // localmente (pendientes por envío) para subirlos cuando el ERP vuelva.
+  offlineMode: process.env.OFFLINE_MODE === 'true',
 
   database: {
     host: process.env.DB_HOST ?? 'localhost',

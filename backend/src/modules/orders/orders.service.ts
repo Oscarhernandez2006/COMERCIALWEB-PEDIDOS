@@ -27,6 +27,7 @@ import {
   APPROVAL_WINDOW_HOURS,
 } from './order-cortes';
 import { SettingsService } from '../settings/settings.service';
+import { ConfigService } from '@nestjs/config';
 
 /** Trazabilidad de un pedido en Siesa para mostrar al vendedor. */
 export interface SiesaOrderState {
@@ -60,6 +61,7 @@ export class OrdersService {
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
     private readonly settingsService: SettingsService,
+    private readonly config: ConfigService,
   ) {}
 
   async create(
@@ -913,6 +915,8 @@ export class OrdersService {
    * En ambos casos se devuelve el stock. Devuelve cuántos pedidos cambiaron.
    */
   async syncSiesaStatuses(): Promise<number> {
+    // En modo local/offline no se consulta el ERP (evita el spam de errores).
+    if (this.config.get<boolean>('offlineMode')) return 0;
     let updated = 0;
     for (const company of COMPANIES) {
       try {
@@ -1292,6 +1296,15 @@ export class OrdersService {
    * horario de carga, el pedido queda "pendiente por envío" sin error.
    */
   private async pushOrder(order: Order): Promise<Order> {
+    // Modo local/offline: no se intenta subir a Siesa. El pedido queda guardado
+    // localmente como "pendiente por envío" (CONFIRMED) para enviarlo cuando el
+    // ERP vuelva a estar disponible.
+    if (this.config.get<boolean>('offlineMode')) {
+      order.status = OrderStatus.CONFIRMED;
+      order.syncError = undefined;
+      return this.ordersRepository.save(order);
+    }
+
     // [TEMPORAL] Restricción de horario de carga desactivada.
     // Fuera del horario de carga: no se sube, queda pendiente por envío.
     // if (!isOrderUploadOpen()) {
