@@ -163,6 +163,8 @@ export class PriceListsClient {
   async fetchVendorProductSales(
     periodo: string,
   ): Promise<VendorProductSaleRaw[]> {
+    // En modo local no se consulta el ERP.
+    if (this.config.get<boolean>('offlineMode')) return [];
     const baseUrl = this.config.get<string>('priceLists.baseUrl');
     const token = this.config.get<string>('priceLists.token');
     const timeout = this.config.get<number>('priceLists.timeoutMs');
@@ -187,12 +189,12 @@ export class PriceListsClient {
         error && typeof error === 'object' && 'message' in error
           ? (error as { message: string }).message
           : 'Error desconocido';
-      this.logger.error(
+      // Si el ERP no responde (p. ej. Siesa/Cloudflare caído) se degrada a vacío
+      // en lugar de romper el dashboard con un 500.
+      this.logger.warn(
         `Error consultando ventas por vendedor (periodo ${periodo}): ${message}`,
       );
-      throw new InternalServerErrorException(
-        'Error consultando las ventas por vendedor en Siesa.',
-      );
+      return [];
     }
   }
 }
