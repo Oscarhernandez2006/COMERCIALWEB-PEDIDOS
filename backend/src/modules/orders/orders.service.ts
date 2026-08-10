@@ -830,6 +830,9 @@ export class OrdersService {
     companyId: string,
     sellerId: string,
   ): Promise<Record<string, SiesaOrderState>> {
+    // En modo local no se consulta el ERP: se devuelve sin tracking de Siesa
+    // (los pedidos muestran su estado local, sin error de conexión).
+    if (this.config.get<boolean>('offlineMode')) return {};
     const orders = await this.ordersRepository.find({
       where: { companyId, seller: { id: sellerId } },
       select: { id: true, orderNumber: true },
