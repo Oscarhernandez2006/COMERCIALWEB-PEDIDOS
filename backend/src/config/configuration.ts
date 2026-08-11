@@ -39,4 +39,9 @@ export default () => ({
     token: process.env.PRICE_LISTS_TOKEN ?? '',
     timeoutMs: parseInt(process.env.PRICE_LISTS_TIMEOUT_MS ?? '30000', 10),
   },
+
+  // Carga de pedidos a Siesa por los endpoints nuevos (autenticación X-API-Key).
+  siesaUpload: {
+    apiKey: process.env.SIESA_UPLOAD_APIKEY ?? '',
+  },
 });

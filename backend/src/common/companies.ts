@@ -118,6 +118,32 @@ export function getOrderEndpoint(companyId: string): string {
 }
 
 /**
+ * Ruta del endpoint NUEVO de carga de pedidos a Siesa (autenticación por
+ * cabecera `X-API-Key`). Reemplaza a los endpoints antiguos con `?token=`.
+ * MONTERIA TAT no tiene ruta propia: cae en la de su compañía base (AGROPECUARIA).
+ */
+export const SIESA_UPLOAD_ENDPOINT_BY_COMPANY: Record<string, string> = {
+  '3': 'pedidos/siesa/agropecuaria', // AGROPECUARIA
+  '8': 'pedidos/siesa/carnes-frias', // CARNES FRIAS
+};
+
+/**
+ * Devuelve la ruta del endpoint nuevo (X-API-Key) para subir pedidos de una
+ * compañía. Lanza si no está configurada.
+ */
+export function getSiesaUploadEndpoint(companyId: string): string {
+  const endpoint =
+    SIESA_UPLOAD_ENDPOINT_BY_COMPANY[companyId] ??
+    SIESA_UPLOAD_ENDPOINT_BY_COMPANY[baseCompanyId(companyId)];
+  if (!endpoint) {
+    throw new Error(
+      `La compañía ${companyId} no tiene un endpoint de carga a Siesa configurado.`,
+    );
+  }
+  return endpoint;
+}
+
+/**
  * Tipo de documento (TIPO_DOC) que identifica los pedidos de cada compañía en
  * Siesa. Se usa al consultar los estados; el consecutivo de este tipo de
  * documento coincide con nuestro `orderNumber`.

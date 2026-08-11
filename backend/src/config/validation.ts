@@ -37,4 +37,6 @@ export const validationSchema = Joi.object({
     .default('https://apiconsulta.grupo-santacruz.com'),
   PRICE_LISTS_TOKEN: Joi.string().allow('').default(''),
   PRICE_LISTS_TIMEOUT_MS: Joi.number().default(30000),
+
+  SIESA_UPLOAD_APIKEY: Joi.string().allow('').default(''),
 });
