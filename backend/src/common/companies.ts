@@ -120,11 +120,12 @@ export function getOrderEndpoint(companyId: string): string {
 /**
  * Ruta del endpoint NUEVO de carga de pedidos a Siesa (autenticación por
  * cabecera `X-API-Key`). Reemplaza a los endpoints antiguos con `?token=`.
- * MONTERIA TAT no tiene ruta propia: cae en la de su compañía base (AGROPECUARIA).
+ * Cada compañía (incluida MONTERIA TAT) tiene su propia ruta.
  */
 export const SIESA_UPLOAD_ENDPOINT_BY_COMPANY: Record<string, string> = {
   '3': 'pedidos/siesa/agropecuaria', // AGROPECUARIA
   '8': 'pedidos/siesa/carnes-frias', // CARNES FRIAS
+  MTAT: 'pedidos/siesa/monteria', // MONTERIA TAT AGROPECUARIA (endpoint propio)
 };
 
 /**
