@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { ConfigService } from '@nestjs/config';
 import { Between, DataSource, Repository } from 'typeorm';
 import { ChannelSale } from './entities/channel-sale.entity';
 import { ChannelSalesClient } from './channel-sales.client';
@@ -28,7 +27,6 @@ export class ChannelSalesService {
     private readonly repository: Repository<ChannelSale>,
     private readonly client: ChannelSalesClient,
     private readonly dataSource: DataSource,
-    private readonly config: ConfigService,
   ) {}
 
   private shiftDate(date: string, days: number): string {
@@ -105,7 +103,6 @@ export class ChannelSalesService {
   /** Cada hora refresca las ventas por canal del día en curso. */
   @Cron(CronExpression.EVERY_HOUR)
   async syncTodayJob(): Promise<void> {
-    if (this.config.get<boolean>('offlineMode')) return;
     const today = bogotaToday();
     await this.syncAll(today, today);
   }
@@ -113,7 +110,6 @@ export class ChannelSalesService {
   /** Cada día a la 1:00 finaliza (reemplaza) las ventas del día anterior. */
   @Cron('0 1 * * *')
   async syncYesterdayJob(): Promise<void> {
-    if (this.config.get<boolean>('offlineMode')) return;
     const yesterday = this.shiftDate(bogotaToday(), -1);
     await this.syncAll(yesterday, yesterday);
   }

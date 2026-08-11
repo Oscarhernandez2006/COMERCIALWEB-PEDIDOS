@@ -4,8 +4,8 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import {
+  getOrderEndpoint,
   getOrderDocType,
-  getSiesaUploadEndpoint,
   baseCompanyId,
 } from '../../common/companies';
 
@@ -58,16 +58,6 @@ export interface ErpUploadResult {
   raw: unknown;
 }
 
-/** Respuesta del endpoint nuevo de carga de pedidos a Siesa (X-API-Key). */
-export interface ErpUploadResponse {
-  status_code?: number;
-  ok?: boolean;
-  documentos?: number;
-  lineas?: number;
-  respuesta_siesa?: string;
-  mensaje?: string;
-}
-
 /**
  * Cliente del endpoint de carga de pedidos del Grupo Santacruz.
  *
@@ -104,9 +94,9 @@ export class OrdersErpClient {
     registros: ErpOrderRegistro[],
   ): Promise<ErpUploadResult> {
     const baseUrl = this.config.get<string>('priceLists.baseUrl');
-    const apiKey = this.config.get<string>('siesaUpload.apiKey');
+    const token = this.config.get<string>('priceLists.token');
     const timeout = this.config.get<number>('priceLists.timeoutMs');
-    const endpoint = getSiesaUploadEndpoint(companyId);
+    const endpoint = getOrderEndpoint(companyId);
 
     // Se registra el cliente y la sucursal de cada línea que se envía al ERP
     // para poder auditar qué sucursal viaja realmente y descartar que el código
@@ -126,57 +116,33 @@ export class OrdersErpClient {
 
     try {
       const response = await firstValueFrom(
-        this.http.post<ErpUploadResponse>(
+        this.http.post<unknown>(
           `${baseUrl}/${endpoint}`,
           { registros },
-          { headers: { 'X-API-Key': apiKey }, timeout },
+          { params: { token }, timeout },
         ),
       );
       // Se registra la respuesta cruda para conocer el formato exacto del ERP
-      // y poder ajustar el parseo si cambia.
+      // y poder ajustar el parseo del consecutivo si cambia.
       this.logger.log(
         `Respuesta de carga (compañía ${companyId}): ${JSON.stringify(response.data)}`,
       );
-      const data = response.data;
-      // El endpoint nuevo responde { status_code, ok, documentos, lineas,
-      // respuesta_siesa }. Si `ok` no es true, la carga falló en Siesa.
-      if (!data || data.ok !== true) {
-        throw new Error(this.describeSiesaFailure(data));
+      const consecutivo = this.extractConsecutivo(response.data);
+      if (!consecutivo) {
+        this.logger.warn(
+          `No se pudo extraer el consecutivo de Siesa de la respuesta de carga ` +
+            `(compañía ${companyId}). El estado del pedido no se podrá sincronizar.`,
+        );
       }
       // Al subir un pedido los estados quedan desactualizados: se invalida la
       // caché para que la próxima consulta traiga el dato fresco.
       this.statesCache.delete(companyId);
-      // El endpoint nuevo no devuelve el consecutivo de Siesa; el estado del
-      // pedido se cruza por `documento_venta` (= orderNumber) al consultar los
-      // estados, así que no es necesario.
-      return { consecutivo: undefined, raw: data };
+      return { consecutivo, raw: response.data };
     } catch (error) {
       const message = this.describeError(error);
       this.logger.error(`Error subiendo pedido al ERP: ${message}`);
       throw new Error(message);
     }
-  }
-
-  /**
-   * Construye un mensaje de error legible a partir de una respuesta de carga
-   * no exitosa del endpoint nuevo (ok !== true).
-   */
-  private describeSiesaFailure(data: ErpUploadResponse | undefined): string {
-    if (!data) return 'El ERP no devolvió respuesta de carga.';
-    const parts: string[] = [];
-    if (data.status_code) parts.push(`status_code ${data.status_code}`);
-    if (typeof data.mensaje === 'string' && data.mensaje.trim()) {
-      parts.push(data.mensaje.trim());
-    }
-    if (
-      typeof data.respuesta_siesa === 'string' &&
-      data.respuesta_siesa.trim()
-    ) {
-      parts.push(data.respuesta_siesa.trim().slice(0, 300));
-    }
-    return parts.length
-      ? `Siesa rechazó el pedido (${parts.join(' - ')}).`
-      : 'Siesa rechazó el pedido.';
   }
 
   /**

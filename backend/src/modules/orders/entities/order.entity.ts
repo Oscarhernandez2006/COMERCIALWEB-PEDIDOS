@@ -224,4 +224,14 @@ export class Order extends BaseEntity {
   /** Nombre del usuario (alistador) que marcó el pedido como alistado. */
   @Column({ name: 'picked_by', nullable: true })
   pickedBy?: string;
+
+  /** Geolocalización donde el vendedor tomó el pedido. */
+  @Column({ type: 'double precision', nullable: true })
+  latitude?: number;
+
+  @Column({ type: 'double precision', nullable: true })
+  longitude?: number;
+
+  @Column({ name: 'geo_accuracy', type: 'double precision', nullable: true })
+  geoAccuracy?: number;
 }

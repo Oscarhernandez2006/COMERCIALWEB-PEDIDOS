@@ -3,9 +3,6 @@ export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   apiPrefix: process.env.API_PREFIX ?? 'api',
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
-  // Modo local: no se llama a Siesa/apiconsulta. Los pedidos quedan guardados
-  // localmente (pendientes por envío) para subirlos cuando el ERP vuelva.
-  offlineMode: process.env.OFFLINE_MODE === 'true',
 
   database: {
     host: process.env.DB_HOST ?? 'localhost',
@@ -38,10 +35,5 @@ export default () => ({
       'https://apiconsulta.grupo-santacruz.com',
     token: process.env.PRICE_LISTS_TOKEN ?? '',
     timeoutMs: parseInt(process.env.PRICE_LISTS_TIMEOUT_MS ?? '30000', 10),
-  },
-
-  // Carga de pedidos a Siesa por los endpoints nuevos (autenticación X-API-Key).
-  siesaUpload: {
-    apiKey: process.env.SIESA_UPLOAD_APIKEY ?? '',
   },
 });

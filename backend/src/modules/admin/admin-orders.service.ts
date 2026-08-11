@@ -13,7 +13,6 @@ import { isValidCompany } from '../../common/companies';
 import { UsersService } from '../users/users.service';
 import { User, UserRole } from '../users/entities/user.entity';
 import { PriceListsService } from '../price-lists/price-lists.service';
-import { ConfigService } from '@nestjs/config';
 
 /** Clave del módulo (permiso) de la administración de pedidos. */
 const ADMIN_ORDERS_PERMISSION = '/admin/pedidos';
@@ -127,19 +126,7 @@ export class AdminOrdersService {
     private readonly ordersRepository: Repository<Order>,
     private readonly usersService: UsersService,
     private readonly priceListsService: PriceListsService,
-    private readonly config: ConfigService,
   ) {}
-
-  /**
-   * Estados de pedido considerados "descargables". En modo local los pedidos
-   * quedan en "pendiente por envío" (CONFIRMED) y no llegan a Siesa (SYNCED),
-   * así que también se incluyen para poder descargarlos.
-   */
-  private downloadableStatuses(): OrderStatus[] {
-    return this.config.get<boolean>('offlineMode')
-      ? [OrderStatus.CONFIRMED, OrderStatus.SYNCED]
-      : [OrderStatus.SYNCED];
-  }
 
   /**
    * Verifica que el usuario pueda ver la administración de pedidos de una
@@ -335,11 +322,7 @@ export class AdminOrdersService {
       orderType === 'subproducto' ? cat : undefined,
     );
     const orders = await this.ordersRepository.find({
-      where: {
-        companyId,
-        status: In(this.downloadableStatuses()),
-        type: orderType,
-      },
+      where: { companyId, status: OrderStatus.SYNCED, type: orderType },
       order: { orderNumber: 'ASC' },
     });
 
@@ -411,7 +394,7 @@ export class AdminOrdersService {
       where: {
         id: In(orderIds),
         companyId,
-        status: In(this.downloadableStatuses()),
+        status: OrderStatus.SYNCED,
         type: orderType,
       },
       order: { orderNumber: 'ASC' },

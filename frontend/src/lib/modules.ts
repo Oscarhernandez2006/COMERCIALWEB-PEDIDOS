@@ -41,6 +41,7 @@ export const ADMIN_MODULES: ModuleDef[] = [
     key: '/admin/controlador-subproductos',
     label: 'Controlador Subproductos',
   },
+  { key: '/admin/rutas', label: 'Rutas de vendedores' },
   { key: '/admin/horario-pedidos', label: 'Horario de pedidos' },
   { key: '/admin/usuarios', label: 'Usuarios' },
 ];

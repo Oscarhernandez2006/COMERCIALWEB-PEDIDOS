@@ -193,7 +193,7 @@ export function OrdersPage() {
                     <p className="truncate text-sm text-muted-foreground">
                       {order.customer.name} · {order.items.length} items
                     </p>
-                    {order.status === 'failed' && order.syncError && (
+                    {order.syncError && (
                       <p className="mt-1 text-xs text-destructive">
                         {order.syncError}
                       </p>

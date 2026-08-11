@@ -27,7 +27,6 @@ import {
   APPROVAL_WINDOW_HOURS,
 } from './order-cortes';
 import { SettingsService } from '../settings/settings.service';
-import { ConfigService } from '@nestjs/config';
 
 /** Trazabilidad de un pedido en Siesa para mostrar al vendedor. */
 export interface SiesaOrderState {
@@ -61,7 +60,6 @@ export class OrdersService {
     private readonly usersService: UsersService,
     private readonly dataSource: DataSource,
     private readonly settingsService: SettingsService,
-    private readonly config: ConfigService,
   ) {}
 
   async create(
@@ -167,6 +165,9 @@ export class OrdersService {
         deliveryType: dto.deliveryType,
         deliverySchedule: dto.deliverySchedule,
         deliveryDate: dto.deliveryDate,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        geoAccuracy: dto.geoAccuracy,
       });
 
       // Guarda el horario de recibido en el cliente para que quede
@@ -827,28 +828,13 @@ export class OrdersService {
     companyId: string,
     sellerId: string,
   ): Promise<Record<string, SiesaOrderState>> {
-    // En modo local no se consulta el ERP: se devuelve sin tracking de Siesa
-    // (los pedidos muestran su estado local, sin error de conexión).
-    if (this.config.get<boolean>('offlineMode')) return {};
     const orders = await this.ordersRepository.find({
       where: { companyId, seller: { id: sellerId } },
       select: { id: true, orderNumber: true },
     });
     if (orders.length === 0) return {};
 
-    // Si el ERP no responde (endpoint de estados caído/eliminado), se degrada a
-    // "sin tracking" en vez de romper la carga de pedidos con un 500.
-    let states: Awaited<ReturnType<typeof this.erpClient.getOrderStates>>;
-    try {
-      states = await this.erpClient.getOrderStates(companyId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `No se pudieron consultar los estados de Siesa (compañía ${companyId}); ` +
-          `se muestran los pedidos sin tracking: ${message}`,
-      );
-      return {};
-    }
+    const states = await this.erpClient.getOrderStates(companyId);
     const byReferencia = this.indexStatesByReferencia(
       this.filterStatesForCompany(companyId, states),
     );
@@ -927,8 +913,6 @@ export class OrdersService {
    * En ambos casos se devuelve el stock. Devuelve cuántos pedidos cambiaron.
    */
   async syncSiesaStatuses(): Promise<number> {
-    // En modo local/offline no se consulta el ERP (evita el spam de errores).
-    if (this.config.get<boolean>('offlineMode')) return 0;
     let updated = 0;
     for (const company of COMPANIES) {
       try {
@@ -1308,15 +1292,6 @@ export class OrdersService {
    * horario de carga, el pedido queda "pendiente por envío" sin error.
    */
   private async pushOrder(order: Order): Promise<Order> {
-    // Modo local/offline: no se intenta subir a Siesa. El pedido queda guardado
-    // localmente como "pendiente por envío" (CONFIRMED) para enviarlo cuando el
-    // ERP vuelva a estar disponible.
-    if (this.config.get<boolean>('offlineMode')) {
-      order.status = OrderStatus.CONFIRMED;
-      order.syncError = undefined;
-      return this.ordersRepository.save(order);
-    }
-
     // [TEMPORAL] Restricción de horario de carga desactivada.
     // Fuera del horario de carga: no se sube, queda pendiente por envío.
     // if (!isOrderUploadOpen()) {

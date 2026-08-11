@@ -289,6 +289,10 @@ interface CreateOrderInput {
   orderType?: 'corte' | 'subproducto';
   /** Vendedor al que se asocia el pedido (solo subproductos). */
   sellerId?: string;
+  /** Geolocalización del vendedor al tomar el pedido. */
+  latitude?: number;
+  longitude?: number;
+  geoAccuracy?: number;
 }
 
 export function useCreateOrder() {
@@ -332,6 +336,10 @@ export interface CreateCanalOrderInput {
     price: number;
     freight?: number;
   }[];
+  /** Geolocalización del vendedor al tomar el pedido. */
+  latitude?: number;
+  longitude?: number;
+  geoAccuracy?: number;
 }
 
 export function useCreateCanalOrder() {
