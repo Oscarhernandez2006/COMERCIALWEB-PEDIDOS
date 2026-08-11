@@ -839,7 +839,19 @@ export class OrdersService {
     });
     if (orders.length === 0) return {};
 
-    const states = await this.erpClient.getOrderStates(companyId);
+    // Si el ERP no responde (endpoint de estados caído/eliminado), se degrada a
+    // "sin tracking" en vez de romper la carga de pedidos con un 500.
+    let states: Awaited<ReturnType<typeof this.erpClient.getOrderStates>>;
+    try {
+      states = await this.erpClient.getOrderStates(companyId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudieron consultar los estados de Siesa (compañía ${companyId}); ` +
+          `se muestran los pedidos sin tracking: ${message}`,
+      );
+      return {};
+    }
     const byReferencia = this.indexStatesByReferencia(
       this.filterStatesForCompany(companyId, states),
     );
