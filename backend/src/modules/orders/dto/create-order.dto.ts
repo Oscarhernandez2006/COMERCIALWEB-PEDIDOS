@@ -90,17 +90,4 @@ export class CreateOrderDto {
   @IsUUID()
   @IsOptional()
   sellerId?: string;
-
-  /** Geolocalización del vendedor al tomar el pedido. */
-  @IsNumber()
-  @IsOptional()
-  latitude?: number;
-
-  @IsNumber()
-  @IsOptional()
-  longitude?: number;
-
-  @IsNumber()
-  @IsOptional()
-  geoAccuracy?: number;
 }

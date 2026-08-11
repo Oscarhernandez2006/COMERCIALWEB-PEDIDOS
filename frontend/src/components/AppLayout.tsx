@@ -21,7 +21,6 @@ import {
   Target,
   ClipboardCheck,
   ChevronDown,
-  MapPin,
   Menu,
   X,
 } from 'lucide-react';
@@ -32,7 +31,6 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { CarteraNotifications } from '@/components/CarteraNotifications';
 import { SiesaStateNotifications } from '@/components/SiesaStateNotifications';
-import { LocationPinger } from '@/components/LocationPinger';
 
 const sellerNav = [
   { to: '/', label: 'Dashboard comercial', icon: LayoutDashboard, end: true },
@@ -65,7 +63,6 @@ const adminSections: { label: string; items: typeof sellerNav }[] = [
         label: 'Controlador Subproductos',
         icon: ClipboardCheck,
       },
-      { to: '/admin/rutas', label: 'Rutas de vendedores', icon: MapPin },
     ],
   },
   {
@@ -352,7 +349,6 @@ export function AppLayout() {
 
       {user?.role === 'seller' && <CarteraNotifications />}
       {user?.role === 'seller' && <SiesaStateNotifications />}
-      <LocationPinger />
     </div>
   );
 }

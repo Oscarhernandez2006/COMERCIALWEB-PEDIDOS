@@ -66,14 +66,4 @@ export class CanalOrder extends BaseEntity {
   /** Líneas del pedido (ítems de canal). */
   @Column({ type: 'jsonb', default: () => "'[]'" })
   items: CanalOrderItem[];
-
-  /** Geolocalización donde el vendedor tomó el pedido. */
-  @Column({ type: 'double precision', nullable: true })
-  latitude?: number;
-
-  @Column({ type: 'double precision', nullable: true })
-  longitude?: number;
-
-  @Column({ name: 'geo_accuracy', type: 'double precision', nullable: true })
-  geoAccuracy?: number;
 }
