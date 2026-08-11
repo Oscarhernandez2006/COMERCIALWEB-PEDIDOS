@@ -34,9 +34,6 @@ export class CanalOrdersService {
       clientName: dto.clientName,
       clientAddress: dto.clientAddress,
       clientCity: dto.clientCity,
-      latitude: dto.latitude,
-      longitude: dto.longitude,
-      geoAccuracy: dto.geoAccuracy,
       items: dto.items.map((it) => ({
         itemRef: it.itemRef,
         itemName: it.itemName,

@@ -63,17 +63,4 @@ export class CreateCanalOrderDto {
   @Type(() => CanalOrderItemDto)
   @ArrayMinSize(1)
   items: CanalOrderItemDto[];
-
-  /** Geolocalización del vendedor al tomar el pedido. */
-  @IsNumber()
-  @IsOptional()
-  latitude?: number;
-
-  @IsNumber()
-  @IsOptional()
-  longitude?: number;
-
-  @IsNumber()
-  @IsOptional()
-  geoAccuracy?: number;
 }

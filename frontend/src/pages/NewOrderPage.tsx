@@ -41,7 +41,6 @@ import { isScheduleComplete, formatDeliverySchedule } from '@/lib/delivery-sched
 import { getMinOrderTotal } from '@/lib/companies';
 import { useCompany } from '@/company/useCompany';
 import { useAuth } from '@/auth/useAuth';
-import { useGeo } from '@/geo/useGeo';
 import type {
   CartLine,
   Client,
@@ -119,7 +118,6 @@ export function NewOrderPage() {
     | 'subproductos';
   const isSubproducto = tipo === 'subproductos';
   const { user } = useAuth();
-  const { coords } = useGeo();
   const [customerSearch, setCustomerSearch] = useState('');
   const [customer, setCustomer] = useState<Client | null>(null);
   const [productSearch, setProductSearch] = useState('');
@@ -279,9 +277,6 @@ export function NewOrderPage() {
           : undefined,
         deliveryScheduleData: deliverySchedule ?? undefined,
         deliveryDate,
-        latitude: coords?.latitude,
-        longitude: coords?.longitude,
-        geoAccuracy: coords?.accuracy,
         items: cart.map((l) => ({
           sku: l.product.sku,
           quantity: l.quantity,

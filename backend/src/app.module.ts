@@ -19,7 +19,6 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { BudgetsModule } from './modules/budgets/budgets.module';
 import { ChannelSalesModule } from './modules/channel-sales/channel-sales.module';
 import { CanalOrdersModule } from './modules/canal-orders/canal-orders.module';
-import { GeoModule } from './modules/geo/geo.module';
 import { SeederService } from './database/seeder.service';
 
 @Module({
@@ -46,7 +45,6 @@ import { SeederService } from './database/seeder.service';
     BudgetsModule,
     ChannelSalesModule,
     CanalOrdersModule,
-    GeoModule,
   ],
   providers: [SeederService],
 })
