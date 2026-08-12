@@ -199,6 +199,14 @@ export class DashboardService {
       if (filterByNit && !nits.has(nit)) continue;
       const day = (row.fecha ?? '').slice(0, 10);
       if (!day) continue;
+      const ref = (row.referencia ?? '').trim() || '—';
+      const name = (row.descripcion ?? '').trim() || ref;
+      // Los SERVICIOS (referencia 99xxx / descripción "SERVICIO ...") no son
+      // productos (desposte, sacrificio, transporte, alquiler, etc.); no se
+      // cuentan como ventas de cortes/subproductos/canales.
+      if (ref.startsWith('99') || name.toUpperCase().startsWith('SERVICIO')) {
+        continue;
+      }
       const net = Number(row.valor_neto) || 0;
       // La tendencia diaria usa TODOS los días del período consultado (sin
       // filtrar por el rango), para poder graficar la evolución del mes.
@@ -207,8 +215,6 @@ export class DashboardService {
       const qty = Number(row.cantidad_base) || 0;
       revenue += net;
       kilos += qty;
-      const ref = (row.referencia ?? '').trim() || '—';
-      const name = (row.descripcion ?? '').trim() || ref;
       // Los canales enteros (CANAL DE CERDO/NOVILLA/NOVILLO/VACA) van a su
       // propia tarjeta; el resto son cortes.
       if (name.toUpperCase().startsWith('CANAL')) {
