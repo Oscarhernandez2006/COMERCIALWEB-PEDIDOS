@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import {
   getOrderEndpoint,
-  getOrderDocType,
+  getOrderDocTypes,
   baseCompanyId,
 } from '../../common/companies';
 
@@ -304,21 +304,29 @@ export class OrdersErpClient {
     const token = this.config.get<string>('priceLists.token');
     const timeout = this.config.get<number>('priceLists.timeoutMs');
 
+    // Los cortes salen como PVA, pero los subproductos entran con su propio
+    // tipo de documento (SPB = res, SPP = cerdo). Se consultan todos y se unen
+    // para que la sincronización encuentre también los subproductos.
+    const docTypes = getOrderDocTypes(companyId);
     try {
-      const response = await firstValueFrom(
-        this.http.get<{ data?: ErpOrderState[] }>(
-          `${baseUrl}/pedidos-estados-siesa`,
-          {
-            params: {
-              cia: baseCompanyId(companyId),
-              tipo_doc: getOrderDocType(companyId),
-              token,
+      const all: ErpOrderState[] = [];
+      for (const tipoDoc of docTypes) {
+        const response = await firstValueFrom(
+          this.http.get<{ data?: ErpOrderState[] }>(
+            `${baseUrl}/pedidos-estados-siesa`,
+            {
+              params: {
+                cia: baseCompanyId(companyId),
+                tipo_doc: tipoDoc,
+                token,
+              },
+              timeout,
             },
-            timeout,
-          },
-        ),
-      );
-      return response.data?.data ?? [];
+          ),
+        );
+        all.push(...(response.data?.data ?? []));
+      }
+      return all;
     } catch (error) {
       const message = this.describeError(error);
       this.logger.error(`Error consultando estados en el ERP: ${message}`);
