@@ -25,6 +25,7 @@ import {
   buildSellerProductReportExcel,
   buildProductSellerReportExcel,
   buildSellerSalesReportExcel,
+  buildVendorProductSalesReportExcel,
 } from './report-excel';
 import {
   buildSalesSummaryReportPdf,
@@ -55,6 +56,12 @@ import {
 } from './seller-sales-report';
 import { BudgetsService } from '../budgets/budgets.service';
 import { UsersService } from '../users/users.service';
+import { PriceListsService } from '../price-lists/price-lists.service';
+import {
+  buildVendorProductSalesReportPdf,
+  VendorProductSalesReportData,
+  VendorSalesGroup,
+} from './vendor-product-sales-report';
 import {
   ChannelSalesClient,
   ChannelSaleRaw,
@@ -80,6 +87,7 @@ export class AdminReportsService {
     private readonly budgetsService: BudgetsService,
     private readonly channelSalesClient: ChannelSalesClient,
     private readonly usersService: UsersService,
+    private readonly priceListsService: PriceListsService,
   ) {}
 
   /**
@@ -1062,5 +1070,135 @@ export class AdminReportsService {
     const data = await this.getSellerSalesReport(companyId, month, year);
     const buffer = buildSellerSalesReportExcel(data);
     return { buffer, month: data.month, year: data.year };
+  }
+
+  /**
+   * Reporte "Ventas acumuladas por vendedor por producto" para un período
+   * (YYYYMM). Consulta el ERP, agrupa por vendedor y por producto usando la
+   * venta neta (valor_neto) y la cantidad base, y ordena por venta descendente.
+   */
+  async getVendorProductSalesReport(
+    periodo: string,
+    fecha?: string,
+  ): Promise<VendorProductSalesReportData> {
+    const clean = (periodo ?? '').trim();
+    if (!/^\d{6}$/.test(clean)) {
+      throw new BadRequestException('El período debe tener el formato YYYYMM.');
+    }
+    const day = (fecha ?? '').trim();
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      throw new BadRequestException('La fecha debe tener el formato YYYY-MM-DD.');
+    }
+
+    const allRows = await this.priceListsService.getVendorProductSales(clean);
+    // Si se pide un día concreto, se filtra por la parte de fecha (YYYY-MM-DD).
+    const rows = day
+      ? allRows.filter((r) => (r.fecha ?? '').slice(0, 10) === day)
+      : allRows;
+
+    // Agrupa por vendedor y dentro por producto (referencia).
+    const sellersMap = new Map<
+      string,
+      {
+        nit: string;
+        name: string;
+        products: Map<
+          string,
+          { referencia: string; descripcion: string; quantity: number; net: number }
+        >;
+      }
+    >();
+
+    for (const row of rows) {
+      const nit = (row.nit_vendedor ?? '').trim() || 'SIN NIT';
+      const name =
+        (row.razon_social_vendedor ?? '').trim() || 'SIN VENDEDOR';
+      const referencia = (row.referencia ?? '').trim() || '—';
+      const descripcion = (row.descripcion ?? '').trim() || referencia;
+      const quantity = Number(row.cantidad_base) || 0;
+      const net = Number(row.valor_neto) || 0;
+
+      let seller = sellersMap.get(nit);
+      if (!seller) {
+        seller = { nit, name, products: new Map() };
+        sellersMap.set(nit, seller);
+      }
+      let product = seller.products.get(referencia);
+      if (!product) {
+        product = { referencia, descripcion, quantity: 0, net: 0 };
+        seller.products.set(referencia, product);
+      }
+      product.quantity += quantity;
+      product.net += net;
+    }
+
+    const sellers: VendorSalesGroup[] = Array.from(sellersMap.values()).map(
+      (s) => {
+        const products = Array.from(s.products.values()).sort(
+          (a, b) => b.net - a.net,
+        );
+        const totalQuantity = products.reduce((acc, p) => acc + p.quantity, 0);
+        const totalNet = products.reduce((acc, p) => acc + p.net, 0);
+        return {
+          nit: s.nit,
+          name: s.name,
+          products,
+          totalQuantity,
+          totalNet,
+        };
+      },
+    );
+    sellers.sort((a, b) => b.totalNet - a.totalNet);
+
+    const grandTotalQuantity = sellers.reduce(
+      (acc, s) => acc + s.totalQuantity,
+      0,
+    );
+    const grandTotalNet = sellers.reduce((acc, s) => acc + s.totalNet, 0);
+
+    const year = Number(clean.slice(0, 4));
+    const monthNum = Number(clean.slice(4, 6));
+    const monthLabel = new Date(year, monthNum - 1, 1).toLocaleDateString(
+      'es-CO',
+      { month: 'long', year: 'numeric' },
+    );
+    // Si hay filtro por día, la etiqueta muestra la fecha concreta.
+    const periodLabel = day
+      ? new Date(`${day}T12:00:00`).toLocaleDateString('es-CO', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+      : monthLabel;
+
+    return {
+      periodo: clean,
+      fecha: day || undefined,
+      periodLabel,
+      sellers,
+      grandTotalQuantity,
+      grandTotalNet,
+    };
+  }
+
+  /** Genera el PDF del reporte de ventas acumuladas por vendedor por producto. */
+  async getVendorProductSalesReportPdf(
+    periodo: string,
+    fecha?: string,
+  ): Promise<{ buffer: Buffer; periodo: string }> {
+    const data = await this.getVendorProductSalesReport(periodo, fecha);
+    const buffer = await buildVendorProductSalesReportPdf(data);
+    return { buffer, periodo: data.periodo };
+  }
+
+  /** Genera el Excel del reporte de ventas acumuladas por vendedor por producto. */
+  async getVendorProductSalesReportExcel(
+    periodo: string,
+    fecha?: string,
+  ): Promise<{ buffer: Buffer; periodo: string }> {
+    const data = await this.getVendorProductSalesReport(periodo, fecha);
+    const buffer = buildVendorProductSalesReportExcel(data);
+    return { buffer, periodo: data.periodo };
   }
 }

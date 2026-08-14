@@ -133,6 +133,7 @@ export function AdminOrdersPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [status, setStatus] = useState('');
+  const [type, setType] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<AdminOrderDetail | null>(null);
 
@@ -146,8 +147,8 @@ export function AdminOrdersPage() {
   }, [availableCompanies, companyId]);
 
   const filters: AdminOrdersFilters = useMemo(
-    () => ({ from, to, status, search }),
-    [from, to, status, search],
+    () => ({ from, to, status, search, type }),
+    [from, to, status, search, type],
   );
 
   const { data: orders, isLoading, isError, refetch, isFetching } =
@@ -160,10 +161,11 @@ export function AdminOrdersPage() {
     setFrom('');
     setTo('');
     setStatus('');
+    setType('');
     setSearch('');
   }
 
-  const hasFilters = Boolean(from || to || status || search);
+  const hasFilters = Boolean(from || to || status || type || search);
 
   return (
     <div className="space-y-6">
@@ -211,7 +213,7 @@ export function AdminOrdersPage() {
           </div>
 
           {/* Filtros */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">
                 Desde
@@ -256,6 +258,20 @@ export function AdminOrdersPage() {
                     {o.label}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Tipo
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Todos los tipos</option>
+                <option value="corte">Cortes</option>
+                <option value="subproducto">Subproductos</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -337,12 +353,19 @@ export function AdminOrdersPage() {
                       onClick={() => setSelected(o)}
                       className="cursor-pointer border-t border-border transition-colors hover:bg-accent/40"
                     >
-                      <td className="px-3 py-2 font-medium">#{o.orderNumber}</td>
+                      <td className="px-3 py-2 font-medium">
+                        #{o.orderNumber}
+                      </td>
                       <td className="px-3 py-2">
                         <OrderStatusBadge status={o.status as OrderStatus} />
                       </td>
                       <td className="px-3 py-2">
                         <SiesaTrackingBadge order={o} />
+                        {o.type === 'subproducto' && (
+                          <span className="mt-1 flex w-fit items-center rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-600 dark:text-blue-400">
+                            Subproducto
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <div className="font-medium">{o.customerName}</div>

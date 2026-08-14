@@ -19,7 +19,9 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
+      // No se rechazan propiedades desconocidas: se descartan. Evita romper
+      // peticiones de front-ends con versiones distintas (p. ej. caché vieja).
+      forbidNonWhitelisted: false,
       transform: true,
     }),
   );

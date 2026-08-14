@@ -26,13 +26,21 @@ export const ADMIN_MODULES: ModuleDef[] = [
   { key: '/admin/reportes', label: 'Reportes' },
   { key: '/admin/descargar-pedidos', label: 'Descargar pedidos · Cortes' },
   {
-    key: '/admin/descargar-pedidos-subproductos',
-    label: 'Descargar pedidos · Subproductos',
+    key: '/admin/descargar-pedidos-subproductos-cerdo',
+    label: 'Descargar subproductos · Cerdo',
+  },
+  {
+    key: '/admin/descargar-pedidos-subproductos-res',
+    label: 'Descargar subproductos · Res',
   },
   { key: '/admin/listas-precios', label: 'Listas de precios' },
   { key: '/admin/clientes', label: 'Clientes' },
   { key: '/admin/presupuestos', label: 'Presupuestos' },
   { key: '/admin/cartera', label: 'Aprobación de cartera' },
+  {
+    key: '/admin/controlador-subproductos',
+    label: 'Controlador Subproductos',
+  },
   { key: '/admin/horario-pedidos', label: 'Horario de pedidos' },
   { key: '/admin/usuarios', label: 'Usuarios' },
 ];

@@ -27,6 +27,8 @@ export class DashboardController {
     @Query('year') year?: string,
     @Query('day') day?: string,
     @Query('sellerId') sellerId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     const now = new Date();
     const m = Number(month) || now.getMonth() + 1;
@@ -39,6 +41,9 @@ export class DashboardController {
     const allSellers = isAdmin && requested === 'all';
     const targetSellerId =
       isAdmin && requested && requested !== 'all' ? requested : user.id;
+    // Rango de fechas explícito (YYYY-MM-DD). Si viene, prima sobre mes/día.
+    const rangeFrom = from?.trim() || undefined;
+    const rangeTo = to?.trim() || undefined;
     return this.dashboardService.getSellerDashboard(
       companyId,
       targetSellerId,
@@ -46,6 +51,8 @@ export class DashboardController {
       y,
       d,
       allSellers,
+      rangeFrom,
+      rangeTo,
     );
   }
 }

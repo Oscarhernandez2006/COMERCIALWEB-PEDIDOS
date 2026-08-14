@@ -45,16 +45,33 @@ export function useSellerDashboard(
   year: number,
   day = 0,
   sellerId?: string,
+  from?: string,
+  to?: string,
 ) {
   const { company } = useCompany();
   return useQuery({
-    queryKey: ['dashboard', 'commercial', company?.id, month, year, day, sellerId],
+    queryKey: [
+      'dashboard',
+      'commercial',
+      company?.id,
+      month,
+      year,
+      day,
+      sellerId,
+      from,
+      to,
+    ],
     queryFn: async () => {
       const res = await api.get<SellerCommercialDashboard>(
         '/dashboard/commercial',
         {
           params: {
-            ...(day > 0 ? { month, year, day } : { month, year }),
+            // Un rango de fechas explícito prima sobre mes/día.
+            ...(from && to
+              ? { from, to }
+              : day > 0
+                ? { month, year, day }
+                : { month, year }),
             ...(sellerId ? { sellerId } : {}),
           },
         },

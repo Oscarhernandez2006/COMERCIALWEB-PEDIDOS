@@ -116,11 +116,14 @@ export interface SellableProduct {
   stock: number;
   /** Tasa de IVA (%) del producto. El IVA se agrega solo para mostrarlo. */
   taxRate: number;
+  /** Categoría del subproducto (CERDO / RES). Solo aplica a subproductos. */
+  category?: string;
 }
 
 export type OrderStatus =
   | 'draft'
   | 'pending_approval'
+  | 'pending_control'
   | 'confirmed'
   | 'syncing'
   | 'synced'
@@ -374,6 +377,12 @@ export interface ManagerialCompanyStats {
     orders: number;
     revenue: number;
   }[];
+  topSellers: {
+    name: string;
+    documentId: string;
+    orders: number;
+    revenue: number;
+  }[];
 }
 
 /** Dashboard gerencial: mismas métricas divididas por compañía y por rango. */
@@ -521,6 +530,33 @@ export interface SellerSalesReportData {
     avgKiloPrev: number;
     avgKiloCur: number;
   };
+}
+
+/** Producto dentro de un vendedor en el reporte de ventas acumuladas. */
+export interface VendorSalesProductRow {
+  referencia: string;
+  descripcion: string;
+  quantity: number;
+  net: number;
+}
+
+/** Un vendedor con su desglose de productos y totales. */
+export interface VendorSalesGroup {
+  nit: string;
+  name: string;
+  products: VendorSalesProductRow[];
+  totalQuantity: number;
+  totalNet: number;
+}
+
+/** Datos del reporte "Ventas acumuladas por vendedor por producto". */
+export interface VendorProductSalesReportData {
+  periodo: string;
+  fecha?: string;
+  periodLabel: string;
+  sellers: VendorSalesGroup[];
+  grandTotalQuantity: number;
+  grandTotalNet: number;
 }
 
 /** Fila del reporte vendedor–producto. */

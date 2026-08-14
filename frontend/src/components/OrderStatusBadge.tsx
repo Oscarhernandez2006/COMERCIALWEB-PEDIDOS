@@ -17,6 +17,12 @@ const config: Record<
     className:
       'border-transparent bg-yellow-400/15 text-yellow-600 dark:text-yellow-400',
   },
+  pending_control: {
+    label: 'Esperando aprobación del controlador',
+    variant: 'warning',
+    className:
+      'border-transparent bg-blue-500/15 text-blue-600 dark:text-blue-400',
+  },
   confirmed: {
     label: 'Pendiente por envío',
     variant: 'warning',

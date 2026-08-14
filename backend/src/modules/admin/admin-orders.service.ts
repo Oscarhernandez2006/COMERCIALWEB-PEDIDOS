@@ -12,13 +12,22 @@ import { bogotaParts } from '../orders/order-cortes';
 import { isValidCompany } from '../../common/companies';
 import { UsersService } from '../users/users.service';
 import { User, UserRole } from '../users/entities/user.entity';
+import { PriceListsService } from '../price-lists/price-lists.service';
 
 /** Clave del módulo (permiso) de la administración de pedidos. */
 const ADMIN_ORDERS_PERMISSION = '/admin/pedidos';
 
-/** Permisos de descarga de pedidos, separados por tipo. */
+/** Permisos de descarga de pedidos, separados por tipo y categoría. */
 const DOWNLOAD_CORTES_PERMISSION = '/admin/descargar-pedidos';
-const DOWNLOAD_SUBPRODUCTOS_PERMISSION = '/admin/descargar-pedidos-subproductos';
+const DOWNLOAD_SUBPRODUCTOS_CERDO_PERMISSION =
+  '/admin/descargar-pedidos-subproductos-cerdo';
+const DOWNLOAD_SUBPRODUCTOS_RES_PERMISSION =
+  '/admin/descargar-pedidos-subproductos-res';
+
+/** Normaliza la categoría de subproducto ('CERDO' por defecto). */
+function normalizeCategory(category?: string): 'CERDO' | 'RES' {
+  return (category ?? '').toUpperCase() === 'RES' ? 'RES' : 'CERDO';
+}
 
 /** Normaliza el tipo de pedido recibido ('corte' por defecto). */
 function normalizeOrderType(type?: string): 'corte' | 'subproducto' {
@@ -59,6 +68,8 @@ export interface AdminOrderDetail {
   orderNumber: string;
   companyId: string;
   status: OrderStatus;
+  /** Tipo de pedido: 'corte' o 'subproducto'. */
+  type: string;
   // Quién y cuándo lo generó.
   sellerName: string;
   sellerDocument?: string;
@@ -104,6 +115,8 @@ export interface AdminOrdersFilter {
   to?: string;
   status?: string;
   search?: string;
+  /** Tipo de pedido: 'corte' | 'subproducto' (vacío = todos). */
+  type?: string;
 }
 
 @Injectable()
@@ -112,6 +125,7 @@ export class AdminOrdersService {
     @InjectRepository(Order)
     private readonly ordersRepository: Repository<Order>,
     private readonly usersService: UsersService,
+    private readonly priceListsService: PriceListsService,
   ) {}
 
   /**
@@ -159,11 +173,15 @@ export class AdminOrdersService {
     user: User,
     companyId: string,
     type: 'corte' | 'subproducto',
+    category?: 'CERDO' | 'RES',
   ): Promise<void> {
     if (user.role === UserRole.ADMIN) return;
+    // Los subproductos tienen un permiso por categoría (Cerdo / Res).
     const permission =
       type === 'subproducto'
-        ? DOWNLOAD_SUBPRODUCTOS_PERMISSION
+        ? normalizeCategory(category) === 'RES'
+          ? DOWNLOAD_SUBPRODUCTOS_RES_PERMISSION
+          : DOWNLOAD_SUBPRODUCTOS_CERDO_PERMISSION
         : DOWNLOAD_CORTES_PERMISSION;
     const allowed = await this.usersService.hasPermissionInCompany(
       user.id,
@@ -204,6 +222,7 @@ export class AdminOrdersService {
     const to = filter.to?.trim() || undefined;
     const status = filter.status?.trim() || undefined;
     const search = filter.search?.trim().toLowerCase() || undefined;
+    const type = filter.type?.trim() || undefined;
 
     const filtered = orders.filter((o) => {
       // Filtro por día (hora de Colombia).
@@ -213,6 +232,7 @@ export class AdminOrdersService {
         if (to && date > to) return false;
       }
       if (status && o.status !== status) return false;
+      if (type && normalizeOrderType(o.type) !== type) return false;
       if (search) {
         const haystack = [
           o.orderNumber,
@@ -238,6 +258,7 @@ export class AdminOrdersService {
       orderNumber: o.orderNumber,
       companyId: o.companyId,
       status: o.status,
+      type: normalizeOrderType(o.type),
       sellerName: o.seller?.name ?? '',
       sellerDocument: o.seller?.documentId,
       sellerCode: o.customer?.sellerCode,
@@ -287,16 +308,52 @@ export class AdminOrdersService {
     companyId: string,
     type: string | undefined,
     user: User,
+    category?: string,
   ): Promise<DownloadableOrder[]> {
     if (!isValidCompany(companyId)) {
       throw new BadRequestException('Compañía inválida.');
     }
     const orderType = normalizeOrderType(type);
-    await this.assertCanDownloadType(user, companyId, orderType);
+    const cat = normalizeCategory(category);
+    await this.assertCanDownloadType(
+      user,
+      companyId,
+      orderType,
+      orderType === 'subproducto' ? cat : undefined,
+    );
     const orders = await this.ordersRepository.find({
       where: { companyId, status: OrderStatus.SYNCED, type: orderType },
       order: { orderNumber: 'ASC' },
     });
+
+    // Subproductos: solo se muestran los pedidos que tienen líneas de la
+    // categoría seleccionada (Cerdo/Res) y el total es el de esa categoría.
+    if (orderType === 'subproducto') {
+      const catMap =
+        await this.priceListsService.getSubproductoCategories(companyId);
+      const result: DownloadableOrder[] = [];
+      for (const o of orders) {
+        const catItems = (o.items ?? []).filter(
+          (it) => catMap.get(it.sku.trim()) === cat,
+        );
+        if (catItems.length === 0) continue;
+        result.push({
+          id: o.id,
+          orderNumber: o.orderNumber,
+          customerName: o.customer?.name ?? '',
+          customerCode: o.customer?.code ?? '',
+          sellerName: o.seller?.name ?? '',
+          total: catItems.reduce((s, it) => s + Number(it.lineTotal), 0),
+          siesaEstado: o.siesaEstado,
+          createdAt: o.createdAt,
+          downloadedAt: o.downloadedAt ?? null,
+          picked: o.picked ?? false,
+          pickedAt: o.pickedAt ?? null,
+          pickedBy: o.pickedBy ?? null,
+        });
+      }
+      return result;
+    }
 
     return orders.map((o) => ({
       id: o.id,
@@ -323,6 +380,7 @@ export class AdminOrdersService {
     orderIds: string[],
     downloadedBy?: string,
     type?: string,
+    category?: string,
   ): Promise<Buffer> {
     if (!isValidCompany(companyId)) {
       throw new BadRequestException('Compañía inválida.');
@@ -331,12 +389,13 @@ export class AdminOrdersService {
       throw new BadRequestException('Debes seleccionar al menos un pedido.');
     }
 
+    const orderType = normalizeOrderType(type);
     const orders = await this.ordersRepository.find({
       where: {
         id: In(orderIds),
         companyId,
         status: OrderStatus.SYNCED,
-        type: normalizeOrderType(type),
+        type: orderType,
       },
       order: { orderNumber: 'ASC' },
     });
@@ -347,10 +406,32 @@ export class AdminOrdersService {
       );
     }
 
-    const pdf = await buildOrdersPdf(orders);
+    // Subproductos: el PDF de una categoría incluye solo las líneas de esa
+    // categoría (Cerdo/Res). Se filtran los ítems en memoria (no se persiste).
+    let pdfOrders = orders;
+    if (orderType === 'subproducto') {
+      const cat = normalizeCategory(category);
+      const catMap =
+        await this.priceListsService.getSubproductoCategories(companyId);
+      pdfOrders = orders
+        .map((o) => {
+          o.items = (o.items ?? []).filter(
+            (it) => catMap.get(it.sku.trim()) === cat,
+          );
+          return o;
+        })
+        .filter((o) => o.items.length > 0);
+      if (pdfOrders.length === 0) {
+        throw new BadRequestException(
+          'Los pedidos seleccionados no tienen líneas de esta categoría.',
+        );
+      }
+    }
+
+    const pdf = await buildOrdersPdf(pdfOrders);
 
     // Marca los pedidos como descargados (se puede repetir la descarga).
-    const ids = orders.map((o) => o.id);
+    const ids = pdfOrders.map((o) => o.id);
     const now = new Date();
     await this.ordersRepository.update(
       { id: In(ids) },

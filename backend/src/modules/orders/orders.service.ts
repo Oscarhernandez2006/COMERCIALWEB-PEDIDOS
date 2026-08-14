@@ -83,17 +83,12 @@ export class OrdersService {
       );
     }
 
-    // Tipo de pedido. Los subproductos usan su inventario propio y se asocian
-    // al vendedor seleccionado (con su cédula se cargan a Siesa), aunque quien
-    // lo suba sea un remitente.
+    // Tipo de pedido. Los subproductos usan su inventario propio. Se registran
+    // a nombre del usuario que sube el pedido (con su cédula se cargan a Siesa).
+    // Si llega un sellerId (compatibilidad), se respeta.
     const orderType = dto.orderType ?? 'corte';
     let orderSeller = seller;
-    if (orderType === 'subproducto') {
-      if (!dto.sellerId) {
-        throw new BadRequestException(
-          'Debes seleccionar el vendedor del pedido de subproductos.',
-        );
-      }
+    if (orderType === 'subproducto' && dto.sellerId) {
       orderSeller = await this.usersService.findById(dto.sellerId);
     }
 
@@ -135,11 +130,12 @@ export class OrdersService {
       // 2) Con el stock ya confirmado, se valida la cartera del cliente. Si el
       // endpoint devuelve documentos (saldo pendiente), el pedido queda
       // retenido para aprobación en cartera; si no aparece (o el servicio
-      // falla), se procesa con normalidad.
-      const carteraBalance = await this.resolveCarteraBalance(
-        companyId,
-        customer.code,
-      );
+      // falla), se procesa con normalidad. Los subproductos no pasan por
+      // cartera: van directo al controlador de subproductos.
+      const isSubproducto = orderType === 'subproducto';
+      const carteraBalance = isSubproducto
+        ? 0
+        : await this.resolveCarteraBalance(companyId, customer.code);
       const needsApproval = carteraBalance > 0;
 
       const order = ordersRepo.create({
@@ -149,11 +145,14 @@ export class OrdersService {
         customer,
         seller: orderSeller,
         items,
-        // Si el cliente debe cartera, el pedido queda "pendiente por aprobación
-        // en cartera"; de lo contrario, "pendiente por envío" a Siesa.
-        status: needsApproval
-          ? OrderStatus.PENDING_APPROVAL
-          : OrderStatus.CONFIRMED,
+        // Subproductos: quedan a la espera del controlador (no suben a Siesa).
+        // Cortes: si el cliente debe cartera, "pendiente por aprobación"; si no,
+        // "pendiente por envío" a Siesa.
+        status: isSubproducto
+          ? OrderStatus.PENDING_CONTROL
+          : needsApproval
+            ? OrderStatus.PENDING_APPROVAL
+            : OrderStatus.CONFIRMED,
         carteraBalance: needsApproval ? carteraBalance : undefined,
         approvalDeadline: needsApproval
           ? new Date(Date.now() + APPROVAL_WINDOW_HOURS * 60 * 60 * 1000)
@@ -535,6 +534,178 @@ export class OrdersService {
 
     // Tras editar, se reintenta la subida al ERP de inmediato.
     return this.pushOrder(updated);
+  }
+
+  // ==================== Controlador de subproductos ====================
+
+  /**
+   * Solo el usuario con el módulo "Controlador Subproductos" asignado (en
+   * Agropecuaria) o un administrador puede gestionar estos pedidos.
+   */
+  async assertCanControlSubproductos(user: User): Promise<void> {
+    if (user.role === UserRole.ADMIN) return;
+    const ok = await this.usersService.hasPermissionInCompany(
+      user.id,
+      baseCompanyId('3'),
+      '/admin/controlador-subproductos',
+    );
+    if (!ok) {
+      throw new ForbiddenException(
+        'No tienes permiso para el controlador de subproductos.',
+      );
+    }
+  }
+
+  /** Pedidos de subproductos a la espera de revisión/aprobación del controlador. */
+  findPendingSubproductos(): Promise<Order[]> {
+    return this.ordersRepository.find({
+      where: [
+        { type: 'subproducto', status: OrderStatus.PENDING_CONTROL },
+        { type: 'subproducto', status: OrderStatus.FAILED },
+      ],
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  /**
+   * Edita un pedido de subproductos pendiente de control: reemplaza sus líneas
+   * (agregar/quitar productos, cambiar cantidades/descuentos) y recalcula los
+   * totales. Devuelve el stock anterior y descuenta el nuevo. NO sube a Siesa.
+   */
+  async editSubproductoOrder(id: string, dto: UpdateOrderDto): Promise<Order> {
+    return this.dataSource.transaction(async (manager) => {
+      const ordersRepo = manager.getRepository(Order);
+      const itemsRepo = manager.getRepository(OrderItem);
+      const productsRepo = manager.getRepository(Product);
+
+      const order = await ordersRepo.findOne({ where: { id } });
+      if (!order) throw new NotFoundException('Pedido no encontrado');
+      if (order.type !== 'subproducto') {
+        throw new BadRequestException('El pedido no es de subproductos.');
+      }
+      if (
+        order.status !== OrderStatus.PENDING_CONTROL &&
+        order.status !== OrderStatus.FAILED
+      ) {
+        throw new BadRequestException(
+          'Solo se editan pedidos de subproductos pendientes de control.',
+        );
+      }
+
+      // Devuelve al inventario el stock de las líneas actuales.
+      for (const item of order.items) {
+        if (!item.product) continue;
+        const product = await productsRepo.findOne({
+          where: { id: item.product.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (product) {
+          product.stock = Number(product.stock) + Number(item.quantity);
+          await productsRepo.save(product);
+        }
+      }
+      if (order.items.length > 0) {
+        await itemsRepo.remove(order.items);
+      }
+
+      const { items, subtotal, taxes } = await this.buildItemsAndAdjustStock(
+        manager,
+        order.companyId,
+        order.customer,
+        dto.items,
+        'subproducto',
+      );
+
+      order.items = items;
+      order.subtotal = Number(subtotal.toFixed(2));
+      order.taxes = Number(taxes.toFixed(2));
+      order.total = Number((subtotal + taxes).toFixed(2));
+      if (dto.notes !== undefined) order.notes = dto.notes;
+      if (dto.logisticsNote !== undefined)
+        order.logisticsNote = dto.logisticsNote;
+      if (dto.deliveryDate !== undefined) order.deliveryDate = dto.deliveryDate;
+      // Vuelve a quedar pendiente de control y se limpia cualquier error previo.
+      order.status = OrderStatus.PENDING_CONTROL;
+      order.syncError = undefined;
+      return ordersRepo.save(order);
+    });
+  }
+
+  /**
+   * Aprueba (controlador) un pedido de subproductos. Luego pasa por la lógica
+   * de cartera: si el cliente no debe, se sube a Siesa de inmediato; si debe,
+   * queda "pendiente por aprobación en cartera" (2 horas; si no se gestiona, se
+   * vence y se devuelve el inventario). Al vendedor se le refleja en el estado.
+   */
+  async approveSubproductoOrder(id: string, user: User): Promise<Order> {
+    const order = await this.ordersRepository.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+    if (order.type !== 'subproducto') {
+      throw new BadRequestException('El pedido no es de subproductos.');
+    }
+    if (
+      order.status !== OrderStatus.PENDING_CONTROL &&
+      order.status !== OrderStatus.FAILED
+    ) {
+      throw new BadRequestException('El pedido no está pendiente de control.');
+    }
+
+    // Verifica la cartera del cliente (el controlador ya revisó el pedido).
+    const carteraBalance = await this.resolveCarteraBalance(
+      order.companyId,
+      order.customer.code,
+    );
+
+    if (carteraBalance > 0) {
+      // Queda retenido para aprobación en cartera (ventana de 2 horas). El
+      // vendedor lo ve reflejado en el estado; la notificación final la dispara
+      // la decisión de cartera (aprobado/desaprobado/vencido).
+      order.status = OrderStatus.PENDING_APPROVAL;
+      order.carteraBalance = carteraBalance;
+      order.approvalDeadline = new Date(
+        Date.now() + APPROVAL_WINDOW_HOURS * 60 * 60 * 1000,
+      );
+      order.approvedBy = user.name;
+      order.approvedAt = new Date();
+      return this.ordersRepository.save(order);
+    }
+
+    // Sin deuda: se confirma y se sube a Siesa (dividido por categoría).
+    order.status = OrderStatus.CONFIRMED;
+    order.approvedBy = user.name;
+    order.approvedAt = new Date();
+    const saved = await this.ordersRepository.save(order);
+    return this.pushOrder(saved);
+  }
+
+  /** Rechaza un pedido de subproductos: devuelve el stock y lo marca rechazado. */
+  async rejectSubproductoOrder(
+    id: string,
+    reason: string | undefined,
+    user: User,
+  ): Promise<Order> {
+    return this.dataSource.transaction(async (manager) => {
+      const ordersRepo = manager.getRepository(Order);
+      const order = await ordersRepo.findOne({ where: { id } });
+      if (!order) throw new NotFoundException('Pedido no encontrado');
+      if (order.type !== 'subproducto') {
+        throw new BadRequestException('El pedido no es de subproductos.');
+      }
+      if (
+        order.status !== OrderStatus.PENDING_CONTROL &&
+        order.status !== OrderStatus.FAILED
+      ) {
+        throw new BadRequestException('El pedido no está pendiente de control.');
+      }
+      await this.releaseStock(manager, order);
+      order.status = OrderStatus.DISAPPROVED;
+      order.disapprovalReason =
+        reason?.trim() || 'Rechazado por el controlador de subproductos.';
+      order.approvedBy = user.name;
+      order.approvedAt = new Date();
+      order.sellerNotificationPending = true;
+      return ordersRepo.save(order);
+    });
   }
 
   /**
@@ -1130,16 +1301,36 @@ export class OrdersService {
 
     try {
       const registros = await this.buildErpRegistros(order);
-      // Los subproductos se cargan al ERP de Agropecuaria (compañía base),
-      // aunque el pedido se tome en MONTERIA TAT AGROPECUARIA.
-      const erpCompany =
-        order.type === 'subproducto'
-          ? baseCompanyId(order.companyId)
-          : order.companyId;
-      const result = await this.erpClient.uploadOrder(
-        erpCompany,
-        registros,
-      );
+      let result;
+      if (order.type === 'subproducto') {
+        // El pedido de subproductos se divide por categoría al subir a Siesa:
+        // RES → endpoint bovino, CERDO → endpoint porcino. Ambas partes suben
+        // con el MISMO documento_venta (consecutivo). Los registros van en el
+        // mismo orden que order.items, así que se parean por índice.
+        const categories =
+          await this.priceListsService.getSubproductoCategories(
+            order.companyId,
+          );
+        const bovino: ErpOrderRegistro[] = [];
+        const porcino: ErpOrderRegistro[] = [];
+        order.items.forEach((item, i) => {
+          const cat = categories.get(item.sku.trim());
+          if (cat === 'RES') {
+            bovino.push(registros[i]);
+          } else if (cat === 'CERDO') {
+            porcino.push(registros[i]);
+          } else {
+            this.logger.warn(
+              `Subproducto sin categoría (SKU ${item.sku}) en pedido ` +
+                `${order.id}; se envía por el endpoint de porcino.`,
+            );
+            porcino.push(registros[i]);
+          }
+        });
+        result = await this.erpClient.uploadSubproductos(bovino, porcino);
+      } else {
+        result = await this.erpClient.uploadOrder(order.companyId, registros);
+      }
 
       order.status = OrderStatus.SYNCED;
       // Marca el momento del envío para el periodo de gracia de "rebotado".

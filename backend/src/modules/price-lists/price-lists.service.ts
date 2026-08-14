@@ -24,6 +24,16 @@ export class PriceListsService {
     private readonly dataSource: DataSource,
   ) {}
 
+  /** Mapa `SKU -> categoría` (CERDO / RES) de los subproductos, desde el ERP. */
+  getSubproductoCategories(companyId: string): Promise<Map<string, string>> {
+    return this.client.fetchSubproductoCategories(baseCompanyId(companyId));
+  }
+
+  /** Ventas por vendedor y producto de un mes (YYYYMM), desde el ERP. */
+  getVendorProductSales(periodo: string) {
+    return this.client.fetchVendorProductSales(periodo);
+  }
+
   /** Lista los nombres de las listas de precios de una compañía. */
   async findLists(companyId: string): Promise<PriceListSummary[]> {
     companyId = baseCompanyId(companyId);

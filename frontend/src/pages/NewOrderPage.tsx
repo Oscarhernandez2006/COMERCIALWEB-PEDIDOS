@@ -32,7 +32,6 @@ import {
   useClients,
   useProductsForList,
   useCreateOrder,
-  useSellers,
   downloadOrderPdf,
 } from '@/hooks/useApi';
 import { useOrderSchedule } from '@/hooks/useAdminApi';
@@ -131,10 +130,10 @@ export function NewOrderPage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [submitError, setSubmitError] = useState('');
-  // Solo subproductos: vendedor al que se asocia el pedido (lo elige el remitente).
-  const [sellerId, setSellerId] = useState('');
-  const [sellerSearch, setSellerSearch] = useState('');
-  const [sellerOpen, setSellerOpen] = useState(false);
+  // Solo subproductos: categoría (especie) activa en el catálogo de productos.
+  const [subproductoCategory, setSubproductoCategory] = useState<'CERDO' | 'RES'>(
+    'CERDO',
+  );
 
   // Se revisa el horario cada minuto para bloquear/desbloquear el botón en vivo.
   // El rango es configurable desde el panel admin (horario de pedidos).
@@ -154,28 +153,19 @@ export function NewOrderPage() {
       ? `de ${formatScheduleTime(orderSchedule.openHour, orderSchedule.openMinute)} a ${formatScheduleTime(orderSchedule.closeHour, orderSchedule.closeMinute)}`
       : '';
 
-  // Subproductos: al cambiar el vendedor seleccionado cambian sus clientes, así
-  // que se reinicia el cliente elegido y el carrito.
-  useEffect(() => {
-    if (!isSubproducto) return;
-    setCustomer(null);
-    setCustomerSearch('');
-    setCart([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sellerId]);
-
-  const { data: sellers = [] } = useSellers();
-  const { data: customers = [] } = useClients(
-    customerSearch,
-    isSubproducto
-      ? sellers.find((s) => s.id === sellerId)?.siesaSellerCode
-      : undefined,
-  );
+  const { data: customers = [] } = useClients(customerSearch);
   const { data: products = [] } = useProductsForList(
     productSearch,
     customer?.priceList,
     isSubproducto ? 'subproducto' : undefined,
   );
+  // Subproductos: se divide el catálogo por categoría (CERDO / RES). Los que no
+  // traen categoría se muestran en ambas pestañas para no perderlos.
+  const visibleProducts = isSubproducto
+    ? products.filter(
+        (p) => !p.category || p.category === subproductoCategory,
+      )
+    : products;
   const createOrder = useCreateOrder();
 
   const totals = useMemo(() => {
@@ -274,10 +264,6 @@ export function NewOrderPage() {
       setSubmitError('Selecciona la fecha de entrega del pedido.');
       return;
     }
-    if (isSubproducto && !sellerId) {
-      setSubmitError('Selecciona el vendedor del pedido.');
-      return;
-    }
     setSubmitError('');
     let order: Order;
     try {
@@ -296,7 +282,7 @@ export function NewOrderPage() {
           quantity: l.quantity,
           discountPct: l.discountPct,
         })),
-        ...(isSubproducto ? { orderType: 'subproducto', sellerId } : {}),
+        ...(isSubproducto ? { orderType: 'subproducto' } : {}),
       });
     } catch (err) {
       if (isAxiosError(err)) {
@@ -443,77 +429,6 @@ export function NewOrderPage() {
           })}
         </ol>
       </div>
-
-      {isSubproducto && (
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <label className="flex items-center gap-1.5 text-sm font-semibold">
-              <UserCircle className="h-4 w-4 text-primary" />
-              Vendedor del pedido
-            </label>
-            <p className="text-xs text-muted-foreground">
-              El pedido se registra a nombre de este vendedor y con su cédula se
-              carga a Siesa.
-            </p>
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={sellerSearch}
-                onChange={(e) => {
-                  setSellerSearch(e.target.value);
-                  setSellerOpen(true);
-                  if (sellerId) setSellerId('');
-                }}
-                onFocus={() => setSellerOpen(true)}
-                onBlur={() => setTimeout(() => setSellerOpen(false), 150)}
-                placeholder="Buscar y seleccionar vendedor..."
-                className="pl-9"
-              />
-              {sellerOpen && (
-                <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-input bg-background shadow-md">
-                  {(() => {
-                    const q = sellerSearch.trim().toLowerCase();
-                    const list = sellers.filter(
-                      (s) =>
-                        !q ||
-                        s.name.toLowerCase().includes(q) ||
-                        s.siesaSellerCode.toLowerCase().includes(q),
-                    );
-                    if (list.length === 0) {
-                      return (
-                        <p className="px-3 py-2 text-sm text-muted-foreground">
-                          Sin resultados
-                        </p>
-                      );
-                    }
-                    return list.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setSellerId(s.id);
-                          setSellerSearch(`${s.name} · ${s.siesaSellerCode}`);
-                          setSellerOpen(false);
-                        }}
-                        className={cn(
-                          'flex w-full flex-col items-start px-3 py-2 text-left hover:bg-muted/50',
-                          sellerId === s.id && 'bg-primary/5',
-                        )}
-                      >
-                        <span className="text-sm font-medium">{s.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          Código {s.siesaSellerCode}
-                        </span>
-                      </button>
-                    ));
-                  })()}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -841,6 +756,25 @@ export function NewOrderPage() {
                 </div>
               ) : (
                 <>
+                  {isSubproducto && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['CERDO', 'RES'] as const).map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setSubproductoCategory(cat)}
+                          className={cn(
+                            'rounded-lg border px-3 py-2 text-sm font-semibold transition-colors',
+                            subproductoCategory === cat
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border text-muted-foreground hover:bg-accent',
+                          )}
+                        >
+                          Subproductos {cat === 'CERDO' ? 'Cerdo' : 'Res'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -851,12 +785,12 @@ export function NewOrderPage() {
                     />
                   </div>
                   <div className="max-h-[26rem] space-y-1.5 overflow-auto pr-0.5">
-                    {products.length === 0 ? (
+                    {visibleProducts.length === 0 ? (
                       <p className="px-3 py-2 text-sm text-muted-foreground">
                         No hay productos en la lista del cliente.
                       </p>
                     ) : (
-                      products.map((p) => {
+                      visibleProducts.map((p) => {
                         const inCart = cart.find(
                           (l) => l.product.sku === p.sku,
                         );

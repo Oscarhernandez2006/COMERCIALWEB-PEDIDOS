@@ -6,6 +6,7 @@ import { SellerRankingReportData } from './seller-ranking-report';
 import { SellerProductReportData } from './seller-product-report';
 import { ProductSellerReportData } from './product-seller-report';
 import { SellerSalesReportData } from './seller-sales-report';
+import { VendorProductSalesReportData } from './vendor-product-sales-report';
 
 const COMPANY_NAMES: Record<string, string> = {
   '3': 'AGROPECUARIA SANTACRUZ',
@@ -338,6 +339,56 @@ export function buildSellerSalesReportExcel(
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   setColumnWidths(ws, [32, 18, 12, 14, 12, 18, 18, 12, 18]);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ventas por vendedor');
+
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}
+
+export function buildVendorProductSalesReportExcel(
+  data: VendorProductSalesReportData,
+): Buffer {
+  const aoa: (string | number)[][] = [
+    ['Ventas acumuladas por vendedor por producto'],
+    [`Período: ${data.periodLabel}`],
+    [],
+    ['Vendedor', 'NIT', 'Referencia', 'Producto', 'Cantidad', 'Venta neta'],
+  ];
+
+  for (const seller of data.sellers) {
+    for (const p of seller.products) {
+      aoa.push([
+        seller.name,
+        seller.nit,
+        p.referencia,
+        p.descripcion,
+        Number((Number(p.quantity) || 0).toFixed(2)),
+        Math.round(Number(p.net) || 0),
+      ]);
+    }
+    aoa.push([
+      `TOTAL ${seller.name}`,
+      '',
+      '',
+      '',
+      Number((Number(seller.totalQuantity) || 0).toFixed(2)),
+      Math.round(Number(seller.totalNet) || 0),
+    ]);
+    aoa.push([]);
+  }
+
+  aoa.push([
+    'TOTAL ACUMULADO',
+    '',
+    '',
+    '',
+    Number((Number(data.grandTotalQuantity) || 0).toFixed(2)),
+    Math.round(Number(data.grandTotalNet) || 0),
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  setColumnWidths(ws, [32, 14, 12, 36, 12, 18]);
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Ventas por vendedor');

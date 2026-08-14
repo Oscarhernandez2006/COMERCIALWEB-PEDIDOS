@@ -486,4 +486,54 @@ export class AdminReportsController {
     );
     res.send(buffer);
   }
+
+  /**
+   * Reporte "Ventas acumuladas por vendedor por producto" para un período
+   * (YYYYMM), tomado del ERP. Devuelve, por cada vendedor, el desglose de
+   * productos con cantidad y venta neta, más los totales por vendedor.
+   */
+  @Get('vendor-product-sales/data')
+  vendorProductSalesData(
+    @Query('periodo') periodo: string,
+    @Query('fecha') fecha?: string,
+  ) {
+    return this.reportsService.getVendorProductSalesReport(periodo, fecha);
+  }
+
+  /** Reporte de ventas acumuladas por vendedor por producto en PDF. */
+  @Get('vendor-product-sales/pdf')
+  async vendorProductSalesPdf(
+    @Query('periodo') periodo: string,
+    @Query('fecha') fecha: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, periodo: p } =
+      await this.reportsService.getVendorProductSalesReportPdf(periodo, fecha);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="ventas-vendedor-producto-${fecha || p}.pdf"`,
+    );
+    res.send(buffer);
+  }
+
+  /** Reporte de ventas acumuladas por vendedor por producto en Excel (.xlsx). */
+  @Get('vendor-product-sales/excel')
+  async vendorProductSalesExcel(
+    @Query('periodo') periodo: string,
+    @Query('fecha') fecha: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, periodo: p } =
+      await this.reportsService.getVendorProductSalesReportExcel(periodo, fecha);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="ventas-vendedor-producto-${fecha || p}.xlsx"`,
+    );
+    res.send(buffer);
+  }
 }

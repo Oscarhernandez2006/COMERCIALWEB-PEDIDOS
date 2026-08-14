@@ -16,6 +16,8 @@ import type {
   SellerProductReportData,
   ProductSellerReportData,
   SellerSalesReportData,
+  VendorProductSalesReportData,
+  SellableProduct,
 } from '@/types';
 
 /** KPIs consolidados de ambas compañías para el panel de administración. */
@@ -799,6 +801,65 @@ export async function downloadSellerSalesExcel(
   window.URL.revokeObjectURL(url);
 }
 
+/* ---- Ventas acumuladas por vendedor por producto (ERP, mensual) ---- */
+
+/** Consulta el reporte de ventas acumuladas por vendedor por producto (YYYYMM). */
+export function useVendorProductSalesReport(
+  periodo: string | undefined,
+  fecha: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'vendor-product-sales', periodo, fecha],
+    enabled: enabled && !!periodo,
+    queryFn: async () => {
+      const res = await api.get<VendorProductSalesReportData>(
+        '/admin/reports/vendor-product-sales/data',
+        { params: { periodo, ...(fecha ? { fecha } : {}) } },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Descarga el PDF del reporte de ventas acumuladas por vendedor por producto. */
+export async function downloadVendorProductSalesReport(
+  periodo: string,
+  fecha?: string,
+) {
+  const res = await api.get('/admin/reports/vendor-product-sales/pdf', {
+    params: { periodo, ...(fecha ? { fecha } : {}) },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ventas-vendedor-producto-${fecha || periodo}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+/** Descarga el Excel del reporte de ventas acumuladas por vendedor por producto. */
+export async function downloadVendorProductSalesExcel(
+  periodo: string,
+  fecha?: string,
+) {
+  const res = await api.get('/admin/reports/vendor-product-sales/excel', {
+    params: { periodo, ...(fecha ? { fecha } : {}) },
+    responseType: 'blob',
+  });
+  const url = window.URL.createObjectURL(res.data as Blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `ventas-vendedor-producto-${fecha || periodo}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 /**
  * Consulta el reporte vendedor–producto (cuánto vendió cada vendedor de cada
  * producto) en un rango de fechas, con filtros opcionales de vendedor y
@@ -1039,6 +1100,7 @@ export interface AdminOrderDetail {
   orderNumber: string;
   companyId: string;
   status: string;
+  type: string;
   sellerName: string;
   sellerDocument?: string;
   sellerCode?: string;
@@ -1076,6 +1138,7 @@ export interface AdminOrdersFilters {
   to?: string;
   status?: string;
   search?: string;
+  type?: string;
 }
 
 /** Listado administrativo de pedidos de una compañía con filtros. */
@@ -1090,6 +1153,7 @@ export function useAdminOrders(companyId: string, filters: AdminOrdersFilters) {
           ...(filters.to ? { to: filters.to } : {}),
           ...(filters.status ? { status: filters.status } : {}),
           ...(filters.search ? { search: filters.search } : {}),
+          ...(filters.type ? { type: filters.type } : {}),
         },
       });
       return res.data;
@@ -1124,12 +1188,13 @@ export interface DownloadableOrder {
 export function useDownloadableOrders(
   companyId: string,
   type: 'corte' | 'subproducto' = 'corte',
+  category?: 'CERDO' | 'RES',
 ) {
   return useQuery({
-    queryKey: ['admin', 'downloadable-orders', companyId, type],
+    queryKey: ['admin', 'downloadable-orders', companyId, type, category],
     queryFn: async () => {
       const res = await api.get<DownloadableOrder[]>('/admin/orders/downloadable', {
-        params: { companyId, type },
+        params: { companyId, type, ...(category ? { category } : {}) },
       });
       return res.data;
     },
@@ -1147,6 +1212,7 @@ export function useDownloadOrders() {
       companyId: string;
       orderIds: string[];
       type: 'corte' | 'subproducto';
+      category?: 'CERDO' | 'RES';
     }) => {
       const res = await api.post('/admin/orders/download', input, {
         responseType: 'blob',
@@ -1154,7 +1220,10 @@ export function useDownloadOrders() {
       const url = window.URL.createObjectURL(res.data as Blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `pedidos-${input.type}-${input.companyId}.pdf`;
+      const suffix = input.category
+        ? `${input.type}-${input.category.toLowerCase()}`
+        : input.type;
+      link.download = `pedidos-${suffix}-${input.companyId}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1162,7 +1231,13 @@ export function useDownloadOrders() {
     },
     onSuccess: (_data, input) => {
       qc.invalidateQueries({
-        queryKey: ['admin', 'downloadable-orders', input.companyId, input.type],
+        queryKey: [
+          'admin',
+          'downloadable-orders',
+          input.companyId,
+          input.type,
+          input.category,
+        ],
       });
     },
   });
@@ -1181,6 +1256,7 @@ export function useSetOrderPicked() {
       orderId: string;
       picked: boolean;
       type: 'corte' | 'subproducto';
+      category?: 'CERDO' | 'RES';
     }) => {
       const res = await api.patch(
         `/admin/orders/${input.orderId}/picked`,
@@ -1195,6 +1271,7 @@ export function useSetOrderPicked() {
         'downloadable-orders',
         input.companyId,
         input.type,
+        input.category,
       ];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<DownloadableOrder[]>(key);
@@ -1212,7 +1289,13 @@ export function useSetOrderPicked() {
     },
     onSettled: (_data, _err, input) => {
       qc.invalidateQueries({
-        queryKey: ['admin', 'downloadable-orders', input.companyId, input.type],
+        queryKey: [
+          'admin',
+          'downloadable-orders',
+          input.companyId,
+          input.type,
+          input.category,
+        ],
       });
     },
   });
@@ -1230,6 +1313,7 @@ export function useSetOrderPickedBulk() {
       orderIds: string[];
       picked: boolean;
       type: 'corte' | 'subproducto';
+      category?: 'CERDO' | 'RES';
     }) => {
       const res = await api.patch<{ updated: number }>(
         '/admin/orders/picked-bulk',
@@ -1244,6 +1328,7 @@ export function useSetOrderPickedBulk() {
         'downloadable-orders',
         input.companyId,
         input.type,
+        input.category,
       ];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<DownloadableOrder[]>(key);
@@ -1262,7 +1347,13 @@ export function useSetOrderPickedBulk() {
     },
     onSettled: (_data, _err, input) => {
       qc.invalidateQueries({
-        queryKey: ['admin', 'downloadable-orders', input.companyId, input.type],
+        queryKey: [
+          'admin',
+          'downloadable-orders',
+          input.companyId,
+          input.type,
+          input.category,
+        ],
       });
     },
   });
@@ -1467,11 +1558,101 @@ export function useDisapproveOrder() {
   });
 }
 
+/* ---- Controlador de subproductos ---- */
+
+/** Pedidos de subproductos pendientes de revisión/aprobación del controlador. */
+export function useControlSubproductoOrders() {
+  return useQuery({
+    queryKey: ['control-subproductos', 'orders'],
+    queryFn: async () => {
+      const res = await api.get<Order[]>(
+        '/admin/controlador-subproductos/orders',
+      );
+      return res.data;
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+/** Catálogo de subproductos (con categoría CERDO/RES) de la compañía del pedido. */
+export function useSubproductoCatalog(
+  companyId: string | undefined,
+  priceList: string | undefined | null,
+  search: string,
+) {
+  return useQuery({
+    queryKey: ['control-subproductos', 'catalog', companyId, priceList, search],
+    enabled: Boolean(companyId && priceList),
+    queryFn: async () => {
+      const res = await api.get<SellableProduct[]>('/products', {
+        params: {
+          priceList,
+          type: 'subproducto',
+          ...(search ? { search } : {}),
+        },
+        headers: companyId ? { 'X-Company-Id': companyId } : undefined,
+      });
+      return res.data;
+    },
+  });
+}
+
+/** Edita las líneas de un pedido de subproductos pendiente de control. */
+export function useEditControlSubproducto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      items: { sku: string; quantity: number; discountPct?: number }[];
+      notes?: string;
+    }) => {
+      const res = await api.patch<Order>(
+        `/admin/controlador-subproductos/orders/${input.id}`,
+        { items: input.items, notes: input.notes },
+      );
+      return res.data;
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['control-subproductos', 'orders'] }),
+  });
+}
+
+/** Aprueba un pedido de subproductos: lo sube a Siesa dividido por categoría. */
+export function useApproveControlSubproducto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post<Order>(
+        `/admin/controlador-subproductos/orders/${id}/approve`,
+        {},
+      );
+      return res.data;
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['control-subproductos', 'orders'] }),
+  });
+}
+
+/** Rechaza un pedido de subproductos: se libera el inventario reservado. */
+export function useRejectControlSubproducto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; reason?: string }) => {
+      const res = await api.post<Order>(
+        `/admin/controlador-subproductos/orders/${input.id}/reject`,
+        { reason: input.reason },
+      );
+      return res.data;
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['control-subproductos', 'orders'] }),
+  });
+}
+
 /* ---- Horario de toma de pedidos (configurable) ---- */
 
 export interface OrderSchedule {
-  enabled: boolean;
-  openHour: number;
+  enabled: boolean;  openHour: number;
   openMinute: number;
   closeHour: number;
   closeMinute: number;

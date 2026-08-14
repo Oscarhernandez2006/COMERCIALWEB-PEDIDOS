@@ -53,8 +53,10 @@ type PickedFilter = 'all' | 'picked' | 'unpicked';
 
 export function DownloadOrdersPage({
   orderType = 'corte',
+  category,
 }: {
   orderType?: 'corte' | 'subproducto';
+  category?: 'CERDO' | 'RES';
 }) {
   // Los subproductos solo existen en AGROPECUARIA (#3), así que en esa vista
   // solo se muestra esa compañía.
@@ -72,7 +74,7 @@ export function DownloadOrdersPage({
 
   const company = availableCompanies.find((c) => c.id === companyId)!;
   const { data: orders, isLoading, isError, refetch, isFetching } =
-    useDownloadableOrders(companyId, orderType);
+    useDownloadableOrders(companyId, orderType, category);
   const download = useDownloadOrders();
   const setPicked = useSetOrderPicked();
   const setPickedBulk = useSetOrderPickedBulk();
@@ -141,6 +143,7 @@ export function DownloadOrdersPage({
       orderIds: list.map((o) => o.id),
       picked,
       type: orderType,
+      category,
     });
   }
 
@@ -155,7 +158,7 @@ export function DownloadOrdersPage({
     if (orderIds.length === 0) return;
     setError('');
     try {
-      await download.mutateAsync({ companyId, orderIds, type: orderType });
+      await download.mutateAsync({ companyId, orderIds, type: orderType, category });
       setSelected(new Set());
     } catch (err) {
       if (isAxiosError(err)) {
@@ -175,7 +178,9 @@ export function DownloadOrdersPage({
       <div>
         <h2 className="text-2xl font-bold tracking-tight">
           Descargar pedidos{' '}
-          {orderType === 'subproducto' ? '· Subproductos' : '· Cortes'}
+          {orderType === 'subproducto'
+            ? `· Subproductos · ${category === 'RES' ? 'Res' : 'Cerdo'}`
+            : '· Cortes'}
         </h2>
         <p className="text-muted-foreground">
           Descarga masiva en PDF de los pedidos subidos a Siesa.
@@ -466,6 +471,7 @@ export function DownloadOrdersPage({
                                 orderId: o.id,
                                 picked: e.target.checked,
                                 type: orderType,
+                                category,
                               });
                             }}
                             title={

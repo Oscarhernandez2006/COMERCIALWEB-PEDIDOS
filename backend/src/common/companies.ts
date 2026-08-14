@@ -133,6 +133,25 @@ export function getOrderDocType(companyId: string): string {
 }
 
 /**
+ * Tipos de documento de los subproductos en Siesa: SPB (res/bovino) y
+ * SPP (cerdo/porcino). Los subproductos NO salen como PVA, entran con su
+ * propio tipo de documento, así que se consultan aparte para bajar su estado.
+ */
+export const SUBPRODUCTO_DOC_TYPES = ['SPB', 'SPP'];
+
+/**
+ * Todos los tipos de documento a consultar al bajar los estados de una
+ * compañía. Además del de los cortes (PVA), Agropecuaria (base '3') incluye
+ * los de subproductos (SPB/SPP). Sin esto, los subproductos nunca aparecen en
+ * los estados y la sincronización los marca como "rebotados" por error.
+ */
+export function getOrderDocTypes(companyId: string): string[] {
+  const types = [getOrderDocType(companyId)];
+  if (baseCompanyId(companyId) === '3') types.push(...SUBPRODUCTO_DOC_TYPES);
+  return types;
+}
+
+/**
  * Centro de operación (CO) que identifica los documentos de cada compañía en
  * Siesa. Las compañías virtuales (p. ej. MONTERIA TAT) comparten `cia` y
  * `tipo_doc` con su base, pero se distinguen por su CO propio. Sirve para no
