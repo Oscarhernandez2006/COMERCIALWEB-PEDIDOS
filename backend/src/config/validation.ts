@@ -23,6 +23,9 @@ export const validationSchema = Joi.object({
   JWT_SECRET: Joi.string().min(8).required(),
   JWT_EXPIRES_IN: Joi.string().default('1d'),
 
+  SSO_ISSUER_URL: Joi.string().allow('').default(''),
+  SSO_SHARED_SECRET: Joi.string().allow('').default(''),
+
   SIESA_BASE_URL: Joi.string().allow('').default(''),
   SIESA_CONNI_KEY: Joi.string().allow('').default(''),
   SIESA_CONNI_TOKEN: Joi.string().allow('').default(''),

@@ -4,6 +4,7 @@ import { RequireCompany } from '@/components/RequireCompany';
 import { AppLayout } from '@/components/AppLayout';
 import { OperationalHome } from '@/components/OperationalHome';
 import { LoginPage } from '@/pages/LoginPage';
+import { SsoCallbackPage } from '@/pages/SsoCallbackPage';
 import { CompanySelectPage } from '@/pages/CompanySelectPage';
 import { NewOrderPage } from '@/pages/NewOrderPage';
 import { OrdersPage } from '@/pages/OrdersPage';
@@ -30,6 +31,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/sso/callback" element={<SsoCallbackPage />} />
 
       {/* Compatibilidad: el antiguo apartado operativo/administrativo se eliminó;
           se redirige a la selección de compañía (visual unificada). */}

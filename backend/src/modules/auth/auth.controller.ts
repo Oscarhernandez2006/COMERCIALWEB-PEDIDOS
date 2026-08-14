@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { SsoLoginDto } from './dto/sso-login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -20,6 +21,12 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  /** Inicia sesión canjeando un ticket SSO emitido por la suite (SCTOOLS). */
+  @Post('sso')
+  ssoLogin(@Body() dto: SsoLoginDto) {
+    return this.authService.loginBySso(dto.ticket);
   }
 
   @ApiBearerAuth()

@@ -19,6 +19,14 @@ export default () => ({
     expiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
   },
 
+  // SSO: canje de tickets emitidos por la suite (SCTOOLS).
+  sso: {
+    // URL base del backend de la suite (SCTOOLS). Ej: http://localhost:8000
+    issuerUrl: process.env.SSO_ISSUER_URL ?? '',
+    // Secreto compartido con la suite para canjear tickets server-to-server.
+    sharedSecret: process.env.SSO_SHARED_SECRET ?? '',
+  },
+
   siesa: {
     baseUrl: process.env.SIESA_BASE_URL ?? '',
     conniKey: process.env.SIESA_CONNI_KEY ?? '',
