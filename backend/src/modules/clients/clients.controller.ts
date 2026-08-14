@@ -8,10 +8,11 @@ import { UserRole, User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CompanyId } from '../../common/decorators/company-id.decorator';
+import { CompanyAccessGuard } from '../../common/guards/company-access.guard';
 
 @ApiTags('clients')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CompanyAccessGuard)
 @Controller('clients')
 export class ClientsController {
   constructor(

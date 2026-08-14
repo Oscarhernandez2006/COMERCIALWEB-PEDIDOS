@@ -8,6 +8,7 @@ import { User, UserRole } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { SaveBudgetsDto } from './dto/save-budgets.dto';
 import { SaveProjectionDto } from './dto/save-projection.dto';
+import { baseCompanyId } from '../../common/companies';
 
 /** Permiso de módulo que habilita la gestión de presupuestos. */
 export const BUDGETS_PERMISSION = '/admin/presupuestos';
@@ -50,8 +51,11 @@ export class BudgetsService {
     month: number,
     year: number,
   ): Promise<BudgetRow[]> {
+    // Las compañías virtuales (p. ej. MONTERIA TAT) comparten los vendedores de
+    // su compañía base (Agropecuaria), pero sus presupuestos son propios: el
+    // listado se resuelve por la base y los valores se leen por `companyId`.
     const mappings = await this.userCompaniesRepository.find({
-      where: { companyId, active: true },
+      where: { companyId: baseCompanyId(companyId), active: true },
       relations: { user: true },
     });
 

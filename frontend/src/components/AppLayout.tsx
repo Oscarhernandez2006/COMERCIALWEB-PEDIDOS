@@ -100,7 +100,7 @@ const adminSections: { label: string; items: typeof sellerNav }[] = [
 ];
 
 export function AppLayout() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { company, clearCompany } = useCompany();
   const { dark, toggle } = useTheme();
   const navigate = useNavigate();
@@ -162,10 +162,9 @@ export function AppLayout() {
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
 
   const handleExit = () => {
-    // Todos (incl. admin) vuelven a la selección de compañía; desde ahí pueden
-    // cambiar de compañía o cerrar sesión.
-    clearCompany();
-    navigate('/seleccionar-compania');
+    // Cierra la sesión por completo (token, compañía y caché) y vuelve al login.
+    logout();
+    navigate('/login');
   };
 
   const handleChangeCompany = () => {
@@ -337,7 +336,7 @@ export function AppLayout() {
             </Button>
             <Button variant="ghost" size="sm" onClick={handleExit}>
               <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Salir</span>
+              <span className="hidden sm:inline">Cerrar sesión</span>
             </Button>
           </div>
         </header>

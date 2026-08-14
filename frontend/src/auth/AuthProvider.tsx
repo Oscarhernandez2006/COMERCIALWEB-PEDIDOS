@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { api, getToken, setToken } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { api, getToken, setToken, setCompanyId } from '@/lib/api';
 import type { User } from '@/types';
 import { AuthContext } from './auth-context';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -21,6 +23,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
+    // Se descarta cualquier dato cacheado de una sesión anterior antes de
+    // autenticar al nuevo usuario (evita mostrar datos de otro usuario).
+    queryClient.clear();
     const res = await api.post<{ accessToken: string; user: User }>(
       '/auth/login',
       { username, password },
@@ -28,12 +33,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(res.data.accessToken);
     setUser(res.data.user);
     return res.data.user;
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(() => {
     setToken(null);
+    setCompanyId(null);
     setUser(null);
-  }, []);
+    // Limpia la caché para que ningún dato del usuario anterior quede visible.
+    queryClient.clear();
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, setUser }}>

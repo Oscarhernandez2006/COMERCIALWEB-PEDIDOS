@@ -18,10 +18,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { User, UserRole } from '../users/entities/user.entity';
 import { COMPANIES } from '../../common/companies';
+import { AdminOnlyGuard } from '../../common/guards/admin-only.guard';
 
 @ApiTags('admin')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, AdminOnlyGuard)
 @Roles(UserRole.ADMIN)
 @Controller('admin/users')
 export class AdminUsersController {

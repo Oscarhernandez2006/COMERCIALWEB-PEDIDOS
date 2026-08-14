@@ -166,22 +166,67 @@ export class PriceListsClient {
     const baseUrl = this.config.get<string>('priceLists.baseUrl');
     const token = this.config.get<string>('priceLists.token');
     const timeout = this.config.get<number>('priceLists.timeoutMs');
+    // El ERP tope el `limit` en 5000 y su paginación por `offset` es inestable
+    // (duplica/salta filas). Para no perder ventas cuando el mes supera 5000
+    // filas se pagina con solape y se deduplica por la identidad de la fila,
+    // avanzando hasta reunir el `total` que informa el ERP.
+    const PAGE = 5000;
+    const STEP = 4000; // solape de 1000 filas para recuperar filas saltadas
+    const MAX_PAGES = 60;
     try {
-      // El ERP pagina con `limit` por defecto de 1000 y su paginación por
-      // `offset` es inestable (duplica/salta filas), así que se pide todo en
-      // una sola llamada con el límite máximo permitido (5000).
-      const response = await firstValueFrom(
-        this.http.get<VendorProductSalesResponse>(
-          `${baseUrl}/ventas/vendedor-productos-mes`,
-          { params: { periodo, limit: 5000, token }, timeout },
-        ),
-      );
-      if (response.data?.has_more) {
+      const unique = new Map<string, VendorProductSaleRaw>();
+      let expectedTotal = Number.POSITIVE_INFINITY;
+      let offset = 0;
+      let page = 0;
+      let staleStreak = 0;
+      while (page < MAX_PAGES) {
+        const response = await firstValueFrom(
+          this.http.get<VendorProductSalesResponse>(
+            `${baseUrl}/ventas/vendedor-productos-mes`,
+            { params: { periodo, limit: PAGE, offset, token }, timeout },
+          ),
+        );
+        const rows = response.data?.data ?? [];
+        if (
+          typeof response.data?.total === 'number' &&
+          response.data.total >= 0
+        ) {
+          expectedTotal = response.data.total;
+        }
+        const before = unique.size;
+        for (const row of rows) {
+          const key = [
+            (row.nit_vendedor ?? '').trim(),
+            (row.referencia ?? '').trim(),
+            (row.fecha ?? '').trim(),
+            (row.criterio ?? '').trim(),
+            String(row.valor_neto ?? ''),
+            String(row.cantidad_base ?? ''),
+          ].join('|');
+          if (!unique.has(key)) unique.set(key, row);
+        }
+        page++;
+        const added = unique.size - before;
+        // Fin: página vacía, o el offset dejó de traer filas nuevas (agotado o
+        // ignorado por el ERP) durante dos páginas seguidas, o ya se reunió el
+        // total informado, o la última página vino incompleta sin `has_more`.
+        if (rows.length === 0) break;
+        if (added === 0) {
+          staleStreak++;
+          if (staleStreak >= 2) break;
+        } else {
+          staleStreak = 0;
+        }
+        if (rows.length < PAGE && !response.data?.has_more) break;
+        if (unique.size >= expectedTotal) break;
+        offset += STEP;
+      }
+      if (page >= MAX_PAGES && unique.size < expectedTotal) {
         this.logger.warn(
-          `Ventas por vendedor (periodo ${periodo}) supera 5000 filas; el total puede quedar incompleto.`,
+          `Ventas por vendedor (periodo ${periodo}): se alcanzó el máximo de páginas; el total puede quedar incompleto.`,
         );
       }
-      return response.data?.data ?? [];
+      return [...unique.values()];
     } catch (error) {
       const message =
         error && typeof error === 'object' && 'message' in error

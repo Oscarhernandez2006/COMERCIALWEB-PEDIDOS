@@ -17,12 +17,13 @@ import { CancelOrderDto } from './dto/cancel-order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CompanyId } from '../../common/decorators/company-id.decorator';
+import { CompanyAccessGuard } from '../../common/guards/company-access.guard';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 
 @ApiTags('orders')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CompanyAccessGuard)
 @Controller('orders')
 export class OrdersController {
   constructor(
@@ -93,35 +94,54 @@ export class OrdersController {
   }
 
   @Get(':id')
-  findOne(@CompanyId() companyId: string, @Param('id') id: string) {
+  async findOne(
+    @CompanyId() companyId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.ordersService.assertSellerOwnsOrder(companyId, id, user);
     return this.ordersService.findOne(companyId, id);
   }
 
   @Patch(':id')
-  update(
+  async update(
     @CompanyId() companyId: string,
     @Param('id') id: string,
     @Body() dto: UpdateOrderDto,
+    @CurrentUser() user: User,
   ) {
+    await this.ordersService.assertSellerOwnsOrder(companyId, id, user);
     return this.ordersService.update(companyId, id, dto);
   }
 
   @Post(':id/confirm')
-  confirm(@CompanyId() companyId: string, @Param('id') id: string) {
+  async confirm(
+    @CompanyId() companyId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.ordersService.assertSellerOwnsOrder(companyId, id, user);
     return this.ordersService.confirm(companyId, id);
   }
 
   @Post(':id/sync')
-  sync(@CompanyId() companyId: string, @Param('id') id: string) {
+  async sync(
+    @CompanyId() companyId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+  ) {
+    await this.ordersService.assertSellerOwnsOrder(companyId, id, user);
     return this.ordersService.syncToSiesa(companyId, id);
   }
 
   @Post(':id/cancel')
-  cancel(
+  async cancel(
     @CompanyId() companyId: string,
     @Param('id') id: string,
     @Body() dto: CancelOrderDto,
+    @CurrentUser() user: User,
   ) {
+    await this.ordersService.assertSellerOwnsOrder(companyId, id, user);
     return this.ordersService.cancel(companyId, id, dto.reason);
   }
 
@@ -132,6 +152,7 @@ export class OrdersController {
     @CurrentUser() user: User,
     @Res() res: Response,
   ) {
+    await this.ordersService.assertSellerOwnsOrder(companyId, id, user);
     const order = await this.ordersService.findOne(companyId, id);
     const buffer = await this.ordersService.generatePdf(
       companyId,

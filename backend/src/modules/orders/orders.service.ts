@@ -831,7 +831,18 @@ export class OrdersService {
     });
     if (orders.length === 0) return {};
 
-    const states = await this.erpClient.getOrderStates(companyId);
+    // Si el ERP/Siesa está caído, se devuelve un mapa vacío en vez de propagar
+    // el error: el vendedor sigue viendo sus pedidos, solo sin el estado Siesa.
+    let states: ErpOrderState[];
+    try {
+      states = await this.erpClient.getOrderStates(companyId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudo consultar el estado en Siesa (compañía ${companyId}): ${message}`,
+      );
+      return {};
+    }
     const byReferencia = this.indexStatesByReferencia(
       this.filterStatesForCompany(companyId, states),
     );
@@ -951,6 +962,11 @@ export class OrdersService {
     if (syncedOrders.length === 0) return 0;
 
     const states = await this.erpClient.getOrderStates(companyId);
+    // Una lista vacía no prueba que los pedidos no entraron: suele ser una
+    // caída/timeout de la BD de Siesa. Sin este resguardo, TODOS los pedidos
+    // enviados se marcarían como rebotados (devolviendo stock y sacándolos de
+    // ventas). Se omite el ciclo y se reintenta en la próxima sincronización.
+    if (states.length === 0) return 0;
     const byReferencia = this.indexStatesByReferencia(
       this.filterStatesForCompany(companyId, states),
     );
@@ -1120,6 +1136,23 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Pedido no encontrado');
     await this.withCustomerPriceListName(companyId, [order]);
     return order;
+  }
+
+  /**
+   * Garantiza que un pedido pertenezca al vendedor autenticado antes de leerlo
+   * o modificarlo. Los administradores quedan exentos. Devuelve 404 (y no 403)
+   * para no revelar la existencia de pedidos ajenos.
+   */
+  async assertSellerOwnsOrder(
+    companyId: string,
+    id: string,
+    user: User,
+  ): Promise<void> {
+    if (user.role === UserRole.ADMIN) return;
+    const count = await this.ordersRepository.count({
+      where: { id, companyId, seller: { id: user.id } },
+    });
+    if (count === 0) throw new NotFoundException('Pedido no encontrado');
   }
 
   /**
