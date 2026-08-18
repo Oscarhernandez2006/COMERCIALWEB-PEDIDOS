@@ -253,8 +253,8 @@ export function InventoryPage() {
 
       {/* Acciones de inventario */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardContent className="flex flex-col gap-3 p-5">
+        <Card className="h-full">
+          <CardContent className="flex h-full flex-col gap-3 p-5">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Package className="h-5 w-5" />
@@ -274,50 +274,65 @@ export function InventoryPage() {
               className="hidden"
               onChange={handleFile}
             />
+            <div className="flex flex-1 items-center justify-center">
+              <div className="flex w-full max-w-xs flex-col items-center gap-2">
+                <Button
+                  size="sm"
+                  className="w-full justify-center"
+                  disabled={importInventory.isPending}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Upload
+                    className={cn(
+                      'h-4 w-4',
+                      importInventory.isPending && 'animate-pulse',
+                    )}
+                  />
+                  Cargar Excel
+                </Button>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                disabled={importInventory.isPending}
-                onClick={() => fileRef.current?.click()}
-              >
-                <Upload
-                  className={cn(
-                    'h-4 w-4',
-                    importInventory.isPending && 'animate-pulse',
-                  )}
-                />
-                Cargar Excel
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => downloadInventoryTemplate()}
-              >
-                <Download className="h-4 w-4" />
-                Descargar plantilla
-              </Button>
+                <div className="flex flex-col items-center gap-1 py-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+                    o
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Subir Excel o descargar plantilla
+                  </span>
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-center"
+                  onClick={() => downloadInventoryTemplate()}
+                >
+                  <Download className="h-4 w-4" />
+                  Descargar plantilla
+                </Button>
+              </div>
             </div>
 
-            {importInventory.isSuccess && (
-              <p className="flex items-center gap-1 text-xs text-[var(--success)]">
-                <Check className="h-3 w-3" />
-                {importInventory.data.total} productos cargados (
-                {importInventory.data.created} nuevos,{' '}
-                {importInventory.data.updated} actualizados,{' '}
-                {importInventory.data.removed} retirados)
-              </p>
-            )}
-            {importInventory.isError && (
-              <p className="flex items-center gap-1 text-xs text-destructive">
-                <AlertCircle className="h-3 w-3" />
-                {getErrorMessage(importInventory.error)}
-              </p>
-            )}
+            <div className="min-h-5">
+              {importInventory.isSuccess && (
+                <p className="flex items-center gap-1 text-xs text-[var(--success)]">
+                  <Check className="h-3 w-3" />
+                  {importInventory.data.total} productos cargados (
+                  {importInventory.data.created} nuevos,{' '}
+                  {importInventory.data.updated} actualizados,{' '}
+                  {importInventory.data.removed} retirados)
+                </p>
+              )}
+              {importInventory.isError && (
+                <p className="flex items-center gap-1 text-xs text-destructive">
+                  <AlertCircle className="h-3 w-3" />
+                  {getErrorMessage(importInventory.error)}
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="h-full">
           <CardContent className="flex flex-col gap-3 p-5">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
