@@ -38,8 +38,12 @@ interface SubproductoResponse {
 
 /** Fila cruda del endpoint de ventas por vendedor y producto (mensual). */
 export interface VendorProductSaleRaw {
+  /** Fecha del movimiento (YYYY-MM-DD). El ERP la renombró de `fecha` a `dia`. */
+  dia?: string;
   fecha?: string;
+  /** Identificador del vendedor. Hoy el ERP solo envía la razón social (nombre). */
   nit_vendedor?: string;
+  codigo_vendedor?: string;
   razon_social_vendedor?: string;
   referencia?: string;
   descripcion?: string;
@@ -195,12 +199,16 @@ export class PriceListsClient {
         }
         const before = unique.size;
         for (const row of rows) {
+          // El ERP renombró `fecha`->`dia` y ya no envía `nit_vendedor`
+          // (solo `razon_social_vendedor`). La clave usa los campos actuales
+          // para no colapsar filas distintas como duplicadas.
           const key = [
-            (row.nit_vendedor ?? '').trim(),
+            (row.razon_social_vendedor ?? row.nit_vendedor ?? '').trim(),
             (row.referencia ?? '').trim(),
-            (row.fecha ?? '').trim(),
+            (row.dia ?? row.fecha ?? '').trim(),
             (row.criterio ?? '').trim(),
             String(row.valor_neto ?? ''),
+            String(row.valor_bruto ?? ''),
             String(row.cantidad_base ?? ''),
           ].join('|');
           if (!unique.has(key)) unique.set(key, row);

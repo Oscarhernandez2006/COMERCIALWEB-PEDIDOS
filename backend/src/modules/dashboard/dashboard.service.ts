@@ -198,7 +198,8 @@ export class DashboardService {
     for (const row of rows) {
       const nit = (row.nit_vendedor ?? '').trim();
       if (filterByNit && !nits.has(nit)) continue;
-      const day = (row.fecha ?? '').slice(0, 10);
+      // El ERP renombró la fecha del movimiento de `fecha` a `dia`.
+      const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
       if (!day) continue;
       const ref = (row.referencia ?? '').trim() || '—';
       const name = (row.descripcion ?? '').trim() || ref;
