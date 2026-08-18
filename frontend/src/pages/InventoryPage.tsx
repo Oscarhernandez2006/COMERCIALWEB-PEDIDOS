@@ -80,6 +80,7 @@ export function InventoryPage() {
   const [newSku, setNewSku] = useState('');
   const [newName, setNewName] = useState('');
   const [newStock, setNewStock] = useState('0');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editName, setEditName] = useState('');
   const [editStock, setEditStock] = useState('0');
@@ -151,6 +152,7 @@ export function InventoryPage() {
           setNewSku('');
           setNewName('');
           setNewStock('0');
+          setCreateModalOpen(false);
         },
       },
     );
@@ -274,61 +276,45 @@ export function InventoryPage() {
               className="hidden"
               onChange={handleFile}
             />
-            <div className="flex flex-1 items-center justify-center">
-              <div className="flex w-full max-w-xs flex-col items-center gap-2">
-                <Button
-                  size="sm"
-                  className="w-full justify-center"
-                  disabled={importInventory.isPending}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload
-                    className={cn(
-                      'h-4 w-4',
-                      importInventory.isPending && 'animate-pulse',
-                    )}
-                  />
-                  Cargar Excel
-                </Button>
-
-                <div className="flex flex-col items-center gap-1 py-1">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-                    o
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Subir Excel o descargar plantilla
-                  </span>
-                </div>
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full justify-center"
-                  onClick={() => downloadInventoryTemplate()}
-                >
-                  <Download className="h-4 w-4" />
-                  Descargar plantilla
-                </Button>
-              </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={importInventory.isPending}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload
+                  className={cn(
+                    'h-4 w-4',
+                    importInventory.isPending && 'animate-pulse',
+                  )}
+                />
+                Cargar Excel
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => downloadInventoryTemplate()}
+              >
+                <Download className="h-4 w-4" />
+                Descargar plantilla
+              </Button>
             </div>
 
-            <div className="min-h-5">
-              {importInventory.isSuccess && (
-                <p className="flex items-center gap-1 text-xs text-[var(--success)]">
-                  <Check className="h-3 w-3" />
-                  {importInventory.data.total} productos cargados (
-                  {importInventory.data.created} nuevos,{' '}
-                  {importInventory.data.updated} actualizados,{' '}
-                  {importInventory.data.removed} retirados)
-                </p>
-              )}
-              {importInventory.isError && (
-                <p className="flex items-center gap-1 text-xs text-destructive">
-                  <AlertCircle className="h-3 w-3" />
-                  {getErrorMessage(importInventory.error)}
-                </p>
-              )}
-            </div>
+            {importInventory.isSuccess && (
+              <p className="flex items-center gap-1 text-xs text-[var(--success)]">
+                <Check className="h-3 w-3" />
+                {importInventory.data.total} productos cargados (
+                {importInventory.data.created} nuevos,{' '}
+                {importInventory.data.updated} actualizados,{' '}
+                {importInventory.data.removed} retirados)
+              </p>
+            )}
+            {importInventory.isError && (
+              <p className="flex items-center gap-1 text-xs text-destructive">
+                <AlertCircle className="h-3 w-3" />
+                {getErrorMessage(importInventory.error)}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -346,36 +332,12 @@ export function InventoryPage() {
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Input
-                placeholder="Referencia (SKU)"
-                value={newSku}
-                onChange={(e) => setNewSku(e.target.value.toUpperCase())}
-              />
-              <Input
-                placeholder="Nombre del producto"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-              />
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                placeholder="Stock"
-                value={newStock}
-                onChange={(e) => setNewStock(e.target.value)}
-              />
-            </div>
-
             <Button
               size="sm"
-              onClick={createProductManually}
-              disabled={createManualProduct.isPending}
+              onClick={() => setCreateModalOpen(true)}
             >
-              <Save className="h-4 w-4" />
-              {createManualProduct.isPending
-                ? 'Guardando...'
-                : `Agregar a ${effectiveType}`}
+              <Plus className="h-4 w-4" />
+              Agregar producto manual
             </Button>
 
             {createManualProduct.isError && (
@@ -530,6 +492,63 @@ export function InventoryPage() {
               </Button>
               <Button onClick={confirmImport} disabled={importInventory.isPending}>
                 {importInventory.isPending ? 'Cargando...' : 'Sí, reemplazar inventario'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de creación manual */}
+      {createModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-lg">
+            <h3 className="text-lg font-semibold">Agregar producto manual</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Crear en inventario <strong className="text-foreground">{effectiveType}</strong> sin recargar todo el Excel.
+            </p>
+
+            <div className="mt-4 grid gap-3">
+              <Input
+                placeholder="Referencia (SKU)"
+                value={newSku}
+                onChange={(e) => setNewSku(e.target.value.toUpperCase())}
+              />
+              <Input
+                placeholder="Nombre del producto"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="Stock"
+                value={newStock}
+                onChange={(e) => setNewStock(e.target.value)}
+              />
+            </div>
+
+            {createManualProduct.isError && (
+              <p className="mt-3 flex items-center gap-1 text-xs text-destructive">
+                <AlertCircle className="h-3 w-3" />
+                {getErrorMessage(createManualProduct.error)}
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setCreateModalOpen(false)}
+                disabled={createManualProduct.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={createProductManually}
+                disabled={createManualProduct.isPending}
+              >
+                <Save className="h-4 w-4" />
+                {createManualProduct.isPending ? 'Guardando...' : `Agregar a ${effectiveType}`}
               </Button>
             </div>
           </div>
