@@ -54,6 +54,8 @@ export interface VendorProductSaleRaw {
   valor_neto?: number;
   criterio?: string;
   descripcion_criterio?: string;
+  /** Clasificación del producto: CORTE / SUBPRODUCTO / CANAL / SERVICIO / ... */
+  criterio_producto?: string;
 }
 
 interface VendorProductSalesResponse {

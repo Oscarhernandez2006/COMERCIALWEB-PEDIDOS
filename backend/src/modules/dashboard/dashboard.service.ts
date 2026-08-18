@@ -203,10 +203,15 @@ export class DashboardService {
       if (!day) continue;
       const ref = (row.referencia ?? '').trim() || '—';
       const name = (row.descripcion ?? '').trim() || ref;
-      // Los SERVICIOS (referencia 99xxx / descripción "SERVICIO ...") no son
-      // productos (desposte, sacrificio, transporte, alquiler, etc.); no se
-      // cuentan como ventas de cortes/subproductos/canales.
-      if (ref.startsWith('99') || name.toUpperCase().startsWith('SERVICIO')) {
+      const crit = (row.criterio_producto ?? '').trim().toUpperCase();
+      // Los SERVICIOS (desposte, sacrificio, transporte, alquiler, etc.) no son
+      // productos: se identifican por `criterio_producto` = SERVICIO, con
+      // respaldo por referencia 99xxx / descripción "SERVICIO ...".
+      if (
+        crit === 'SERVICIO' ||
+        ref.startsWith('99') ||
+        name.toUpperCase().startsWith('SERVICIO')
+      ) {
         continue;
       }
       // Se consolida la venta con el VALOR BRUTO. Las líneas negativas son
@@ -220,8 +225,8 @@ export class DashboardService {
       revenue += bruto;
       kilos += qty;
       // Los canales enteros (CANAL DE CERDO/NOVILLA/NOVILLO/VACA) van a su
-      // propia tarjeta; el resto son cortes.
-      if (name.toUpperCase().startsWith('CANAL')) {
+      // propia tarjeta; el resto (cortes, subproductos, etc.) a la de productos.
+      if (crit === 'CANAL' || name.toUpperCase().startsWith('CANAL')) {
         // CANAL DE VACA no se maneja en SIGCOM; no se lista en canales.
         if (name.toUpperCase().includes('VACA')) continue;
         const cg = canalMap.get(ref) ?? { name, kilos: 0, revenue: 0 };
