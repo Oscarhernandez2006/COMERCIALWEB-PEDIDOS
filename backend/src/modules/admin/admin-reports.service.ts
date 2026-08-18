@@ -1093,7 +1093,7 @@ export class AdminReportsService {
     const allRows = await this.priceListsService.getVendorProductSales(clean);
     // Si se pide un día concreto, se filtra por la parte de fecha (YYYY-MM-DD).
     const rows = day
-      ? allRows.filter((r) => (r.fecha ?? '').slice(0, 10) === day)
+      ? allRows.filter((r) => (r.dia ?? r.fecha ?? '').slice(0, 10) === day)
       : allRows;
 
     // Agrupa por vendedor y dentro por producto (referencia).
@@ -1110,18 +1110,20 @@ export class AdminReportsService {
     >();
 
     for (const row of rows) {
-      const nit = (row.nit_vendedor ?? '').trim() || 'SIN NIT';
+      const nit = (row.nit_vendedor ?? '').trim();
       const name =
         (row.razon_social_vendedor ?? '').trim() || 'SIN VENDEDOR';
+      // El ERP ya no envía NIT: se agrupa por nombre cuando no hay NIT.
+      const key = nit || name;
       const referencia = (row.referencia ?? '').trim() || '—';
       const descripcion = (row.descripcion ?? '').trim() || referencia;
       const quantity = Number(row.cantidad_base) || 0;
       const net = Number(row.valor_neto) || 0;
 
-      let seller = sellersMap.get(nit);
+      let seller = sellersMap.get(key);
       if (!seller) {
-        seller = { nit, name, products: new Map() };
-        sellersMap.set(nit, seller);
+        seller = { nit: nit || '—', name, products: new Map() };
+        sellersMap.set(key, seller);
       }
       let product = seller.products.get(referencia);
       if (!product) {

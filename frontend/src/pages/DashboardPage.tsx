@@ -32,6 +32,11 @@ function todayISO(): string {
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
 }
 
+/** Primer día del mes actual en formato YYYY-MM-01 (fecha local). */
+function firstOfMonthISO(): string {
+  return `${todayISO().slice(0, 8)}01`;
+}
+
 /** Etiqueta para cuando el vendedor no tiene presupuesto cargado ese mes. */
 function SinPresupuesto({ className }: { className?: string }) {
   return (
@@ -156,8 +161,10 @@ export function DashboardPage() {
   // Fecha seleccionada y modo de vista: mes completo, un día, o un rango de
   // fechas (desde/hasta). De la fecha se derivan mes, año y día.
   const [dateStr, setDateStr] = useState(() => todayISO());
-  const [view] = useState<'month' | 'day' | 'range'>('month');
-  const [fromStr, setFromStr] = useState(() => todayISO());
+  // Vista fija en rango de fechas. Por defecto: del 1 del mes actual hasta hoy
+  // (venta acumulada del mes en curso).
+  const [view] = useState<'month' | 'day' | 'range'>('range');
+  const [fromStr, setFromStr] = useState(() => firstOfMonthISO());
   const [toStr, setToStr] = useState(() => todayISO());
 
   // Solo los administradores pueden ver el tablero de otro vendedor o el
