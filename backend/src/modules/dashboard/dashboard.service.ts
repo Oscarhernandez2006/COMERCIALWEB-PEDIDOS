@@ -159,8 +159,9 @@ export class DashboardService {
   /**
    * Ventas del/los vendedor(es) desde el ERP (vendedor-productos-mes) para un
    * rango de fechas: filtra por NIT (documento del vendedor) y por la fecha del
-   * movimiento, y agrega pesos (valor_neto), kilos (cantidad_base), total por
-   * día, por producto y por criterio (canal).
+   * movimiento, y agrega pesos (valor_bruto; las líneas negativas son
+   * devoluciones y restan), kilos (cantidad_base), total por día, por producto
+   * y por criterio (canal).
    */
   private async getErpSales(
     nits: Set<string>,
@@ -207,13 +208,15 @@ export class DashboardService {
       if (ref.startsWith('99') || name.toUpperCase().startsWith('SERVICIO')) {
         continue;
       }
-      const net = Number(row.valor_neto) || 0;
+      // Se consolida la venta con el VALOR BRUTO. Las líneas negativas son
+      // devoluciones: se suman tal cual, de modo que restan del total.
+      const bruto = Number(row.valor_bruto) || 0;
       // La tendencia diaria usa TODOS los días del período consultado (sin
       // filtrar por el rango), para poder graficar la evolución del mes.
-      byDay.set(day, (byDay.get(day) ?? 0) + net);
+      byDay.set(day, (byDay.get(day) ?? 0) + bruto);
       if (day < from || day > to) continue;
       const qty = Number(row.cantidad_base) || 0;
-      revenue += net;
+      revenue += bruto;
       kilos += qty;
       // Los canales enteros (CANAL DE CERDO/NOVILLA/NOVILLO/VACA) van a su
       // propia tarjeta; el resto son cortes.
@@ -222,12 +225,12 @@ export class DashboardService {
         if (name.toUpperCase().includes('VACA')) continue;
         const cg = canalMap.get(ref) ?? { name, kilos: 0, revenue: 0 };
         cg.kilos += qty;
-        cg.revenue += net;
+        cg.revenue += bruto;
         canalMap.set(ref, cg);
       } else {
         const pg = prodMap.get(ref) ?? { name, quantity: 0, revenue: 0 };
         pg.quantity += qty;
-        pg.revenue += net;
+        pg.revenue += bruto;
         prodMap.set(ref, pg);
       }
     }
