@@ -156,7 +156,7 @@ export function DashboardPage() {
   // Fecha seleccionada y modo de vista: mes completo, un día, o un rango de
   // fechas (desde/hasta). De la fecha se derivan mes, año y día.
   const [dateStr, setDateStr] = useState(() => todayISO());
-  const [view, setView] = useState<'month' | 'day' | 'range'>('month');
+  const [view] = useState<'month' | 'day' | 'range'>('month');
   const [fromStr, setFromStr] = useState(() => todayISO());
   const [toStr, setToStr] = useState(() => todayISO());
 
@@ -383,34 +383,6 @@ export function DashboardPage() {
               </div>
             </div>
           )}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">
-              Ver
-            </label>
-            <div className="inline-flex h-9 overflow-hidden rounded-md border border-input">
-              {(
-                [
-                  ['month', 'Mes'],
-                  ['day', 'Día'],
-                  ['range', 'Rango'],
-                ] as const
-              ).map(([key, txt]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setView(key)}
-                  className={cn(
-                    'px-3 text-sm font-medium transition-colors',
-                    view === key
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-background text-muted-foreground hover:bg-accent',
-                  )}
-                >
-                  {txt}
-                </button>
-              ))}
-            </div>
-          </div>
           <Button
             variant="outline"
             size="sm"
