@@ -8,6 +8,8 @@ import {
   Building2,
   Upload,
   Download,
+  Plus,
+  Save,
   Pencil,
   X,
 } from 'lucide-react';
@@ -15,6 +17,8 @@ import { isAxiosError } from 'axios';
 import {
   useCompanyProducts,
   useImportInventory,
+  useCreateManualProduct,
+  useUpdateManualProduct,
   useUpdateStock,
   downloadInventoryTemplate,
 } from '@/hooks/useAdminApi';
@@ -69,7 +73,16 @@ export function InventoryPage() {
     effectiveType,
   );
   const importInventory = useImportInventory();
+  const createManualProduct = useCreateManualProduct();
+  const updateManualProduct = useUpdateManualProduct();
   const updateStock = useUpdateStock();
+
+  const [newSku, setNewSku] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newStock, setNewStock] = useState('0');
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editStock, setEditStock] = useState('0');
 
   const company = companies.find((c) => c.id === companyId);
 
@@ -119,6 +132,58 @@ export function InventoryPage() {
     setPendingFile(null);
   }
 
+  function createProductManually() {
+    const sku = newSku.trim();
+    const name = newName.trim();
+    const stock = Number(newStock);
+    if (!sku || !name || Number.isNaN(stock) || stock < 0) return;
+
+    createManualProduct.mutate(
+      {
+        companyId,
+        sku,
+        name,
+        stock,
+        type: effectiveType,
+      },
+      {
+        onSuccess: () => {
+          setNewSku('');
+          setNewName('');
+          setNewStock('0');
+        },
+      },
+    );
+  }
+
+  function openEditProduct(product: Product) {
+    setEditingProduct(product);
+    setEditName(product.name);
+    setEditStock(String(product.stock));
+  }
+
+  function saveManualEdit() {
+    if (!editingProduct) return;
+    const name = editName.trim();
+    const stock = Number(editStock);
+    if (!name || Number.isNaN(stock) || stock < 0) return;
+
+    updateManualProduct.mutate(
+      {
+        companyId,
+        id: editingProduct.id,
+        name,
+        stock,
+        type: effectiveType,
+      },
+      {
+        onSuccess: () => {
+          setEditingProduct(null);
+        },
+      },
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -151,31 +216,38 @@ export function InventoryPage() {
 
       {/* Selector de tipo de inventario (solo MONTERIA TAT AGROPECUARIA) */}
       {supportsSubproductos && (
-        <div className="inline-flex rounded-lg border border-input p-1">
-          <button
-            type="button"
-            onClick={() => setInvType('corte')}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              invType === 'corte'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Cortes
-          </button>
-          <button
-            type="button"
-            onClick={() => setInvType('subproducto')}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              invType === 'subproducto'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Subproductos
-          </button>
+        <div className="space-y-2">
+          <div className="inline-flex rounded-lg border border-input p-1">
+            <button
+              type="button"
+              onClick={() => setInvType('corte')}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                invType === 'corte'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Cortes
+            </button>
+            <button
+              type="button"
+              onClick={() => setInvType('subproducto')}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                invType === 'subproducto'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Subproductos
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            El Excel debe corresponder al tipo seleccionado. Si eliges{' '}
+            <strong className="text-foreground">{effectiveType}</strong>, el
+            sistema bloqueará referencias del otro inventario.
+          </p>
         </div>
       )}
 
@@ -244,6 +316,67 @@ export function InventoryPage() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="flex flex-col gap-3 p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Plus className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold">Agregar producto manual</p>
+                <p className="text-xs text-muted-foreground">
+                  Crea o corrige faltantes sin volver a cargar todo el Excel.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Input
+                placeholder="Referencia (SKU)"
+                value={newSku}
+                onChange={(e) => setNewSku(e.target.value.toUpperCase())}
+              />
+              <Input
+                placeholder="Nombre del producto"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="Stock"
+                value={newStock}
+                onChange={(e) => setNewStock(e.target.value)}
+              />
+            </div>
+
+            <Button
+              size="sm"
+              onClick={createProductManually}
+              disabled={createManualProduct.isPending}
+            >
+              <Save className="h-4 w-4" />
+              {createManualProduct.isPending
+                ? 'Guardando...'
+                : `Agregar a ${effectiveType}`}
+            </Button>
+
+            {createManualProduct.isError && (
+              <p className="flex items-center gap-1 text-xs text-destructive">
+                <AlertCircle className="h-3 w-3" />
+                {getErrorMessage(createManualProduct.error)}
+              </p>
+            )}
+            {createManualProduct.isSuccess && (
+              <p className="flex items-center gap-1 text-xs text-[var(--success)]">
+                <Check className="h-3 w-3" />
+                Producto agregado correctamente.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Listado de productos */}
@@ -289,6 +422,7 @@ export function InventoryPage() {
                     <th className="px-6 py-2 font-medium">Producto</th>
                     <th className="px-6 py-2 text-right font-medium">Stock</th>
                     <th className="px-6 py-2 text-right font-medium">Estado</th>
+                    <th className="px-6 py-2 text-right font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -296,6 +430,7 @@ export function InventoryPage() {
                     <StockRow
                       key={p.id}
                       product={p}
+                      onEdit={openEditProduct}
                       onSave={(stock) =>
                         updateStock.mutate({ companyId, id: p.id, stock })
                       }
@@ -385,17 +520,73 @@ export function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de edición individual */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-lg">
+            <h3 className="text-lg font-semibold">Editar producto</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Referencia: <span className="font-mono">{editingProduct.sku}</span>
+            </p>
+
+            <div className="mt-4 grid gap-3">
+              <div>
+                <p className="mb-1 text-xs text-muted-foreground">Nombre</p>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-muted-foreground">Stock</p>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editStock}
+                  onChange={(e) => setEditStock(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {updateManualProduct.isError && (
+              <p className="mt-3 flex items-center gap-1 text-xs text-destructive">
+                <AlertCircle className="h-3 w-3" />
+                {getErrorMessage(updateManualProduct.error)}
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setEditingProduct(null)}
+                disabled={updateManualProduct.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={saveManualEdit}
+                disabled={updateManualProduct.isPending}
+              >
+                {updateManualProduct.isPending ? 'Guardando...' : 'Guardar cambios'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 interface StockRowProps {
   product: Product;
+  onEdit: (product: Product) => void;
   onSave: (stock: number) => void;
   saving: boolean;
 }
 
-function StockRow({ product, onSave, saving }: StockRowProps) {
+function StockRow({ product, onEdit, onSave, saving }: StockRowProps) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(product.stock));
 
@@ -465,6 +656,17 @@ function StockRow({ product, onSave, saving }: StockRowProps) {
         <Badge variant={product.active ? 'success' : 'secondary'}>
           {product.active ? 'Activo' : 'Inactivo'}
         </Badge>
+      </td>
+      <td className="px-6 py-3 text-right">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          onClick={() => onEdit(product)}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Editar
+        </Button>
       </td>
     </tr>
   );

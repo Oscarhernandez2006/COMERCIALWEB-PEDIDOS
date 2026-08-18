@@ -366,6 +366,22 @@ export interface ImportInventoryResult {
   removed: number;
 }
 
+export interface CreateManualProductInput {
+  companyId: string;
+  sku: string;
+  name: string;
+  stock: number;
+  type?: 'corte' | 'subproducto';
+}
+
+export interface UpdateManualProductInput {
+  companyId: string;
+  id: string;
+  name: string;
+  stock: number;
+  type?: 'corte' | 'subproducto';
+}
+
 /** Carga diaria del inventario desde Excel (reemplaza el inventario). */
 export function useImportInventory() {
   const qc = useQueryClient();
@@ -380,6 +396,57 @@ export function useImportInventory() {
       const res = await api.post<ImportInventoryResult>(
         '/products/import',
         form,
+        {
+          headers: { 'X-Company-Id': input.companyId },
+          params: input.type ? { type: input.type } : undefined,
+        },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+    },
+  });
+}
+
+/** Crea un producto manualmente en inventario (sin reemplazar todo el Excel). */
+export function useCreateManualProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateManualProductInput) => {
+      const res = await api.post<Product>(
+        '/products/manual',
+        {
+          sku: input.sku,
+          name: input.name,
+          stock: input.stock,
+        },
+        {
+          headers: { 'X-Company-Id': input.companyId },
+          params: input.type ? { type: input.type } : undefined,
+        },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'products'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+    },
+  });
+}
+
+/** Edita un producto individualmente (nombre/stock). */
+export function useUpdateManualProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UpdateManualProductInput) => {
+      const res = await api.patch<Product>(
+        `/products/${input.id}/manual`,
+        {
+          name: input.name,
+          stock: input.stock,
+        },
         {
           headers: { 'X-Company-Id': input.companyId },
           params: input.type ? { type: input.type } : undefined,

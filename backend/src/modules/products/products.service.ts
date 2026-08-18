@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, ILike, Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
@@ -31,6 +37,12 @@ export interface SellableProduct {
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
+
+  private static readonly AGRO_COMPANY_ID = '3';
+
+  private normalizeInventoryType(type?: string): 'corte' | 'subproducto' {
+    return type === 'subproducto' ? 'subproducto' : 'corte';
+  }
 
   constructor(
     @InjectRepository(Product)
@@ -198,9 +210,12 @@ export class ProductsService {
     rows: InventoryRow[],
     type = 'corte',
   ): Promise<{ total: number; created: number; updated: number; removed: number }> {
+    const inventoryType = this.normalizeInventoryType(type);
+    await this.validateInventoryImport(companyId, rows, inventoryType);
+
     return this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(Product);
-      const existing = await repo.find({ where: { companyId, type } });
+      const existing = await repo.find({ where: { companyId, type: inventoryType } });
       const existingBySku = new Map(existing.map((p) => [p.sku, p]));
       const incomingSkus = new Set(rows.map((r) => r.reference));
 
@@ -218,7 +233,7 @@ export class ProductsService {
         } else {
           const product = repo.create({
             companyId,
-            type,
+            type: inventoryType,
             siesaId: row.reference,
             sku: row.reference,
             name: row.description,
@@ -261,6 +276,88 @@ export class ProductsService {
     });
   }
 
+  private normalizeSku(value: string): string {
+    return value.trim().toUpperCase();
+  }
+
+  private firstSamples(items: string[], max = 8): string {
+    if (items.length <= max) return items.join(', ');
+    return `${items.slice(0, max).join(', ')} y ${items.length - max} más`;
+  }
+
+  /**
+   * Validación de cargue para evitar cruces entre inventarios de cortes y
+   * subproductos en AGROPECUARIA.
+   */
+  private async validateInventoryImport(
+    companyId: string,
+    rows: InventoryRow[],
+    type: 'corte' | 'subproducto',
+  ): Promise<void> {
+    const mismatchedByColumn = rows.filter(
+      (r) => r.inventoryType && r.inventoryType !== type,
+    );
+    if (mismatchedByColumn.length > 0) {
+      const examples = mismatchedByColumn.map(
+        (r) => `${r.reference} (fila ${r.rowNumber})`,
+      );
+      throw new BadRequestException(
+        `El archivo contiene filas del tipo opuesto al seleccionado (${type}). ` +
+          `Revisa: ${this.firstSamples(examples)}.`,
+      );
+    }
+
+    // Esta validación aplica al caso crítico reportado (Agropecuaria), donde se
+    // administran cortes y subproductos en paralelo.
+    if (baseCompanyId(companyId) !== ProductsService.AGRO_COMPANY_ID) {
+      return;
+    }
+
+    const oppositeType = type === 'corte' ? 'subproducto' : 'corte';
+    const [selectedTypeProducts, oppositeTypeProducts] = await Promise.all([
+      this.productsRepository.find({
+        where: { companyId, type },
+        select: { sku: true },
+      }),
+      this.productsRepository.find({
+        where: { companyId, type: oppositeType },
+        select: { sku: true },
+      }),
+    ]);
+
+    const selectedSkus = new Set(
+      selectedTypeProducts.map((p) => this.normalizeSku(p.sku)),
+    );
+    const oppositeSkus = new Set(
+      oppositeTypeProducts.map((p) => this.normalizeSku(p.sku)),
+    );
+
+    const crossTypeRefs = rows
+      .filter((r) => oppositeSkus.has(this.normalizeSku(r.reference)))
+      .map((r) => `${r.reference} (fila ${r.rowNumber})`);
+
+    if (crossTypeRefs.length > 0) {
+      throw new BadRequestException(
+        `Se detectaron referencias del inventario ${oppositeType} en un cargue ${type}. ` +
+          `Revisa: ${this.firstSamples(crossTypeRefs)}.`,
+      );
+    }
+
+    // Si ya hay catálogo base del tipo, no se permiten referencias desconocidas.
+    if (selectedSkus.size === 0) return;
+
+    const unknownRefs = rows
+      .filter((r) => !selectedSkus.has(this.normalizeSku(r.reference)))
+      .map((r) => `${r.reference} (fila ${r.rowNumber})`);
+
+    if (unknownRefs.length > 0) {
+      throw new BadRequestException(
+        `El archivo contiene referencias que no pertenecen al inventario ${type} de esta compañía. ` +
+          `Revisa: ${this.firstSamples(unknownRefs)}. Si son productos nuevos, sincroniza primero el catálogo y vuelve a intentar.`,
+      );
+    }
+  }
+
   /** Edita únicamente el stock de un producto (única edición permitida en web). */
   async updateStock(
     companyId: string,
@@ -272,6 +369,95 @@ export class ProductsService {
     });
     if (!product) throw new NotFoundException('Producto no encontrado');
     product.stock = stock;
+    return this.productsRepository.save(product);
+  }
+
+  /** Crea un producto manualmente sin necesidad de recargar todo el Excel. */
+  async createManual(
+    companyId: string,
+    input: { sku?: string; name?: string; stock?: number },
+    type = 'corte',
+  ): Promise<Product> {
+    const inventoryType = this.normalizeInventoryType(type);
+    const sku = (input.sku ?? '').trim();
+    const name = (input.name ?? '').trim();
+    const stock = Number(input.stock ?? 0);
+
+    if (!sku) {
+      throw new BadRequestException('La referencia es obligatoria.');
+    }
+    if (!name) {
+      throw new BadRequestException('El nombre del producto es obligatorio.');
+    }
+    if (!Number.isFinite(stock) || stock < 0) {
+      throw new BadRequestException('El stock debe ser un número mayor o igual a 0.');
+    }
+
+    const existingByType = await this.productsRepository.findOne({
+      where: { companyId, sku, type: inventoryType },
+    });
+    if (existingByType) {
+      throw new ConflictException(
+        `La referencia ${sku} ya existe en ${inventoryType}.`,
+      );
+    }
+
+    const oppositeType = inventoryType === 'corte' ? 'subproducto' : 'corte';
+    const existingOpposite = await this.productsRepository.findOne({
+      where: { companyId, sku, type: oppositeType },
+    });
+    if (existingOpposite) {
+      throw new BadRequestException(
+        `La referencia ${sku} ya existe en ${oppositeType}. No se puede duplicar entre inventarios.`,
+      );
+    }
+
+    const product = this.productsRepository.create({
+      companyId,
+      type: inventoryType,
+      siesaId: sku,
+      sku,
+      name,
+      stock,
+      basePrice: 0,
+      taxRate: 0,
+      active: true,
+    });
+
+    return this.productsRepository.save(product);
+  }
+
+  /** Edita un producto individualmente desde la web (sin Excel masivo). */
+  async updateManual(
+    companyId: string,
+    id: string,
+    input: { name?: string; stock?: number },
+    type = 'corte',
+  ): Promise<Product> {
+    const inventoryType = this.normalizeInventoryType(type);
+    const product = await this.productsRepository.findOne({
+      where: { id, companyId, type: inventoryType },
+    });
+    if (!product) {
+      throw new NotFoundException('Producto no encontrado en el inventario seleccionado.');
+    }
+
+    if (input.name !== undefined) {
+      const name = String(input.name).trim();
+      if (!name) {
+        throw new BadRequestException('El nombre del producto no puede estar vacío.');
+      }
+      product.name = name;
+    }
+
+    if (input.stock !== undefined) {
+      const stock = Number(input.stock);
+      if (!Number.isFinite(stock) || stock < 0) {
+        throw new BadRequestException('El stock debe ser un número mayor o igual a 0.');
+      }
+      product.stock = stock;
+    }
+
     return this.productsRepository.save(product);
   }
 }

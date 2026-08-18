@@ -5,6 +5,10 @@ export interface InventoryRow {
   reference: string;
   description: string;
   stock: number;
+  /** Tipo de inventario declarado en el Excel (si la columna existe). */
+  inventoryType?: 'corte' | 'subproducto';
+  /** Número de fila del Excel (1-based) para mensajes de validación. */
+  rowNumber: number;
 }
 
 /** Normaliza un encabezado: minúsculas, sin tildes, sin espacios extra. */
@@ -20,6 +24,15 @@ function normalize(value: string): string {
 const REFERENCE_KEYS = ['referencia', 'ref', 'codigo', 'sku'];
 const DESCRIPTION_KEYS = ['descripcion', 'nombre', 'producto', 'articulo'];
 const STOCK_KEYS = ['stock', 'existencia', 'cantidad', 'saldo'];
+const TYPE_KEYS = ['tipo', 'tipo inventario', 'inventario', 'tipo producto'];
+
+function parseInventoryType(value: unknown): 'corte' | 'subproducto' | undefined {
+  const raw = normalize(String(value ?? ''));
+  if (!raw) return undefined;
+  if (raw === 'corte' || raw === 'cortes') return 'corte';
+  if (raw === 'subproducto' || raw === 'subproductos') return 'subproducto';
+  return undefined;
+}
 
 /**
  * Lee la plantilla de inventario (Referencia, Descripción, Stock).
@@ -59,6 +72,7 @@ export function parseInventoryExcel(buffer: Buffer): InventoryRow[] {
   const refIdx = findIndex(REFERENCE_KEYS);
   const descIdx = findIndex(DESCRIPTION_KEYS);
   const stockIdx = findIndex(STOCK_KEYS);
+  const typeIdx = findIndex(TYPE_KEYS);
 
   if (refIdx === -1 || descIdx === -1 || stockIdx === -1) {
     throw new BadRequestException(
@@ -74,6 +88,8 @@ export function parseInventoryExcel(buffer: Buffer): InventoryRow[] {
     const reference = String(row[refIdx] ?? '').trim();
     const description = String(row[descIdx] ?? '').trim();
     const rawStock = row[stockIdx];
+    const inventoryType =
+      typeIdx >= 0 ? parseInventoryType(row[typeIdx]) : undefined;
 
     // Saltamos filas sin referencia (filas vacías al final, totales, etc.).
     if (!reference) continue;
@@ -90,6 +106,8 @@ export function parseInventoryExcel(buffer: Buffer): InventoryRow[] {
       reference,
       description: description || reference,
       stock: Number.isFinite(stock) ? stock : 0,
+      inventoryType,
+      rowNumber: i + 1,
     });
   }
 
@@ -105,11 +123,11 @@ export function parseInventoryExcel(buffer: Buffer): InventoryRow[] {
 /** Genera un Excel de plantilla con encabezados y un ejemplo. */
 export function buildInventoryTemplate(): Buffer {
   const data = [
-    ['Referencia', 'Descripción', 'Stock'],
-    ['1001', 'LOMO FINO', 10],
+    ['Referencia', 'Descripción', 'Stock', 'Tipo inventario'],
+    ['1001', 'LOMO FINO', 10, 'corte'],
   ];
   const sheet = XLSX.utils.aoa_to_sheet(data);
-  sheet['!cols'] = [{ wch: 16 }, { wch: 40 }, { wch: 10 }];
+  sheet['!cols'] = [{ wch: 16 }, { wch: 40 }, { wch: 10 }, { wch: 18 }];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, 'Inventario');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;

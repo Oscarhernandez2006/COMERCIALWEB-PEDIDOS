@@ -137,6 +137,66 @@ export class ProductsController {
    * administradores y a los usuarios con permiso del módulo de inventario
    * (p. ej. vendedores de MONTERIA TAT habilitados para inventario).
    */
+  @Post('manual')
+  async createManual(
+    @CompanyId() companyId: string,
+    @CurrentUser() user: User,
+    @Body() body: { sku?: string; name?: string; stock?: number | string },
+    @Query('type') type = 'corte',
+  ) {
+    const allowed = await this.usersService.hasPermissionInCompany(
+      user.id,
+      companyId,
+      '/admin/inventario',
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        'No tienes permiso para editar el inventario.',
+      );
+    }
+    return this.productsService.createManual(
+      companyId,
+      {
+        sku: body?.sku,
+        name: body?.name,
+        stock: body?.stock != null ? Number(body.stock) : 0,
+      },
+      type,
+    );
+  }
+
+  /**
+   * Edición individual de un producto (nombre/stock) sin usar cargue masivo.
+   */
+  @Patch(':id/manual')
+  async updateManual(
+    @CompanyId() companyId: string,
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() body: { name?: string; stock?: number | string },
+    @Query('type') type = 'corte',
+  ) {
+    const allowed = await this.usersService.hasPermissionInCompany(
+      user.id,
+      companyId,
+      '/admin/inventario',
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        'No tienes permiso para editar el inventario.',
+      );
+    }
+    return this.productsService.updateManual(
+      companyId,
+      id,
+      {
+        name: body?.name,
+        stock: body?.stock != null ? Number(body.stock) : undefined,
+      },
+      type,
+    );
+  }
+
   @Patch(':id/stock')
   async updateStock(
     @CompanyId() companyId: string,
