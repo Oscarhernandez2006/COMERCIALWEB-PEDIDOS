@@ -283,6 +283,14 @@ export interface SellerCommercialDashboard {
     revenue: number;
     lastPurchase: string | null;
   }[];
+  /** Clientes asignados que NO compraron en el periodo (para seguimiento). */
+  customersNotBuying: {
+    name: string;
+    code: string;
+    city: string | null;
+    revenue: number;
+    lastPurchase: string | null;
+  }[];
   salesByCut: {
     name: string;
     quantity: number;

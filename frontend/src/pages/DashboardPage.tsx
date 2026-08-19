@@ -167,6 +167,10 @@ export function DashboardPage() {
   const [view] = useState<'month' | 'day' | 'range'>('range');
   const [fromStr, setFromStr] = useState(() => firstOfMonthISO());
   const [toStr, setToStr] = useState(() => todayISO());
+  // Vista de la lista de clientes: los que compran o los que NO compran.
+  const [customerView, setCustomerView] = useState<'buying' | 'not-buying'>(
+    'buying',
+  );
 
   // Solo los administradores pueden ver el tablero de otro vendedor o el
   // general. Por defecto, un administrador ve el general (todos los vendedores).
@@ -598,46 +602,101 @@ export function DashboardPage() {
         </Card>
 
         <Card className="lg:col-span-1 lg:self-start">
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle className="text-base">Mis Clientes</CardTitle>
+            <div className="mt-2 inline-flex overflow-hidden rounded-md border border-input text-xs">
+              {(
+                [
+                  ['buying', 'Compran'],
+                  ['not-buying', 'No compran'],
+                ] as const
+              ).map(([key, txt]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCustomerView(key)}
+                  className={cn(
+                    'px-3 py-1 font-medium transition-colors',
+                    customerView === key
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-background text-muted-foreground hover:bg-accent',
+                  )}
+                >
+                  {txt}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="max-h-96 divide-y divide-border overflow-y-auto">
-              {data && data.topCustomers.length > 0 ? (
-                data.topCustomers.map((c, i) => (
-                  <div
-                    key={`${c.code}-${i}`}
-                    className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50"
-                  >
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="text-sm font-medium leading-snug"
-                        title={c.name}
+              {(() => {
+                const list =
+                  customerView === 'buying'
+                    ? data?.topCustomers
+                    : data?.customersNotBuying;
+                if (data && list && list.length > 0) {
+                  return list.map((c, i) => (
+                    <div
+                      key={`${c.code}-${i}`}
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50"
+                    >
+                      <span
+                        className={cn(
+                          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                          customerView === 'buying'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-amber-100 text-amber-700',
+                        )}
                       >
-                        {c.name}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {c.city ?? 'Sin ciudad'}
-                      </p>
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="text-sm font-medium leading-snug"
+                          title={c.name}
+                        >
+                          {c.name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {c.city ?? 'Sin ciudad'}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {customerView === 'buying' ? (
+                          <>
+                            <p className="text-sm font-semibold tabular-nums">
+                              {formatCurrency(c.revenue)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(c.lastPurchase)}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[11px] text-muted-foreground">
+                              Última compra
+                            </p>
+                            <p className="text-xs font-medium">
+                              {c.lastPurchase
+                                ? formatDate(c.lastPurchase)
+                                : 'Nunca'}
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-semibold tabular-nums">
-                        {formatCurrency(c.revenue)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(c.lastPurchase)}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  {isLoading ? 'Cargando…' : 'Sin ventas en el período.'}
-                </p>
-              )}
+                  ));
+                }
+                return (
+                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {isLoading
+                      ? 'Cargando…'
+                      : customerView === 'buying'
+                        ? 'Sin ventas en el período.'
+                        : 'Todos tus clientes compraron.'}
+                  </p>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>

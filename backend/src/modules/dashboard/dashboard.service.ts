@@ -58,6 +58,14 @@ export interface SellerCommercialDashboard {
     revenue: number;
     lastPurchase: string | null;
   }[];
+  /** Clientes asignados que NO compraron en el periodo (para seguimiento). */
+  customersNotBuying: {
+    name: string;
+    code: string;
+    city: string | null;
+    revenue: number;
+    lastPurchase: string | null;
+  }[];
   /** Ventas por corte (producto) del mes. */
   salesByCut: {
     name: string;
@@ -502,6 +510,14 @@ export class DashboardService {
       singleDay,
     );
 
+    // Clientes asignados que NO compraron en el periodo, para hacerles
+    // seguimiento y contactarlos (se excluyen los que sí compraron).
+    const customersNotBuying = await this.getCustomersNotBuying(
+      companyId,
+      activeCodes,
+      new Set(topCustomers.map((c) => c.code)),
+    );
+
     const label = singleDay
       ? new Date(`${from}T12:00:00`).toLocaleDateString('es-CO', {
           weekday: 'long',
@@ -545,6 +561,7 @@ export class DashboardService {
       growth: { revenuePct, kilosPct },
       salesTrend,
       topCustomers,
+      customersNotBuying,
       salesByCut,
       salesByChannel,
       budget,
@@ -850,6 +867,56 @@ export class DashboardService {
         ? new Date(r.lastPurchase).toISOString()
         : null,
     }));
+  }
+
+  /**
+   * Clientes asignados al vendedor (por código) que NO compraron en el periodo.
+   * Incluye su última compra (cualquier fecha) para priorizar el contacto.
+   * `boughtCodes` son los códigos que SÍ compraron en el periodo (se excluyen).
+   */
+  private async getCustomersNotBuying(
+    companyId: string,
+    codes: string[],
+    boughtCodes: Set<string>,
+  ): Promise<SellerCommercialDashboard['customersNotBuying']> {
+    if (!codes || codes.length === 0) return [];
+    const rows = await this.clientsRepository
+      .createQueryBuilder('cr')
+      .leftJoin(
+        'orders',
+        'o',
+        'o.customer_id = cr.id AND o.status IN (:...statuses)',
+        { statuses: SALE_STATUSES },
+      )
+      .select('cr.name', 'name')
+      .addSelect('cr.code', 'code')
+      .addSelect('MIN(cr.city)', 'city')
+      .addSelect('MAX(o.created_at)', 'lastPurchase')
+      .where('cr.companyId = :base', { base: baseCompanyId(companyId) })
+      .andWhere('cr.sellerCode IN (:...codes)', { codes })
+      .groupBy('cr.code')
+      .addGroupBy('cr.name')
+      .getRawMany<{
+        name: string;
+        code: string;
+        city: string | null;
+        lastPurchase: string | null;
+      }>();
+
+    return rows
+      .filter((r) => !boughtCodes.has(r.code))
+      .map((r) => ({
+        name: r.name,
+        code: r.code,
+        city: r.city ?? null,
+        revenue: 0,
+        lastPurchase: r.lastPurchase
+          ? new Date(r.lastPurchase).toISOString()
+          : null,
+      }))
+      // Primero los que nunca compraron, luego por compra más antigua.
+      .sort((a, b) => (a.lastPurchase ?? '').localeCompare(b.lastPurchase ?? ''))
+      .slice(0, 300);
   }
 
   /** Ventas por corte (producto) del mes: cantidad y venta por referencia. */
