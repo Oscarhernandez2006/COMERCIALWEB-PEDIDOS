@@ -73,7 +73,7 @@ export function SalesTrendChart({
     <div className="w-full">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="h-56 w-full"
+        className="h-72 w-full"
         preserveAspectRatio="none"
         role="img"
         aria-label="Tendencia de ventas"

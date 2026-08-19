@@ -543,12 +543,12 @@ export function DashboardPage() {
       </div>
 
       {/* Cumplimiento + Tendencia + Mis clientes */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-4">
+        <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="text-base">Cumplimiento del Mes</CardTitle>
           </CardHeader>
-          <CardContent className="flex h-56 items-center justify-around gap-2">
+          <CardContent className="flex flex-col items-center justify-center gap-6 py-6">
             {cumplimientoPesos != null ? (
               <RingGauge pct={cumplimientoPesos} label="Pesos" />
             ) : (
@@ -574,7 +574,7 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <TrendingUp className="h-4 w-4 text-primary" />
@@ -597,7 +597,7 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="text-base">Mis Clientes</CardTitle>
           </CardHeader>
