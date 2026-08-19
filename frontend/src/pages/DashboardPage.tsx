@@ -1004,6 +1004,13 @@ export function DashboardPage() {
           <RankItem
             label="Clientes Atendidos"
             value={isLoading ? '…' : String(totals?.customersServed ?? 0)}
+            hint={
+              isLoading
+                ? undefined
+                : totals && totals.activeCustomers > 0
+                  ? `${((totals.customersServed / totals.activeCustomers) * 100).toFixed(1)}% de activos`
+                  : undefined
+            }
           />
           <RankItem
             label="Clientes Activos"
