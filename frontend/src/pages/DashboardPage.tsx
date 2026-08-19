@@ -10,6 +10,7 @@ import {
   Info,
   Calendar,
   RefreshCw,
+  ChevronDown,
   ArrowUpRight,
   ArrowDownRight,
 } from 'lucide-react';
@@ -248,8 +249,8 @@ export function DashboardPage() {
   return (
     <div className="space-y-5">
       {/* Encabezado */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-primary/10 to-transparent p-4">
-        <div>
+      <div className="flex flex-col gap-3 rounded-xl bg-gradient-to-r from-primary/10 to-transparent p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
             Tablero de Gestión Comercial
           </h2>
@@ -273,68 +274,87 @@ export function DashboardPage() {
             )}
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2 lg:shrink-0">
           {isAdmin && (
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">
                 Vendedor
               </label>
               <div className="relative">
-                <input
-                  type="text"
-                  value={sellerSearch}
-                  placeholder={
-                    sellerId && sellerId !== 'all'
-                      ? sellers.find((s) => s.id === sellerId)?.name ??
-                        'Buscar vendedor...'
-                      : 'Todos (general)'
-                  }
-                  onChange={(e) => {
-                    setSellerSearch(e.target.value);
-                    setSellerOpen(true);
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSellerSearch('');
+                    setSellerOpen((o) => !o);
                   }}
-                  onFocus={() => setSellerOpen(true)}
-                  onBlur={() => setTimeout(() => setSellerOpen(false), 150)}
-                  className="h-9 w-56 rounded-md border border-input bg-background px-2 text-sm"
-                />
+                  className="flex h-9 w-56 items-center justify-between rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <span className="truncate">
+                    {sellerId && sellerId !== 'all'
+                      ? sellers.find((s) => s.id === sellerId)?.name ??
+                        'Vendedor'
+                      : 'Todos (general)'}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
                 {sellerOpen && (
-                  <div className="absolute z-20 mt-1 max-h-64 w-56 overflow-auto rounded-md border border-border bg-background shadow-lg">
-                    <button
-                      type="button"
-                      className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        setSellerId('all');
-                        setSellerSearch('');
-                        setSellerOpen(false);
-                      }}
-                    >
-                      Todos (general)
-                    </button>
-                    {filteredSellers.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={cn(
-                          'flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent',
-                          s.id === sellerId && 'bg-accent/60 font-medium',
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setSellerOpen(false)}
+                    />
+                    <div className="absolute z-20 mt-1 w-56 rounded-md border border-border bg-background shadow-lg">
+                      <div className="p-1">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={sellerSearch}
+                          onChange={(e) => setSellerSearch(e.target.value)}
+                          placeholder="Buscar vendedor..."
+                          className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                        />
+                      </div>
+                      <div className="max-h-56 overflow-auto">
+                        <button
+                          type="button"
+                          className={cn(
+                            'flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent',
+                            (!sellerId || sellerId === 'all') &&
+                              'bg-accent/60 font-medium',
+                          )}
+                          onClick={() => {
+                            setSellerId('all');
+                            setSellerSearch('');
+                            setSellerOpen(false);
+                          }}
+                        >
+                          Todos (general)
+                        </button>
+                        {filteredSellers.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={cn(
+                              'flex w-full items-center px-3 py-2 text-left text-sm hover:bg-accent',
+                              s.id === sellerId && 'bg-accent/60 font-medium',
+                            )}
+                            onClick={() => {
+                              setSellerId(s.id);
+                              setSellerSearch('');
+                              setSellerOpen(false);
+                            }}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                        {filteredSellers.length === 0 && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">
+                            Sin vendedores.
+                          </p>
                         )}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setSellerId(s.id);
-                          setSellerSearch('');
-                          setSellerOpen(false);
-                        }}
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                    {filteredSellers.length === 0 && (
-                      <p className="px-3 py-2 text-sm text-muted-foreground">
-                        Sin vendedores.
-                      </p>
-                    )}
-                  </div>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
