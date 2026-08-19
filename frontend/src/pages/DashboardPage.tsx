@@ -17,6 +17,7 @@ import {
 import { useAuth } from '@/auth/useAuth';
 import { useSellerDashboard, useSellers } from '@/hooks/useApi';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import type { SellerCommercialDashboard } from '@/types';
 import {
   Card,
   CardContent,
@@ -171,6 +172,10 @@ export function DashboardPage() {
   const [customerView, setCustomerView] = useState<'buying' | 'not-buying'>(
     'buying',
   );
+  // Categoría seleccionada para abrir el modal con su detalle ítem por ítem.
+  const [categoryModal, setCategoryModal] = useState<
+    NonNullable<SellerCommercialDashboard['salesByCategory']>[number] | null
+  >(null);
 
   // Solo los administradores pueden ver el tablero de otro vendedor o el
   // general. Por defecto, un administrador ve el general (todos los vendedores).
@@ -702,123 +707,293 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      {/* Canales (desde el ERP) y cortes (pedidos de la app) */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Ventas por Canal</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="max-h-56 overflow-y-auto">
-              {data && data.salesByChannel.length > 0 ? (
-                (() => {
-                  const totalCh = data.salesByChannel.reduce(
-                    (s, c) => s + c.revenue,
-                    0,
-                  );
-                  return (
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">Canal</th>
-                          <th className="px-3 py-2 text-right font-medium">Kg</th>
-                          <th className="px-3 py-2 text-right font-medium">
-                            Venta
-                          </th>
-                          <th className="px-3 py-2 text-right font-medium">%</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {data.salesByChannel.map((c, i) => {
-                          const pct =
-                            totalCh > 0 ? (c.revenue / totalCh) * 100 : 0;
-                          return (
-                            <tr
-                              key={`${c.name}-${i}`}
-                              className="hover:bg-muted/40"
-                            >
-                              <td className="px-3 py-2 font-medium">
-                                {c.name}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums">
-                                {c.kilos.toLocaleString('es-CO', {
-                                  maximumFractionDigits: 1,
-                                })}
-                              </td>
-                              <td className="px-3 py-2 text-right font-medium tabular-nums">
-                                {formatCurrency(c.revenue)}
-                              </td>
-                              <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                                {pct.toFixed(1)}%
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  );
-                })()
-              ) : (
-                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  {isLoading ? 'Cargando…' : 'Sin ventas de canal en el período.'}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
+      {/* Ventas por categoría (Canales / Cortes / Subproductos). Cada fila
+          abre un modal con el detalle ítem por ítem, de mayor a menor. */}
+      {data?.salesByCategory ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Ventas en Cortes</CardTitle>
+            <CardTitle className="text-base">Ventas por Categoría</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-56 divide-y divide-border overflow-y-auto">
-              {data && data.salesByCut.length > 0 ? (
-                (() => {
-                  const totalCut = data.salesByCut.reduce(
-                    (s, c) => s + c.revenue,
-                    0,
-                  );
-                  return data.salesByCut.map((c, i) => {
-                    const pct =
-                      totalCut > 0 ? (c.revenue / totalCut) * 100 : 0;
-                    return (
-                      <div key={`${c.name}-${i}`} className="px-4 py-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <p
-                            className="min-w-0 flex-1 truncate text-sm font-medium"
-                            title={c.name}
-                          >
-                            {c.name}
-                          </p>
-                          <span className="shrink-0 text-sm font-semibold tabular-nums">
+            {(() => {
+              const cats = data.salesByCategory ?? [];
+              const totalCat = cats.reduce((s, c) => s + c.revenue, 0);
+              if (cats.length === 0) {
+                return (
+                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {isLoading ? 'Cargando…' : 'Sin ventas en el período.'}
+                  </p>
+                );
+              }
+              return (
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Categoría</th>
+                      <th className="px-4 py-2 text-right font-medium">Kg</th>
+                      <th className="px-4 py-2 text-right font-medium">Venta</th>
+                      <th className="px-4 py-2 text-right font-medium">%</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {cats.map((c) => {
+                      const pct =
+                        totalCat > 0 ? (c.revenue / totalCat) * 100 : 0;
+                      return (
+                        <tr
+                          key={c.category}
+                          onClick={() => setCategoryModal(c)}
+                          className="cursor-pointer hover:bg-muted/50"
+                        >
+                          <td className="px-4 py-3 font-medium">
+                            <span className="flex items-center gap-2">
+                              {c.category}
+                              <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
+                            </span>
+                            <span className="text-[11px] font-normal text-muted-foreground">
+                              {c.items.length} ítem
+                              {c.items.length === 1 ? '' : 's'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums">
+                            {c.kilos.toLocaleString('es-CO', {
+                              maximumFractionDigits: 1,
+                            })}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold tabular-nums">
                             {formatCurrency(c.revenue)}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-2">
-                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="w-10 shrink-0 text-right text-[11px] text-muted-foreground">
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                             {pct.toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  });
-                })()
-              ) : (
-                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  {isLoading ? 'Cargando…' : 'Sin ventas en el período.'}
-                </p>
-              )}
-            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="border-t-2 border-border bg-muted/30">
+                    <tr>
+                      <td className="px-4 py-3 font-semibold">Total</td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                        {cats
+                          .reduce((s, c) => s + c.kilos, 0)
+                          .toLocaleString('es-CO', {
+                            maximumFractionDigits: 1,
+                          })}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                        {formatCurrency(totalCat)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                        100%
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              );
+            })()}
           </CardContent>
         </Card>
-      </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">Ventas por Canal</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-56 overflow-y-auto">
+                {data && data.salesByChannel.length > 0 ? (
+                  (() => {
+                    const totalCh = data.salesByChannel.reduce(
+                      (s, c) => s + c.revenue,
+                      0,
+                    );
+                    return (
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">Canal</th>
+                            <th className="px-3 py-2 text-right font-medium">
+                              Kg
+                            </th>
+                            <th className="px-3 py-2 text-right font-medium">
+                              Venta
+                            </th>
+                            <th className="px-3 py-2 text-right font-medium">
+                              %
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {data.salesByChannel.map((c, i) => {
+                            const pct =
+                              totalCh > 0 ? (c.revenue / totalCh) * 100 : 0;
+                            return (
+                              <tr
+                                key={`${c.name}-${i}`}
+                                className="hover:bg-muted/40"
+                              >
+                                <td className="px-3 py-2 font-medium">
+                                  {c.name}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {c.kilos.toLocaleString('es-CO', {
+                                    maximumFractionDigits: 1,
+                                  })}
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium tabular-nums">
+                                  {formatCurrency(c.revenue)}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                                  {pct.toFixed(1)}%
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    );
+                  })()
+                ) : (
+                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {isLoading
+                      ? 'Cargando…'
+                      : 'Sin ventas de canal en el período.'}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Ventas en Cortes</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-56 divide-y divide-border overflow-y-auto">
+                {data && data.salesByCut.length > 0 ? (
+                  (() => {
+                    const totalCut = data.salesByCut.reduce(
+                      (s, c) => s + c.revenue,
+                      0,
+                    );
+                    return data.salesByCut.map((c, i) => {
+                      const pct =
+                        totalCut > 0 ? (c.revenue / totalCut) * 100 : 0;
+                      return (
+                        <div key={`${c.name}-${i}`} className="px-4 py-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <p
+                              className="min-w-0 flex-1 truncate text-sm font-medium"
+                              title={c.name}
+                            >
+                              {c.name}
+                            </p>
+                            <span className="shrink-0 text-sm font-semibold tabular-nums">
+                              {formatCurrency(c.revenue)}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="w-10 shrink-0 text-right text-[11px] text-muted-foreground">
+                              {pct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()
+                ) : (
+                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {isLoading ? 'Cargando…' : 'Sin ventas en el período.'}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal con el detalle ítem por ítem de la categoría seleccionada. */}
+      {categoryModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setCategoryModal(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {categoryModal.category}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {formatCurrency(categoryModal.revenue)} ·{' '}
+                  {categoryModal.kilos.toLocaleString('es-CO', {
+                    maximumFractionDigits: 1,
+                  })}{' '}
+                  Kg · {categoryModal.items.length} ítem
+                  {categoryModal.items.length === 1 ? '' : 's'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryModal(null)}
+                className="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-5 py-2 font-medium">Producto</th>
+                    <th className="px-3 py-2 text-right font-medium">Kg</th>
+                    <th className="px-5 py-2 text-right font-medium">Venta</th>
+                    <th className="px-3 py-2 text-right font-medium">%</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {categoryModal.items.map((it) => {
+                    const pct =
+                      categoryModal.revenue > 0
+                        ? (it.revenue / categoryModal.revenue) * 100
+                        : 0;
+                    return (
+                      <tr key={it.ref} className="hover:bg-muted/40">
+                        <td className="px-5 py-2">
+                          <span className="font-medium">{it.name}</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {it.ref}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {it.kilos.toLocaleString('es-CO', {
+                            maximumFractionDigits: 1,
+                          })}
+                        </td>
+                        <td className="px-5 py-2 text-right font-medium tabular-nums">
+                          {formatCurrency(it.revenue)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          {pct.toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ranking personal */}
       <Card>

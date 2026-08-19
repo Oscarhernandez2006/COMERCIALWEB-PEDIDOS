@@ -78,6 +78,16 @@ export interface SellerCommercialDashboard {
     kilos: number;
     revenue: number;
   }[];
+  /**
+   * Ventas agrupadas por categoría (Canales, Cortes, Subproductos, Otros) con
+   * el detalle de sus ítems, para el desglose y el modal por categoría (ERP).
+   */
+  salesByCategory?: {
+    category: string;
+    kilos: number;
+    revenue: number;
+    items: { name: string; ref: string; kilos: number; revenue: number }[];
+  }[];
   /** Presupuesto (meta) del vendedor para el mes, si está cargado. */
   budget: { expectedRevenue: number; targetKilos: number } | null;
   /** Proyección de ventas de la compañía para el mes (total), si existe. */
@@ -181,6 +191,12 @@ export class DashboardService {
     byDay: Map<string, number>;
     byProduct: { name: string; quantity: number; revenue: number }[];
     byCanal: { name: string; kilos: number; revenue: number }[];
+    byCategory: {
+      category: string;
+      kilos: number;
+      revenue: number;
+      items: { name: string; ref: string; kilos: number; revenue: number }[];
+    }[];
   }> {
     const rows: VendorProductSaleRaw[] = [];
     for (const periodo of this.periodsBetween(from, to)) {
@@ -200,6 +216,19 @@ export class DashboardService {
     const canalMap = new Map<
       string,
       { name: string; kilos: number; revenue: number }
+    >();
+    // Agrupación por categoría (Canales/Cortes/Subproductos/Otros) con el
+    // detalle de cada ítem, para el desglose unificado y su modal.
+    const categoryMap = new Map<
+      string,
+      {
+        kilos: number;
+        revenue: number;
+        items: Map<
+          string,
+          { name: string; ref: string; kilos: number; revenue: number }
+        >;
+      }
     >();
 
     const filterByNit = nits.size > 0;
@@ -232,6 +261,26 @@ export class DashboardService {
       const qty = Number(row.cantidad_base) || 0;
       revenue += bruto;
       kilos += qty;
+      // Categoría del ítem según `criterio_producto` del ERP.
+      const category =
+        crit === 'CANAL' || name.toUpperCase().startsWith('CANAL')
+          ? 'Canales'
+          : crit === 'CORTE'
+            ? 'Cortes'
+            : crit === 'SUBPRODUCTO'
+              ? 'Subproductos'
+              : 'Otros';
+      let cat = categoryMap.get(category);
+      if (!cat) {
+        cat = { kilos: 0, revenue: 0, items: new Map() };
+        categoryMap.set(category, cat);
+      }
+      cat.kilos += qty;
+      cat.revenue += bruto;
+      const it = cat.items.get(ref) ?? { name, ref, kilos: 0, revenue: 0 };
+      it.kilos += qty;
+      it.revenue += bruto;
+      cat.items.set(ref, it);
       // Los canales enteros (CANAL DE CERDO/NOVILLA/NOVILLO/VACA) van a su
       // propia tarjeta; el resto (cortes, subproductos, etc.) a la de productos.
       if (crit === 'CANAL' || name.toUpperCase().startsWith('CANAL')) {
@@ -269,7 +318,23 @@ export class DashboardService {
       }
     }
 
-    return { revenue, kilos, byDay, byProduct, byCanal };
+    // Se garantizan las categorías principales (aunque estén en cero) y se
+    // ordenan por venta descendente; los ítems de cada una también.
+    for (const c of ['Canales', 'Cortes', 'Subproductos']) {
+      if (!categoryMap.has(c)) {
+        categoryMap.set(c, { kilos: 0, revenue: 0, items: new Map() });
+      }
+    }
+    const byCategory = [...categoryMap.entries()]
+      .map(([category, v]) => ({
+        category,
+        kilos: v.kilos,
+        revenue: v.revenue,
+        items: [...v.items.values()].sort((a, b) => b.revenue - a.revenue),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return { revenue, kilos, byDay, byProduct, byCanal, byCategory };
   }
 
   /** Último día (YYYY-MM-DD) del mes de una fecha. */
@@ -420,6 +485,8 @@ export class DashboardService {
     let salesTrend: SellerCommercialDashboard['salesTrend'];
     let salesByCut: SellerCommercialDashboard['salesByCut'];
     let salesByChannel: SellerCommercialDashboard['salesByChannel'];
+    let salesByCategory: SellerCommercialDashboard['salesByCategory'] =
+      undefined;
     let revenuePct: number | null;
     let kilosPct: number | null;
 
@@ -438,6 +505,7 @@ export class DashboardService {
       salesTrend = this.buildErpTrend(trendFrom, trendTo, erp.byDay);
       salesByCut = erp.byProduct;
       salesByChannel = erp.byCanal;
+      salesByCategory = erp.byCategory;
       revenuePct =
         erpPrev.revenue > 0
           ? Number(
@@ -564,6 +632,7 @@ export class DashboardService {
       customersNotBuying,
       salesByCut,
       salesByChannel,
+      salesByCategory,
       budget,
       projection,
     };

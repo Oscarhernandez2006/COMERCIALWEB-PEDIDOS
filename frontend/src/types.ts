@@ -301,6 +301,12 @@ export interface SellerCommercialDashboard {
     kilos: number;
     revenue: number;
   }[];
+  salesByCategory?: {
+    category: string;
+    kilos: number;
+    revenue: number;
+    items: { name: string; ref: string; kilos: number; revenue: number }[];
+  }[];
   budget: { expectedRevenue: number; targetKilos: number } | null;
   projection: { revenue: number; kilos: number } | null;
 }
