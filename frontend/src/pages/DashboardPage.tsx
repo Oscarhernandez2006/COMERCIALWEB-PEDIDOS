@@ -704,11 +704,7 @@ export function DashboardPage() {
 
       {/* Canales (desde el ERP) y cortes (pedidos de la app) */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Card izquierda: reservada (vacía) */}
-        <Card />
-
-
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">Ventas por Canal</CardTitle>
           </CardHeader>
@@ -741,10 +737,7 @@ export function DashboardPage() {
                               key={`${c.name}-${i}`}
                               className="hover:bg-muted/40"
                             >
-                              <td
-                                className="max-w-[120px] truncate px-3 py-2"
-                                title={c.name}
-                              >
+                              <td className="px-3 py-2 font-medium">
                                 {c.name}
                               </td>
                               <td className="px-3 py-2 text-right tabular-nums">
