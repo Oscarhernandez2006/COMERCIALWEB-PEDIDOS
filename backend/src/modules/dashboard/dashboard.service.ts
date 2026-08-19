@@ -227,8 +227,6 @@ export class DashboardService {
       // Los canales enteros (CANAL DE CERDO/NOVILLA/NOVILLO/VACA) van a su
       // propia tarjeta; el resto (cortes, subproductos, etc.) a la de productos.
       if (crit === 'CANAL' || name.toUpperCase().startsWith('CANAL')) {
-        // CANAL DE VACA no se maneja en SIGCOM; no se lista en canales.
-        if (name.toUpperCase().includes('VACA')) continue;
         const cg = canalMap.get(ref) ?? { name, kilos: 0, revenue: 0 };
         cg.kilos += qty;
         cg.revenue += bruto;
