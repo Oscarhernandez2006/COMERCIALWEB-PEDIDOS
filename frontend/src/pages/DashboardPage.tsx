@@ -613,7 +613,10 @@ export function DashboardPage() {
                       {i + 1}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium" title={c.name}>
+                      <p
+                        className="text-sm font-medium leading-snug"
+                        title={c.name}
+                      >
                         {c.name}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
