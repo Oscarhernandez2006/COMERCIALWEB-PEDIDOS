@@ -704,93 +704,67 @@ export function DashboardPage() {
 
       {/* Canales (desde el ERP) y cortes (pedidos de la app) */}
       <div className="grid gap-4 lg:grid-cols-3">
+        {/* Card izquierda: reservada (vacía) */}
+        <Card />
+
+
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Ventas por Canal (Pesos)</CardTitle>
+            <CardTitle className="text-base">Ventas por Canal</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-56 divide-y divide-border overflow-y-auto">
+            <div className="max-h-56 overflow-y-auto">
               {data && data.salesByChannel.length > 0 ? (
                 (() => {
                   const totalCh = data.salesByChannel.reduce(
                     (s, c) => s + c.revenue,
                     0,
                   );
-                  return data.salesByChannel.map((c, i) => {
-                    const pct = totalCh > 0 ? (c.revenue / totalCh) * 100 : 0;
-                    return (
-                      <div key={`${c.name}-${i}`} className="px-4 py-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <p
-                            className="min-w-0 flex-1 truncate text-sm font-medium"
-                            title={c.name}
-                          >
-                            {c.name}
-                          </p>
-                          <span className="shrink-0 text-sm font-semibold tabular-nums">
-                            {formatCurrency(c.revenue)}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-2">
-                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="w-10 shrink-0 text-right text-[11px] text-muted-foreground">
-                            {pct.toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  });
+                  return (
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Canal</th>
+                          <th className="px-3 py-2 text-right font-medium">Kg</th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            Venta
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">%</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {data.salesByChannel.map((c, i) => {
+                          const pct =
+                            totalCh > 0 ? (c.revenue / totalCh) * 100 : 0;
+                          return (
+                            <tr
+                              key={`${c.name}-${i}`}
+                              className="hover:bg-muted/40"
+                            >
+                              <td
+                                className="max-w-[120px] truncate px-3 py-2"
+                                title={c.name}
+                              >
+                                {c.name}
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {c.kilos.toLocaleString('es-CO', {
+                                  maximumFractionDigits: 1,
+                                })}
+                              </td>
+                              <td className="px-3 py-2 text-right font-medium tabular-nums">
+                                {formatCurrency(c.revenue)}
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                                {pct.toFixed(1)}%
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  );
                 })()
-              ) : (
-                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  {isLoading ? 'Cargando…' : 'Sin ventas de canal en el período.'}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Ventas en Canales</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="max-h-56 overflow-y-auto">
-              {data && data.salesByChannel.length > 0 ? (
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-muted/50 text-left text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Canal</th>
-                      <th className="px-3 py-2 text-right font-medium">Kg</th>
-                      <th className="px-3 py-2 text-right font-medium">Venta</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {data.salesByChannel.map((c, i) => (
-                      <tr key={`${c.name}-${i}`} className="hover:bg-muted/40">
-                        <td
-                          className="max-w-[120px] truncate px-3 py-2"
-                          title={c.name}
-                        >
-                          {c.name}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {c.kilos.toLocaleString('es-CO', {
-                            maximumFractionDigits: 1,
-                          })}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium tabular-nums">
-                          {formatCurrency(c.revenue)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               ) : (
                 <p className="px-4 py-10 text-center text-sm text-muted-foreground">
                   {isLoading ? 'Cargando…' : 'Sin ventas de canal en el período.'}
