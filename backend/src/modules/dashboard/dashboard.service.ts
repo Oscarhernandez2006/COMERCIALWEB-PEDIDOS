@@ -245,6 +245,21 @@ export class DashboardService {
     const byCanal = [...canalMap.values()]
       .map((c) => ({ name: c.name, kilos: c.kilos, revenue: c.revenue }))
       .sort((a, b) => b.revenue - a.revenue);
+    // Se listan SIEMPRE los canales conocidos, aunque estén en cero, para saber
+    // si se están vendiendo o no. Los que sí tienen venta van arriba (ya
+    // ordenados); los que faltan se agregan en cero al final.
+    const CANALES_CONOCIDOS = [
+      'CANAL DE CERDO',
+      'CANAL DE NOVILLO',
+      'CANAL DE NOVILLA',
+      'CANAL DE VACA',
+    ];
+    const presentes = new Set(byCanal.map((c) => c.name.trim().toUpperCase()));
+    for (const nombre of CANALES_CONOCIDOS) {
+      if (!presentes.has(nombre)) {
+        byCanal.push({ name: nombre, kilos: 0, revenue: 0 });
+      }
+    }
 
     return { revenue, kilos, byDay, byProduct, byCanal };
   }
