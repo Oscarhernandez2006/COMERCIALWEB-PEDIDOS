@@ -251,6 +251,18 @@ export class DashboardService {
       ) {
         continue;
       }
+      // Solo se incluyen productos de la agropecuaria: canales, cortes y
+      // subproductos. El resto (víveres, embutidos, etc.) pertenece a OTRA
+      // compañía y NO debe sumarse ni mostrarse en este tablero.
+      const esCanal = crit === 'CANAL' || name.toUpperCase().startsWith('CANAL');
+      const category = esCanal
+        ? 'Canales'
+        : crit === 'CORTE'
+          ? 'Cortes'
+          : crit === 'SUBPRODUCTO'
+            ? 'Subproductos'
+            : null;
+      if (!category) continue;
       // Se consolida la venta con el VALOR BRUTO. Las líneas negativas son
       // devoluciones: se suman tal cual, de modo que restan del total.
       const bruto = Number(row.valor_bruto) || 0;
@@ -261,15 +273,6 @@ export class DashboardService {
       const qty = Number(row.cantidad_base) || 0;
       revenue += bruto;
       kilos += qty;
-      // Categoría del ítem según `criterio_producto` del ERP.
-      const category =
-        crit === 'CANAL' || name.toUpperCase().startsWith('CANAL')
-          ? 'Canales'
-          : crit === 'CORTE'
-            ? 'Cortes'
-            : crit === 'SUBPRODUCTO'
-              ? 'Subproductos'
-              : 'Otros';
       let cat = categoryMap.get(category);
       if (!cat) {
         cat = { kilos: 0, revenue: 0, items: new Map() };
@@ -283,7 +286,7 @@ export class DashboardService {
       cat.items.set(ref, it);
       // Los canales enteros (CANAL DE CERDO/NOVILLA/NOVILLO/VACA) van a su
       // propia tarjeta; el resto (cortes, subproductos, etc.) a la de productos.
-      if (crit === 'CANAL' || name.toUpperCase().startsWith('CANAL')) {
+      if (esCanal) {
         const cg = canalMap.get(ref) ?? { name, kilos: 0, revenue: 0 };
         cg.kilos += qty;
         cg.revenue += bruto;
