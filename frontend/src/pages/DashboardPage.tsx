@@ -597,12 +597,12 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-1">
+        <Card className="flex flex-col lg:col-span-1">
           <CardHeader>
             <CardTitle className="text-base">Mis Clientes</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
-            <div className="max-h-56 divide-y divide-border overflow-y-auto">
+          <CardContent className="min-h-0 flex-1 p-0">
+            <div className="h-full divide-y divide-border overflow-y-auto">
               {data && data.topCustomers.length > 0 ? (
                 data.topCustomers.map((c, i) => (
                   <div
