@@ -38,6 +38,8 @@ function normalizeOrderType(type?: string): 'corte' | 'subproducto' {
 export interface DownloadableOrder {
   id: string;
   orderNumber: string;
+  /** Segundo consecutivo (subproductos divididos: bovino/porcino). */
+  secondNumber?: string | null;
   customerName: string;
   customerCode: string;
   sellerName: string;
@@ -343,6 +345,7 @@ export class AdminOrdersService {
         result.push({
           id: o.id,
           orderNumber: o.orderNumber,
+          secondNumber: o.secondNumber ?? null,
           customerName: o.customer?.name ?? '',
           customerCode: o.customer?.code ?? '',
           sellerName: o.seller?.name ?? '',
@@ -361,6 +364,7 @@ export class AdminOrdersService {
     return orders.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
+      secondNumber: o.secondNumber ?? null,
       customerName: o.customer?.name ?? '',
       customerCode: o.customer?.code ?? '',
       sellerName: o.seller?.name ?? '',

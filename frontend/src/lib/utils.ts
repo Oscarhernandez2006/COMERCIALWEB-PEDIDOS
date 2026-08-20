@@ -22,3 +22,14 @@ export function formatDate(value?: string | null): string {
   if (!y || !m || !d) return value;
   return `${d}/${m}/${y}`;
 }
+
+/**
+ * Número(s) de pedido para mostrar. Los subproductos divididos tienen dos
+ * consecutivos (uno por documento en Siesa); se muestran ambos ("3638 / 3735").
+ */
+export function orderNos(
+  orderNumber: string,
+  secondNumber?: string | null,
+): string {
+  return secondNumber ? `${orderNumber} / ${secondNumber}` : orderNumber;
+}

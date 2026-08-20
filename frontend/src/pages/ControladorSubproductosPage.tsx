@@ -20,7 +20,7 @@ import {
   useApproveControlSubproducto,
   useRejectControlSubproducto,
 } from '@/hooks/useAdminApi';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, orderNos } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -144,7 +144,7 @@ export function ControladorSubproductosPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="flex items-center gap-2 font-semibold">
-                      Pedido #{order.orderNumber}
+                      Pedido #{orderNos(order.orderNumber, order.secondNumber)}
                       {order.status === 'failed' && (
                         <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
                           Error al subir
@@ -401,7 +401,9 @@ function EditSubproductoModal({
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-card shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div>
-            <h3 className="font-bold">Editar pedido #{order.orderNumber}</h3>
+            <h3 className="font-bold">
+              Editar pedido #{orderNos(order.orderNumber, order.secondNumber)}
+            </h3>
             <p className="text-xs text-muted-foreground">
               {order.customer.name}
             </p>

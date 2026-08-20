@@ -19,7 +19,7 @@ import {
 } from '@/hooks/useApi';
 import { useAuth } from '@/auth/useAuth';
 import { useCompany } from '@/company/useCompany';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, orderNos } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -186,7 +186,7 @@ export function OrdersPage() {
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold">Pedido #{order.orderNumber}</p>
+                      <p className="font-semibold">Pedido #{orderNos(order.orderNumber, order.secondNumber)}</p>
                       <OrderStatusBadge status={order.status} />
                       <SiesaStateBadge state={siesaStates[order.orderNumber]} />
                     </div>
@@ -292,7 +292,7 @@ export function OrdersPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-semibold">
-                    Pedido #{detailTarget.orderNumber}
+                    Pedido #{orderNos(detailTarget.orderNumber, detailTarget.secondNumber)}
                   </h3>
                   <OrderStatusBadge status={detailTarget.status} />
                 </div>

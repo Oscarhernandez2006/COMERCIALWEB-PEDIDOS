@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search, Plus, Minus, Trash2, ShoppingCart, Check, X } from 'lucide-react';
 import { useProductsForList, useUpdateOrder } from '@/hooks/useApi';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, orderNos } from '@/lib/utils';
 import type { CartLine, Order, SellableProduct } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -145,7 +145,7 @@ export function EditOrderModal({ order, onClose }: EditOrderModalProps) {
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div>
             <h3 className="text-lg font-semibold">
-              Editar pedido #{order.orderNumber}
+              Editar pedido #{orderNos(order.orderNumber, order.secondNumber)}
             </h3>
             <p className="text-sm text-muted-foreground">
               {order.customer.name} · Lista{' '}

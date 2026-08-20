@@ -35,7 +35,7 @@ import {
   downloadOrderPdf,
 } from '@/hooks/useApi';
 import { useOrderSchedule } from '@/hooks/useAdminApi';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, cn, orderNos } from '@/lib/utils';
 import { DeliverySchedulePicker } from '@/components/DeliverySchedulePicker';
 import { isScheduleComplete, formatDeliverySchedule } from '@/lib/delivery-schedule';
 import { getMinOrderTotal } from '@/lib/companies';
@@ -1201,7 +1201,7 @@ export function NewOrderPage() {
               </div>
               <h3 className="text-lg font-semibold">¡Pedido creado!</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Pedido #{createdOrder.orderNumber} registrado correctamente.
+                Pedido #{orderNos(createdOrder.orderNumber, createdOrder.secondNumber)} registrado correctamente.
                 Puedes descargar el documento aquí o desde Pedidos.
               </p>
               <p className="mt-3 text-3xl font-bold tracking-tight">

@@ -1343,6 +1343,8 @@ export function useAdminOrders(companyId: string, filters: AdminOrdersFilters) {
 export interface DownloadableOrder {
   id: string;
   orderNumber: string;
+  /** Segundo consecutivo (subproductos divididos: bovino/porcino). */
+  secondNumber?: string | null;
   customerName: string;
   customerCode: string;
   sellerName: string;

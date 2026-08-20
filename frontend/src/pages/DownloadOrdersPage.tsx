@@ -18,7 +18,7 @@ import {
   useSetOrderPickedBulk,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
-import { cn } from '@/lib/utils';
+import { cn, orderNos } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -424,7 +424,7 @@ export function DownloadOrdersPage({
                           />
                         </td>
                         <td className="px-3 py-2 font-medium">
-                          #{o.orderNumber}
+                          #{orderNos(o.orderNumber, o.secondNumber)}
                         </td>
                         <td className="px-3 py-2">
                           <div className="font-medium">{o.customerName}</div>

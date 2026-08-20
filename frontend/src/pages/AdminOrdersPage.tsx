@@ -22,7 +22,7 @@ import {
 } from '@/hooks/useAdminApi';
 import { downloadOrderPdf } from '@/hooks/useApi';
 import { COMPANIES } from '@/lib/companies';
-import { cn } from '@/lib/utils';
+import { cn, orderNos } from '@/lib/utils';
 import { useCompany } from '@/company/useCompany';
 import { useAuth } from '@/auth/useAuth';
 import { OrderStatusBadge } from '@/components/OrderStatusBadge';
@@ -354,7 +354,7 @@ export function AdminOrdersPage() {
                       className="cursor-pointer border-t border-border transition-colors hover:bg-accent/40"
                     >
                       <td className="px-3 py-2 font-medium">
-                        #{o.orderNumber}
+                        #{orderNos(o.orderNumber, o.secondNumber)}
                       </td>
                       <td className="px-3 py-2">
                         <OrderStatusBadge status={o.status as OrderStatus} />
@@ -479,7 +479,7 @@ function OrderDetailModal({
         <div className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-semibold">
-              Pedido #{order.orderNumber}
+              Pedido #{orderNos(order.orderNumber, order.secondNumber)}
             </h3>
             <OrderStatusBadge status={order.status as OrderStatus} />
           </div>
@@ -498,12 +498,6 @@ function OrderDetailModal({
             <Row label="Vendedor" value={order.sellerName} />
             <Row label="Documento" value={order.sellerDocument} />
             <Row label="Código vendedor" value={order.sellerCode} />
-            {order.secondNumber ? (
-              <Row
-                label="Consecutivos (2 docs Siesa)"
-                value={`${order.orderNumber} / ${order.secondNumber}`}
-              />
-            ) : null}
             <Row label="Creado" value={dateTime(order.createdAt)} />
             <Row label="Fecha de entrega" value={order.deliveryDate} />
           </Section>

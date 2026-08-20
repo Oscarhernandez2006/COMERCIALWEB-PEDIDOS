@@ -149,6 +149,8 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNumber: string;
+  /** Segundo consecutivo (subproductos divididos en dos documentos Siesa). */
+  secondNumber?: string | null;
   customer: Client;
   seller: User;
   items: OrderItem[];
