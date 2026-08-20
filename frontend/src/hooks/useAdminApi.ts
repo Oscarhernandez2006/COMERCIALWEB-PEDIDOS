@@ -75,6 +75,7 @@ interface CreateUserInput {
   email?: string;
   role: 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion';
   siesaSellerCode?: string;
+  clientBudget?: boolean;
   permissions?: string[];
 }
 
@@ -97,6 +98,7 @@ interface UpdateUserInput {
   email?: string;
   role?: 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion';
   siesaSellerCode?: string;
+  clientBudget?: boolean;
 }
 
 /** Edita la información de un usuario. */

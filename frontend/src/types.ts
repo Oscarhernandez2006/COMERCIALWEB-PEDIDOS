@@ -697,6 +697,8 @@ export interface AdminUser {
   name: string;
   role: UserRole;
   active: boolean;
+  /** Presupuesto por cliente/tienda (aparte del general). */
+  clientBudget?: boolean;
   createdAt: string;
   companies: UserCompanyAccess[];
   permissions: string[];

@@ -249,6 +249,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
       | 'cartera'
       | 'alistador'
       | 'facturacion',
+    clientBudget: false,
   });
 
   function setRole(
@@ -324,6 +325,25 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
               <option value="facturacion">Facturación</option>
             </select>
           </div>
+          {form.role === 'seller' && (
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4"
+                checked={form.clientBudget}
+                onChange={(e) =>
+                  setForm({ ...form, clientBudget: e.target.checked })
+                }
+              />
+              <span className="text-sm">
+                Presupuesto por cliente / tienda
+                <span className="block text-xs text-muted-foreground">
+                  La meta se asigna por cada cliente asignado y queda aparte del
+                  presupuesto general del comercial (ej. Juan Sierra).
+                </span>
+              </span>
+            </label>
+          )}
         </div>
 
         {/* Los módulos visibles se asignan por compañía después de crear el
@@ -371,6 +391,7 @@ function EditUserModal({
     name: user.name,
     email: user.email ?? '',
     role: user.role as 'admin' | 'seller' | 'cartera' | 'alistador' | 'facturacion',
+    clientBudget: user.clientBudget ?? false,
     password: '',
   });
 
@@ -383,6 +404,7 @@ function EditUserModal({
         name: form.name,
         email: form.email ? form.email : undefined,
         role: form.role,
+        clientBudget: form.clientBudget,
         // Solo enviamos la contraseña si se escribió una nueva.
         ...(form.password ? { password: form.password } : {}),
       },
@@ -451,6 +473,25 @@ function EditUserModal({
               <option value="facturacion">Facturación</option>
             </select>
           </div>
+          {form.role === 'seller' && (
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 sm:col-span-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4"
+                checked={form.clientBudget}
+                onChange={(e) =>
+                  setForm({ ...form, clientBudget: e.target.checked })
+                }
+              />
+              <span className="text-sm">
+                Presupuesto por cliente / tienda
+                <span className="block text-xs text-muted-foreground">
+                  La meta se asigna por cada cliente asignado y queda aparte del
+                  presupuesto general del comercial (ej. Juan Sierra).
+                </span>
+              </span>
+            </label>
+          )}
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="edit-password">Nueva contraseña (opcional)</Label>
             <Input

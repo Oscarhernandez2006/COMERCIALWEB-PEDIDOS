@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -32,6 +33,11 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   siesaSellerCode?: string;
+
+  /** Presupuesto por cliente/tienda (aparte del general). */
+  @IsBoolean()
+  @IsOptional()
+  clientBudget?: boolean;
 
   /** Módulos visibles para el usuario (rutas del front). Vacío = todos. */
   @IsArray()

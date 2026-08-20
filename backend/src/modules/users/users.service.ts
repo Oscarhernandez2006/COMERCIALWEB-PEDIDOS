@@ -25,6 +25,7 @@ export class UsersService {
       name: dto.name,
       role: dto.role,
       siesaSellerCode: dto.siesaSellerCode,
+      clientBudget: dto.clientBudget ?? false,
       permissions: dto.permissions ?? [],
       passwordHash,
     });
@@ -87,6 +88,7 @@ export class UsersService {
     if (dto.siesaSellerCode !== undefined) {
       user.siesaSellerCode = dto.siesaSellerCode || undefined;
     }
+    if (dto.clientBudget !== undefined) user.clientBudget = dto.clientBudget;
     if (dto.password) {
       user.passwordHash = await bcrypt.hash(dto.password, 10);
     }

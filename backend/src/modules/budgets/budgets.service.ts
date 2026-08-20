@@ -93,7 +93,8 @@ export class BudgetsService {
           siesaSellerCode: m.siesaSellerCode ?? null,
           targetKilos: Number(b?.targetKilos ?? 0),
           expectedRevenue: Number(b?.expectedRevenue ?? 0),
-          clientBudget: clientDocs.has(m.user.documentId),
+          clientBudget:
+            m.user.clientBudget || clientDocs.has(m.user.documentId),
         };
       });
 
@@ -179,12 +180,15 @@ export class BudgetsService {
     return new Set(BUDGET_APART_SELLER_DOCS.map((d) => d.trim()).filter(Boolean));
   }
 
-  /** ¿El vendedor maneja presupuesto por cliente/tienda? (config, sin DB extra). */
+  /**
+   * ¿El vendedor maneja presupuesto por cliente/tienda? Se activa con el flag
+   * `clientBudget` del usuario (checkbox en el admin) o, como respaldo, con su
+   * cédula en la lista de código {@link BUDGET_APART_SELLER_DOCS}.
+   */
   async isClientBudgetSeller(sellerId: string): Promise<boolean> {
-    const docs = this.clientBudgetDocs();
-    if (docs.size === 0) return false;
     const u = await this.usersService.findById(sellerId).catch(() => null);
-    return !!u && docs.has(u.documentId);
+    if (!u) return false;
+    return u.clientBudget || this.clientBudgetDocs().has(u.documentId);
   }
 
   /**
@@ -310,13 +314,14 @@ export class BudgetsService {
     };
   }
 
-  /** Ids de usuarios cuyo presupuesto va aparte (por cédula en config). */
+  /** Ids de usuarios cuyo presupuesto va aparte (flag de BD o cédula en config). */
   private async apartSellerIds(): Promise<Set<string>> {
-    if (BUDGET_APART_SELLER_DOCS.length === 0) return new Set();
-    const docs = new Set(BUDGET_APART_SELLER_DOCS.map((d) => d.trim()));
+    const docs = this.clientBudgetDocs();
     const users = await this.usersService.findAll();
     return new Set(
-      users.filter((u) => docs.has(u.documentId)).map((u) => u.id),
+      users
+        .filter((u) => u.clientBudget || docs.has(u.documentId))
+        .map((u) => u.id),
     );
   }
 

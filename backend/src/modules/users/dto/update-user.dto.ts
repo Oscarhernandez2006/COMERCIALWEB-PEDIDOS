@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -36,4 +37,9 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   siesaSellerCode?: string;
+
+  /** Presupuesto por cliente/tienda (aparte del general). */
+  @IsBoolean()
+  @IsOptional()
+  clientBudget?: boolean;
 }

@@ -35,6 +35,14 @@ export class User extends BaseEntity {
   siesaSellerCode?: string;
 
   /**
+   * Si es true, el vendedor maneja el presupuesto POR CLIENTE/tienda (p. ej.
+   * Juan Sierra): su meta se carga por cada cliente asignado, se muestra el
+   * desglose por tienda en el tablero y su total queda APARTE del general.
+   */
+  @Column({ name: 'client_budget', default: false })
+  clientBudget: boolean;
+
+  /**
    * Módulos que el usuario puede ver dentro de su área (rutas del front, p. ej.
    * "/pedidos", "/admin/inventario"). Si está vacío, ve todos los módulos de su
    * rol (compatibilidad con usuarios anteriores).

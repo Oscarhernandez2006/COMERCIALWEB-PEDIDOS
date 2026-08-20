@@ -123,6 +123,7 @@ export class AdminUsersController {
       name: user.name,
       role: user.role,
       active: user.active,
+      clientBudget: user.clientBudget,
       permissions: user.permissions ?? [],
       createdAt: user.createdAt,
       companies: mappings.map((m) => ({
