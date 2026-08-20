@@ -4,11 +4,13 @@ import type {
   AdminDashboardStats,
   AdminUser,
   BudgetRow,
+  ClientBudgetRow,
   ClientPortfolio,
   InventoryReportData,
   ManagerialDashboardStats,
   Order,
   Product,
+  ProductCost,
   ProductSalesReportData,
   ProjectionConfig,
   SalesSummaryReportData,
@@ -260,6 +262,106 @@ export function useSaveBudgets() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({
         queryKey: ['admin', 'budgets', vars.companyId, vars.month, vars.year],
+      });
+    },
+  });
+}
+
+/* ---- Presupuesto por cliente/tienda (vendedores "por cliente") ---- */
+
+export function useClientBudgets(
+  companyId: string,
+  sellerId: string,
+  month: number,
+  year: number,
+) {
+  return useQuery({
+    queryKey: ['admin', 'client-budgets', companyId, sellerId, month, year],
+    queryFn: async () => {
+      const res = await api.get<ClientBudgetRow[]>('/admin/budgets/clients', {
+        params: { sellerId, month, year },
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+    enabled: Boolean(companyId && sellerId),
+  });
+}
+
+interface SaveClientBudgetsInput {
+  companyId: string;
+  sellerId: string;
+  month: number;
+  year: number;
+  items: { clientCode: string; targetKilos: number; expectedRevenue: number }[];
+}
+
+export function useSaveClientBudgets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      companyId,
+      sellerId,
+      month,
+      year,
+      items,
+    }: SaveClientBudgetsInput) => {
+      const res = await api.put<ClientBudgetRow[]>(
+        '/admin/budgets/clients',
+        { sellerId, month, year, items },
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({
+        queryKey: [
+          'admin',
+          'client-budgets',
+          vars.companyId,
+          vars.sellerId,
+          vars.month,
+          vars.year,
+        ],
+      });
+    },
+  });
+}
+
+/* ---- Costos estándar por producto (rentabilidad) ---- */
+
+export function useProductCosts(companyId: string) {
+  return useQuery({
+    queryKey: ['admin', 'product-costs', companyId],
+    queryFn: async () => {
+      const res = await api.get<ProductCost[]>('/admin/product-costs', {
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+    enabled: Boolean(companyId),
+  });
+}
+
+interface SaveProductCostsInput {
+  companyId: string;
+  items: { productRef: string; name?: string; unitCost: number }[];
+}
+
+export function useSaveProductCosts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ companyId, items }: SaveProductCostsInput) => {
+      const res = await api.put<ProductCost[]>(
+        '/admin/product-costs',
+        { items },
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({
+        queryKey: ['admin', 'product-costs', vars.companyId],
       });
     },
   });
@@ -1165,6 +1267,8 @@ export interface AdminOrderItem {
 export interface AdminOrderDetail {
   id: string;
   orderNumber: string;
+  /** Segundo consecutivo (subproductos divididos: bovino/porcino). */
+  secondNumber?: string | null;
   companyId: string;
   status: string;
   type: string;

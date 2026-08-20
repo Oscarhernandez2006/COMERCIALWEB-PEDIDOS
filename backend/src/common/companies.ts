@@ -16,6 +16,16 @@ export const COMPANIES: Company[] = [
 
 export const COMPANY_IDS = COMPANIES.map((c) => c.id);
 
+/**
+ * Cédulas (document_id) de vendedores cuyo presupuesto se maneja APARTE y NO
+ * debe sumarse al presupuesto general del comercial (p. ej. Juan Sierra, que va
+ * por tienda/cliente). Es solo configuración de código (sin cambios en la BD):
+ * agrega aquí la cédula del vendedor para excluirlo del total general.
+ */
+export const BUDGET_APART_SELLER_DOCS: string[] = [
+  '72004911 ', // Juan Sierra 
+];
+
 export function isValidCompany(id: string | undefined): id is string {
   return !!id && COMPANY_IDS.includes(id);
 }

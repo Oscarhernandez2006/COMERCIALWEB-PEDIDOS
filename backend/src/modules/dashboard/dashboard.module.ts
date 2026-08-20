@@ -8,6 +8,7 @@ import { ClientRecord } from '../clients/entities/client-record.entity';
 import { UserCompany } from '../users/entities/user-company.entity';
 import { User } from '../users/entities/user.entity';
 import { BudgetsModule } from '../budgets/budgets.module';
+import { ProductCostsModule } from '../product-costs/product-costs.module';
 import { ChannelSalesModule } from '../channel-sales/channel-sales.module';
 import { PriceListsModule } from '../price-lists/price-lists.module';
 
@@ -15,6 +16,7 @@ import { PriceListsModule } from '../price-lists/price-lists.module';
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem, ClientRecord, UserCompany, User]),
     BudgetsModule,
+    ProductCostsModule,
     ChannelSalesModule,
     PriceListsModule,
   ],

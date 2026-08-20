@@ -19,6 +19,7 @@ import {
   FileText,
   Clock,
   Target,
+  Coins,
   ClipboardCheck,
   ChevronDown,
   Menu,
@@ -88,6 +89,7 @@ const adminSections: { label: string; items: typeof sellerNav }[] = [
       { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
       { to: '/admin/clientes', label: 'Clientes', icon: Users },
       { to: '/admin/presupuestos', label: 'Presupuestos', icon: Target },
+      { to: '/admin/rentabilidad', label: 'Rentabilidad · Costos', icon: Coins },
     ],
   },
   {

@@ -8,6 +8,7 @@ import { UserCompany } from '../users/entities/user-company.entity';
 import { User, UserRole } from '../users/entities/user.entity';
 import { bogotaToday } from '../orders/order-cortes';
 import { BudgetsService } from '../budgets/budgets.service';
+import { ProductCostsService } from '../product-costs/product-costs.service';
 import { baseCompanyId } from '../../common/companies';
 import { ChannelSalesClient, ChannelSaleRaw } from '../channel-sales/channel-sales.client';
 import { PriceListsService } from '../price-lists/price-lists.service';
@@ -55,6 +56,8 @@ export interface SellerCommercialDashboard {
     name: string;
     code: string;
     city: string | null;
+    branch: string | null;
+    branchName: string | null;
     revenue: number;
     lastPurchase: string | null;
   }[];
@@ -63,6 +66,8 @@ export interface SellerCommercialDashboard {
     name: string;
     code: string;
     city: string | null;
+    branch: string | null;
+    branchName: string | null;
     revenue: number;
     lastPurchase: string | null;
   }[];
@@ -92,6 +97,32 @@ export interface SellerCommercialDashboard {
   budget: { expectedRevenue: number; targetKilos: number } | null;
   /** Proyección de ventas de la compañía para el mes (total), si existe. */
   projection: { revenue: number; kilos: number } | null;
+  /**
+   * Rentabilidad del período (venta − costo estándar cargado). `null` si no hay
+   * costos cargados o la compañía no tiene ventas del ERP.
+   */
+  profitability: {
+    cost: number;
+    margin: number;
+    marginPct: number | null;
+  } | null;
+  /**
+   * Desglose de presupuesto POR cliente/tienda para vendedores "por cliente"
+   * (p. ej. Juan Sierra): meta vs. venta real de cada tienda. `null` para los
+   * vendedores normales.
+   */
+  clientBudgets:
+    | {
+        clientCode: string;
+        clientName: string;
+        branch: string | null;
+        branchName: string | null;
+        targetRevenue: number;
+        targetKilos: number;
+        revenue: number;
+        compliancePct: number | null;
+      }[]
+    | null;
 }
 
 @Injectable()
@@ -108,6 +139,7 @@ export class DashboardService {
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
     private readonly budgetsService: BudgetsService,
+    private readonly productCostsService: ProductCostsService,
     private readonly channelSalesClient: ChannelSalesClient,
     private readonly priceListsService: PriceListsService,
   ) {}
@@ -185,9 +217,11 @@ export class DashboardService {
     nits: Set<string>,
     from: string,
     to: string,
+    costMap?: Map<string, number>,
   ): Promise<{
     revenue: number;
     kilos: number;
+    cost: number;
     byDay: Map<string, number>;
     byProduct: { name: string; quantity: number; revenue: number }[];
     byCanal: { name: string; kilos: number; revenue: number }[];
@@ -206,6 +240,7 @@ export class DashboardService {
 
     let revenue = 0;
     let kilos = 0;
+    let cost = 0;
     const byDay = new Map<string, number>();
     // Cortes (todo lo que NO es un canal entero) y canales (CANAL DE ...) por
     // separado, cada uno agrupado por referencia de producto.
@@ -273,6 +308,7 @@ export class DashboardService {
       const qty = Number(row.cantidad_base) || 0;
       revenue += bruto;
       kilos += qty;
+      cost += qty * (costMap?.get(ref) ?? 0);
       let cat = categoryMap.get(category);
       if (!cat) {
         cat = { kilos: 0, revenue: 0, items: new Map() };
@@ -337,7 +373,7 @@ export class DashboardService {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    return { revenue, kilos, byDay, byProduct, byCanal, byCategory };
+    return { revenue, kilos, cost, byDay, byProduct, byCanal, byCategory };
   }
 
   /** Último día (YYYY-MM-DD) del mes de una fecha. */
@@ -492,15 +528,29 @@ export class DashboardService {
       undefined;
     let revenuePct: number | null;
     let kilosPct: number | null;
+    let profitability: SellerCommercialDashboard['profitability'] = null;
 
     if (useErp) {
       // AGROPECUARIA: ventas facturadas en Siesa (valor_neto) y kilos.
+      const costMap = await this.productCostsService.costMap(companyId);
       const [erp, erpPrev] = await Promise.all([
-        this.getErpSales(nitSet, from, to),
+        this.getErpSales(nitSet, from, to, costMap),
         this.getErpSales(nitSet, prevFrom, prevTo),
       ]);
       revenue = erp.revenue;
       totalKilos = erp.kilos;
+      // Rentabilidad: solo si hay costos cargados (si no, "sin datos").
+      if (costMap.size > 0) {
+        const margin = erp.revenue - erp.cost;
+        profitability = {
+          cost: erp.cost,
+          margin,
+          marginPct:
+            erp.revenue > 0
+              ? Number(((margin / erp.revenue) * 100).toFixed(1))
+              : null,
+        };
+      }
       // La tendencia siempre grafica la venta diaria del MES (aunque se filtre
       // un solo día o un rango dentro del mes).
       const trendFrom = singleDay ? `${from.slice(0, 7)}-01` : from;
@@ -589,6 +639,38 @@ export class DashboardService {
       new Set(topCustomers.map((c) => c.code)),
     );
 
+    // Desglose de presupuesto POR cliente/tienda (solo vendedores "por cliente",
+    // p. ej. Juan Sierra). Cruza la meta por cliente con la venta real (pedidos).
+    let clientBudgets: SellerCommercialDashboard['clientBudgets'] = null;
+    if (!allSellers && (await this.budgetsService.isClientBudgetSeller(sellerId))) {
+      const metas = await this.budgetsService.listClientBudgets(
+        companyId,
+        sellerId,
+        month,
+        year,
+      );
+      const revByCode = new Map<string, number>();
+      for (const c of [...topCustomers, ...customersNotBuying]) {
+        revByCode.set(c.code, (revByCode.get(c.code) ?? 0) + c.revenue);
+      }
+      clientBudgets = metas.map((m) => {
+        const rev = revByCode.get(m.clientCode) ?? 0;
+        return {
+          clientCode: m.clientCode,
+          clientName: m.clientName,
+          branch: m.branch,
+          branchName: m.branchName,
+          targetRevenue: m.expectedRevenue,
+          targetKilos: m.targetKilos,
+          revenue: rev,
+          compliancePct:
+            m.expectedRevenue > 0
+              ? Number(((rev / m.expectedRevenue) * 100).toFixed(1))
+              : null,
+        };
+      });
+    }
+
     const label = singleDay
       ? new Date(`${from}T12:00:00`).toLocaleDateString('es-CO', {
           weekday: 'long',
@@ -638,6 +720,8 @@ export class DashboardService {
       salesByCategory,
       budget,
       projection,
+      profitability,
+      clientBudgets,
     };
   }
 
@@ -913,6 +997,8 @@ export class DashboardService {
       .select('c.name', 'name')
       .addSelect('c.code', 'code')
       .addSelect('MIN(c.city)', 'city')
+      .addSelect('MIN(c.branch)', 'branch')
+      .addSelect('MIN(c.branchName)', 'branchName')
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .addSelect('MAX(o.created_at)', 'lastPurchase')
       .where('o.companyId = :companyId', { companyId })
@@ -926,6 +1012,8 @@ export class DashboardService {
         name: string;
         code: string;
         city: string | null;
+        branch: string | null;
+        branchName: string | null;
         revenue: string;
         lastPurchase: string | null;
       }>();
@@ -934,6 +1022,8 @@ export class DashboardService {
       name: r.name,
       code: r.code,
       city: r.city ?? null,
+      branch: r.branch ?? null,
+      branchName: r.branchName ?? null,
       revenue: Number(r.revenue),
       lastPurchase: r.lastPurchase
         ? new Date(r.lastPurchase).toISOString()
@@ -963,6 +1053,8 @@ export class DashboardService {
       .select('cr.name', 'name')
       .addSelect('cr.code', 'code')
       .addSelect('MIN(cr.city)', 'city')
+      .addSelect('MIN(cr.branch)', 'branch')
+      .addSelect('MIN(cr.branchName)', 'branchName')
       .addSelect('MAX(o.created_at)', 'lastPurchase')
       .where('cr.companyId = :base', { base: baseCompanyId(companyId) })
       .andWhere('cr.sellerCode IN (:...codes)', { codes })
@@ -972,6 +1064,8 @@ export class DashboardService {
         name: string;
         code: string;
         city: string | null;
+        branch: string | null;
+        branchName: string | null;
         lastPurchase: string | null;
       }>();
 
@@ -981,6 +1075,8 @@ export class DashboardService {
         name: r.name,
         code: r.code,
         city: r.city ?? null,
+        branch: r.branch ?? null,
+        branchName: r.branchName ?? null,
         revenue: 0,
         lastPurchase: r.lastPurchase
           ? new Date(r.lastPurchase).toISOString()

@@ -127,6 +127,10 @@ export class OrdersErpClient {
       this.logger.log(
         `Respuesta de carga (compañía ${companyId}): ${JSON.stringify(response.data)}`,
       );
+      // Siesa puede responder HTTP 200 pero rechazar el pedido dentro de
+      // `respuesta_siesa` (printTipoError != 0). Sin esta validación el pedido
+      // quedaría "enviado" aunque Siesa lo rechazó.
+      this.assertErpAccepted(response.data, endpoint);
       const consecutivo = this.extractConsecutivo(response.data);
       if (!consecutivo) {
         this.logger.warn(
@@ -185,6 +189,8 @@ export class OrdersErpClient {
       this.logger.log(
         `Respuesta subproductos (${path}): ${JSON.stringify(response.data)}`,
       );
+      // Detecta rechazos de Siesa (printTipoError != 0) aunque el HTTP sea 200.
+      this.assertErpAccepted(response.data, path);
       return response.data;
     };
 
@@ -211,6 +217,23 @@ export class OrdersErpClient {
       const message = this.describeError(error);
       this.logger.error(`Error subiendo subproductos al ERP: ${message}`);
       throw new Error(message);
+    }
+  }
+
+  /**
+   * Verifica que Siesa haya ACEPTADO el pedido. El wrapper del ERP responde
+   * HTTP 200 con `estado: "ok"` aunque Siesa lo rechace: el rechazo viene dentro
+   * de `respuesta_siesa` como `<printTipoError>1</printTipoError>` y el detalle
+   * en `<f_detalle>`. Si detecta un error, lanza con ese mensaje para que el
+   * pedido quede marcado como fallido (y no como "enviado" en falso).
+   */
+  private assertErpAccepted(data: unknown, context: string): void {
+    const text = typeof data === 'string' ? data : JSON.stringify(data ?? '');
+    const tipo = text.match(/<printTipoError>\s*(\d+)\s*<\/printTipoError>/i);
+    if (tipo && Number(tipo[1]) !== 0) {
+      const detalle = text.match(/<f_detalle>([^<]*)<\/f_detalle>/i);
+      const message = detalle?.[1]?.trim() || 'Siesa rechazó el pedido.';
+      throw new Error(`Siesa rechazó el pedido (${context}): ${message}`);
     }
   }
 

@@ -7,6 +7,8 @@ import {
   Search,
   TrendingUp,
   CalendarDays,
+  Store,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
 import { useCompany } from '@/company/useCompany';
@@ -15,6 +17,8 @@ import {
   useSaveBudgets,
   useProjection,
   useSaveProjection,
+  useClientBudgets,
+  useSaveClientBudgets,
 } from '@/hooks/useAdminApi';
 import { COMPANIES } from '@/lib/companies';
 import { cn } from '@/lib/utils';
@@ -294,6 +298,11 @@ export function BudgetsPage() {
   // Borrador editable indexado por vendedor.
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [saved, setSaved] = useState(false);
+  // Vendedor cuyo presupuesto se edita POR CLIENTE (modo "por cliente").
+  const [clientSeller, setClientSeller] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -343,11 +352,14 @@ export function BudgetsPage() {
 
   const handleSave = async () => {
     if (!data) return;
-    const items = data.map((row) => ({
-      sellerId: row.sellerId,
-      targetKilos: Number(drafts[row.sellerId]?.targetKilos || 0),
-      expectedRevenue: Number(drafts[row.sellerId]?.expectedRevenue || 0),
-    }));
+    // Los vendedores "por cliente" se editan en su modal, no en esta tabla.
+    const items = data
+      .filter((row) => !row.clientBudget)
+      .map((row) => ({
+        sellerId: row.sellerId,
+        targetKilos: Number(drafts[row.sellerId]?.targetKilos || 0),
+        expectedRevenue: Number(drafts[row.sellerId]?.expectedRevenue || 0),
+      }));
     await saveMutation.mutateAsync({ companyId, month, year, items });
     setSaved(true);
   };
@@ -517,32 +529,61 @@ export function BudgetsPage() {
                       <td className="px-4 py-2 text-muted-foreground">
                         {row.siesaSellerCode ?? '—'}
                       </td>
-                      <td className="px-4 py-2 text-right">
-                        <input
-                          inputMode="numeric"
-                          value={drafts[row.sellerId]?.targetKilos ?? ''}
-                          onChange={(e) =>
-                            setField(row.sellerId, 'targetKilos', e.target.value)
-                          }
-                          placeholder="0"
-                          className="w-28 rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <input
-                          inputMode="numeric"
-                          value={drafts[row.sellerId]?.expectedRevenue ?? ''}
-                          onChange={(e) =>
-                            setField(
-                              row.sellerId,
-                              'expectedRevenue',
-                              e.target.value,
-                            )
-                          }
-                          placeholder="0"
-                          className="w-36 rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
-                        />
-                      </td>
+                      {row.clientBudget ? (
+                        <td className="px-4 py-2 text-right" colSpan={2}>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              <Store className="h-3 w-3" />
+                              Meta por cliente/tienda
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setClientSeller({
+                                  id: row.sellerId,
+                                  name: row.sellerName,
+                                })
+                              }
+                            >
+                              Editar por cliente
+                            </Button>
+                          </div>
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-4 py-2 text-right">
+                            <input
+                              inputMode="numeric"
+                              value={drafts[row.sellerId]?.targetKilos ?? ''}
+                              onChange={(e) =>
+                                setField(
+                                  row.sellerId,
+                                  'targetKilos',
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="0"
+                              className="w-28 rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <input
+                              inputMode="numeric"
+                              value={drafts[row.sellerId]?.expectedRevenue ?? ''}
+                              onChange={(e) =>
+                                setField(
+                                  row.sellerId,
+                                  'expectedRevenue',
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="0"
+                              className="w-36 rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
+                            />
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))
                 ) : (
@@ -580,6 +621,249 @@ export function BudgetsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {clientSeller && companyId && (
+        <ClientBudgetModal
+          companyId={companyId}
+          sellerId={clientSeller.id}
+          sellerName={clientSeller.name}
+          month={month}
+          year={year}
+          onClose={() => setClientSeller(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Editor del presupuesto POR CLIENTE/tienda de un vendedor "por cliente"
+ * (p. ej. Juan Sierra). Lista sus clientes asignados (CODIGO_VENDEDOR) y permite
+ * una meta de kilos y venta por cada uno. El total va aparte del general.
+ */
+function ClientBudgetModal({
+  companyId,
+  sellerId,
+  sellerName,
+  month,
+  year,
+  onClose,
+}: {
+  companyId: string;
+  sellerId: string;
+  sellerName: string;
+  month: number;
+  year: number;
+  onClose: () => void;
+}) {
+  const { data, isLoading } = useClientBudgets(companyId, sellerId, month, year);
+  const saveMutation = useSaveClientBudgets();
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [saved, setSaved] = useState(false);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    if (!data) return;
+    const next: Record<string, Draft> = {};
+    for (const row of data) {
+      next[row.clientCode] = {
+        targetKilos: row.targetKilos ? String(row.targetKilos) : '',
+        expectedRevenue: row.expectedRevenue ? String(row.expectedRevenue) : '',
+      };
+    }
+    setDrafts(next);
+    setSaved(false);
+  }, [data]);
+
+  const setField = (code: string, field: keyof Draft, value: string) => {
+    let clean = value.replace(/[^\d.]/g, '');
+    const firstDot = clean.indexOf('.');
+    if (firstDot !== -1) {
+      clean =
+        clean.slice(0, firstDot + 1) +
+        clean.slice(firstDot + 1).replace(/\./g, '');
+    }
+    setDrafts((prev) => ({
+      ...prev,
+      [code]: { ...prev[code], [field]: clean },
+    }));
+    setSaved(false);
+  };
+
+  const totals = useMemo(() => {
+    let kilos = 0;
+    let revenue = 0;
+    for (const d of Object.values(drafts)) {
+      kilos += Number(d.targetKilos || 0);
+      revenue += Number(d.expectedRevenue || 0);
+    }
+    return { kilos, revenue };
+  }, [drafts]);
+
+  const visibleRows = useMemo(() => {
+    if (!data) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter(
+      (r) =>
+        r.clientName.toLowerCase().includes(q) ||
+        r.clientCode.toLowerCase().includes(q) ||
+        (r.branchName ?? '').toLowerCase().includes(q),
+    );
+  }, [data, search]);
+
+  const handleSave = async () => {
+    if (!data) return;
+    const items = data.map((row) => ({
+      clientCode: row.clientCode,
+      targetKilos: Number(drafts[row.clientCode]?.targetKilos || 0),
+      expectedRevenue: Number(drafts[row.clientCode]?.expectedRevenue || 0),
+    }));
+    await saveMutation.mutateAsync({ companyId, sellerId, month, year, items });
+    setSaved(true);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl bg-background shadow-xl">
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-bold">
+              <Store className="h-5 w-5 text-primary" />
+              Presupuesto por cliente/tienda
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {sellerName} · {MONTHS[month - 1]} {year}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 border-b border-border p-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar cliente o tienda…"
+              className="h-9 w-full rounded-md border border-input bg-background pl-8 pr-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saveMutation.isPending || !data?.length}
+          >
+            {saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {saveMutation.isPending
+              ? 'Guardando…'
+              : saved
+                ? 'Guardado'
+                : 'Guardar'}
+          </Button>
+        </div>
+
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 border-b border-border bg-muted/50 text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Cliente / Razón social</th>
+                <th className="px-4 py-2 font-medium">Tienda</th>
+                <th className="px-4 py-2 text-right font-medium">Ppto Kilos</th>
+                <th className="px-4 py-2 text-right font-medium">
+                  Venta Esperada
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-4 py-10 text-center text-muted-foreground"
+                  >
+                    Cargando clientes…
+                  </td>
+                </tr>
+              ) : visibleRows.length > 0 ? (
+                visibleRows.map((row) => (
+                  <tr key={row.clientCode} className="hover:bg-muted/40">
+                    <td className="px-4 py-2">
+                      <div className="font-medium">{row.clientName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {row.clientCode}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {row.branchName ?? row.branch ?? '—'}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <input
+                        inputMode="numeric"
+                        value={drafts[row.clientCode]?.targetKilos ?? ''}
+                        onChange={(e) =>
+                          setField(row.clientCode, 'targetKilos', e.target.value)
+                        }
+                        placeholder="0"
+                        className="w-28 rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <input
+                        inputMode="numeric"
+                        value={drafts[row.clientCode]?.expectedRevenue ?? ''}
+                        onChange={(e) =>
+                          setField(
+                            row.clientCode,
+                            'expectedRevenue',
+                            e.target.value,
+                          )
+                        }
+                        placeholder="0"
+                        className="w-36 rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-4 py-10 text-center text-muted-foreground"
+                  >
+                    {search
+                      ? 'Ningún cliente coincide con la búsqueda.'
+                      : 'Este vendedor no tiene clientes asignados (revisa su código de vendedor).'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {data && data.length > 0 && (
+              <tfoot className="sticky bottom-0 border-t border-border bg-muted/50 font-semibold">
+                <tr>
+                  <td className="px-4 py-2" colSpan={2}>
+                    TOTAL (aparte del general)
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">
+                    {totals.kilos.toLocaleString('en-US', {
+                      maximumFractionDigits: 2,
+                    })}{' '}
+                    kg
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">
+                    {formatSigcom(totals.revenue)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

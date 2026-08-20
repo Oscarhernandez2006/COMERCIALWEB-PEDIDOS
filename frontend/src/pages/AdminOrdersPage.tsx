@@ -498,6 +498,12 @@ function OrderDetailModal({
             <Row label="Vendedor" value={order.sellerName} />
             <Row label="Documento" value={order.sellerDocument} />
             <Row label="Código vendedor" value={order.sellerCode} />
+            {order.secondNumber ? (
+              <Row
+                label="Consecutivos (2 docs Siesa)"
+                value={`${order.orderNumber} / ${order.secondNumber}`}
+              />
+            ) : null}
             <Row label="Creado" value={dateTime(order.createdAt)} />
             <Row label="Fecha de entrega" value={order.deliveryDate} />
           </Section>

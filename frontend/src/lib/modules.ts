@@ -36,6 +36,7 @@ export const ADMIN_MODULES: ModuleDef[] = [
   { key: '/admin/listas-precios', label: 'Listas de precios' },
   { key: '/admin/clientes', label: 'Clientes' },
   { key: '/admin/presupuestos', label: 'Presupuestos' },
+  { key: '/admin/rentabilidad', label: 'Rentabilidad · Costos' },
   { key: '/admin/cartera', label: 'Aprobación de cartera' },
   {
     key: '/admin/controlador-subproductos',

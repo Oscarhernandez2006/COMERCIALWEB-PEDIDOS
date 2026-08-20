@@ -17,6 +17,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { BudgetsModule } from './modules/budgets/budgets.module';
+import { ProductCostsModule } from './modules/product-costs/product-costs.module';
 import { ChannelSalesModule } from './modules/channel-sales/channel-sales.module';
 import { CanalOrdersModule } from './modules/canal-orders/canal-orders.module';
 import { SeederService } from './database/seeder.service';
@@ -43,6 +44,7 @@ import { SeederService } from './database/seeder.service';
     SettingsModule,
     DashboardModule,
     BudgetsModule,
+    ProductCostsModule,
     ChannelSalesModule,
     CanalOrdersModule,
   ],

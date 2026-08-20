@@ -225,6 +225,10 @@ export function DashboardPage() {
   const growthKilos = data?.growth.kilosPct ?? null;
   // Proyección de ventas de la compañía (total del mes), si está asignada.
   const projection = data?.projection ?? null;
+  // Rentabilidad (venta − costo estándar), si hay costos cargados.
+  const profitability = data?.profitability ?? null;
+  // Desglose de presupuesto por tienda/cliente (vendedores "por cliente").
+  const clientBudgets = data?.clientBudgets ?? null;
 
   // Presupuesto: mensual, o su parte proporcional del día cuando se filtra un
   // día (la meta se reparte lineal entre los días del mes).
@@ -549,7 +553,126 @@ export function DashboardPage() {
           icon={Coins}
           accent="bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-300"
         />
+        <KpiCard
+          label="Rentabilidad (Pesos)"
+          value={
+            isLoading ? (
+              '…'
+            ) : profitability != null ? (
+              formatCurrency(profitability.margin)
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                <Info className="h-3 w-3" />
+                Sin costos cargados
+              </span>
+            )
+          }
+          icon={Coins}
+          accent="bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-300"
+          subLabel="Margen"
+          subValue={
+            isLoading
+              ? '…'
+              : profitability?.marginPct != null
+                ? `${profitability.marginPct.toFixed(1)}%`
+                : '—'
+          }
+        />
       </div>
+
+      {/* Presupuesto por tienda/cliente (solo vendedores "por cliente", p. ej.
+          Juan Sierra): meta vs. venta real de cada tienda y su cumplimiento. */}
+      {clientBudgets && clientBudgets.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Wallet className="h-4 w-4 text-primary" />
+              Presupuesto por Tienda / Cliente
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-muted/50 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">
+                      Cliente / Razón social
+                    </th>
+                    <th className="px-4 py-2 font-medium">Tienda</th>
+                    <th className="px-4 py-2 text-right font-medium">
+                      Meta (Pesos)
+                    </th>
+                    <th className="px-4 py-2 text-right font-medium">Venta</th>
+                    <th className="px-4 py-2 text-right font-medium">
+                      Cumplimiento
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {clientBudgets.map((c) => (
+                    <tr key={c.clientCode} className="hover:bg-muted/40">
+                      <td className="px-4 py-2">
+                        <div className="font-medium">{c.clientName}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {c.clientCode}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-muted-foreground">
+                        {c.branchName ?? c.branch ?? '—'}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {c.targetRevenue > 0
+                          ? formatCurrency(c.targetRevenue)
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {formatCurrency(c.revenue)}
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium tabular-nums">
+                        {c.compliancePct != null ? (
+                          <span
+                            className={cn(
+                              c.compliancePct >= 100
+                                ? 'text-primary'
+                                : c.compliancePct >= 70
+                                  ? 'text-emerald-600'
+                                  : c.compliancePct >= 40
+                                    ? 'text-amber-600'
+                                    : 'text-red-600',
+                            )}
+                          >
+                            {c.compliancePct.toFixed(1)}%
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-border bg-muted/50 font-semibold">
+                  <tr>
+                    <td className="px-4 py-2" colSpan={2}>
+                      TOTAL (aparte del general)
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {formatCurrency(
+                        clientBudgets.reduce((s, c) => s + c.targetRevenue, 0),
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {formatCurrency(
+                        clientBudgets.reduce((s, c) => s + c.revenue, 0),
+                      )}
+                    </td>
+                    <td className="px-4 py-2" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cumplimiento + Tendencia + Mis clientes */}
       <div className="grid gap-4 lg:grid-cols-4">
@@ -608,7 +731,7 @@ export function DashboardPage() {
 
         <Card className="lg:col-span-1 lg:self-start">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Mis Clientes</CardTitle>
+            <CardTitle className="text-base">Mis Clientes / Tiendas</CardTitle>
             <div className="mt-2 inline-flex overflow-hidden rounded-md border border-input text-xs">
               {(
                 [
@@ -663,7 +786,7 @@ export function DashboardPage() {
                           {c.name}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {c.city ?? 'Sin ciudad'}
+                          {c.branchName ?? c.branch ?? c.city ?? 'Sin tienda'}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">

@@ -49,6 +49,15 @@ export class Order extends BaseEntity {
   orderNumber: string;
 
   /**
+   * Segundo consecutivo, SOLO para pedidos de subproducto que se dividen en dos
+   * documentos en Siesa (bovino y porcino). Siesa exige O.C. única por pedido,
+   * así que cada mitad usa un consecutivo distinto: el bovino usa `orderNumber`
+   * y el porcino usa `secondNumber`. Es null cuando el pedido no se divide.
+   */
+  @Column({ name: 'second_number', nullable: true })
+  secondNumber?: string;
+
+  /**
    * Tipo de pedido: 'corte' (por defecto) o 'subproducto'. Los subproductos
    * usan el inventario de subproductos y se cargan al ERP de Agropecuaria.
    */

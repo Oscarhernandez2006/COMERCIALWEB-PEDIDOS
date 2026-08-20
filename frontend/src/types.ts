@@ -280,6 +280,8 @@ export interface SellerCommercialDashboard {
     name: string;
     code: string;
     city: string | null;
+    branch: string | null;
+    branchName: string | null;
     revenue: number;
     lastPurchase: string | null;
   }[];
@@ -288,6 +290,8 @@ export interface SellerCommercialDashboard {
     name: string;
     code: string;
     city: string | null;
+    branch: string | null;
+    branchName: string | null;
     revenue: number;
     lastPurchase: string | null;
   }[];
@@ -309,6 +313,25 @@ export interface SellerCommercialDashboard {
   }[];
   budget: { expectedRevenue: number; targetKilos: number } | null;
   projection: { revenue: number; kilos: number } | null;
+  /** Rentabilidad del período (venta − costo estándar). Null si no hay costos. */
+  profitability: {
+    cost: number;
+    margin: number;
+    marginPct: number | null;
+  } | null;
+  /** Desglose de presupuesto por cliente/tienda (vendedores "por cliente"). */
+  clientBudgets:
+    | {
+        clientCode: string;
+        clientName: string;
+        branch: string | null;
+        branchName: string | null;
+        targetRevenue: number;
+        targetKilos: number;
+        revenue: number;
+        compliancePct: number | null;
+      }[]
+    | null;
 }
 
 /** Fila de presupuesto de un vendedor para un mes/año. */
@@ -318,6 +341,26 @@ export interface BudgetRow {
   siesaSellerCode: string | null;
   targetKilos: number;
   expectedRevenue: number;
+  /** true si el vendedor va "por tienda/cliente" (meta por cada cliente). */
+  clientBudget: boolean;
+}
+
+/** Fila de presupuesto de un cliente/tienda de un vendedor "por cliente". */
+export interface ClientBudgetRow {
+  clientCode: string;
+  clientName: string;
+  branch: string | null;
+  branchName: string | null;
+  targetKilos: number;
+  expectedRevenue: number;
+}
+
+/** Costo estándar de un producto (para rentabilidad). */
+export interface ProductCost {
+  id: string;
+  productRef: string;
+  name?: string;
+  unitCost: number;
 }
 
 /** Definición de un ítem de canal seleccionable en la toma de pedidos. */

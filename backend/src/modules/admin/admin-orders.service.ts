@@ -66,6 +66,8 @@ export interface AdminOrderItem {
 export interface AdminOrderDetail {
   id: string;
   orderNumber: string;
+  /** Segundo consecutivo (subproductos divididos: bovino/porcino). */
+  secondNumber?: string | null;
   companyId: string;
   status: OrderStatus;
   /** Tipo de pedido: 'corte' o 'subproducto'. */
@@ -256,6 +258,7 @@ export class AdminOrdersService {
     return {
       id: o.id,
       orderNumber: o.orderNumber,
+      secondNumber: o.secondNumber ?? null,
       companyId: o.companyId,
       status: o.status,
       type: normalizeOrderType(o.type),

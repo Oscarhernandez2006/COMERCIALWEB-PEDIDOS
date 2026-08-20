@@ -138,9 +138,40 @@ export class OrdersService {
         : await this.resolveCarteraBalance(companyId, customer.code);
       const needsApproval = carteraBalance > 0;
 
+      // Numeración. Los subproductos que llevan RES y CERDO se dividen en dos
+      // documentos en Siesa (bovino/porcino) y cada uno necesita un consecutivo
+      // DISTINTO (Siesa no permite la misma O.C. en dos pedidos). En ese caso se
+      // reservan dos consecutivos seguidos: `orderNumber` (bovino) y
+      // `secondNumber` (porcino).
+      let orderNumber: string;
+      let secondNumber: string | undefined;
+      if (isSubproducto) {
+        const categories =
+          await this.priceListsService.getSubproductoCategories(companyId);
+        const hasRes = items.some(
+          (it) => categories.get(it.sku.trim()) === 'RES',
+        );
+        const hasPorcino = items.some(
+          (it) => categories.get(it.sku.trim()) !== 'RES',
+        );
+        if (hasRes && hasPorcino) {
+          [orderNumber, secondNumber] = await this.reserveOrderNumbers(
+            companyId,
+            orderType,
+            manager,
+            2,
+          );
+        } else {
+          orderNumber = await this.nextOrderNumber(companyId, orderType, manager);
+        }
+      } else {
+        orderNumber = await this.nextOrderNumber(companyId, orderType, manager);
+      }
+
       const order = ordersRepo.create({
         companyId,
-        orderNumber: await this.nextOrderNumber(companyId, orderType, manager),
+        orderNumber,
+        secondNumber,
         type: orderType,
         customer,
         seller: orderSeller,
@@ -1337,27 +1368,32 @@ export class OrdersService {
       let result;
       if (order.type === 'subproducto') {
         // El pedido de subproductos se divide por categoría al subir a Siesa:
-        // RES → endpoint bovino, CERDO → endpoint porcino. Ambas partes suben
-        // con el MISMO documento_venta (consecutivo). Los registros van en el
-        // mismo orden que order.items, así que se parean por índice.
+        // RES → endpoint bovino, CERDO → endpoint porcino. Cada mitad usa un
+        // consecutivo DISTINTO (Siesa no permite la misma O.C. en dos pedidos):
+        // el bovino usa `orderNumber` y el porcino usa `secondNumber` (si el
+        // pedido se dividió). Los registros van en el mismo orden que
+        // order.items, así que se parean por índice.
         const categories =
           await this.priceListsService.getSubproductoCategories(
             order.companyId,
           );
+        // El porcino usa el segundo consecutivo cuando el pedido se dividió; si
+        // el pedido es solo porcino, usa el `orderNumber` (no hay bovino).
+        const porcinoDoc = order.secondNumber ?? order.orderNumber;
         const bovino: ErpOrderRegistro[] = [];
         const porcino: ErpOrderRegistro[] = [];
         order.items.forEach((item, i) => {
           const cat = categories.get(item.sku.trim());
           if (cat === 'RES') {
             bovino.push(registros[i]);
-          } else if (cat === 'CERDO') {
-            porcino.push(registros[i]);
           } else {
-            this.logger.warn(
-              `Subproducto sin categoría (SKU ${item.sku}) en pedido ` +
-                `${order.id}; se envía por el endpoint de porcino.`,
-            );
-            porcino.push(registros[i]);
+            if (cat !== 'CERDO') {
+              this.logger.warn(
+                `Subproducto sin categoría (SKU ${item.sku}) en pedido ` +
+                  `${order.id}; se envía por el endpoint de porcino.`,
+              );
+            }
+            porcino.push({ ...registros[i], documento_venta: porcinoDoc });
           }
         });
         result = await this.erpClient.uploadSubproductos(bovino, porcino);
@@ -1401,6 +1437,22 @@ export class OrdersService {
     type: string,
     manager: EntityManager,
   ): Promise<string> {
+    const [first] = await this.reserveOrderNumbers(companyId, type, manager, 1);
+    return first;
+  }
+
+  /**
+   * Reserva `count` consecutivos del pool y los devuelve. Se usa para los
+   * subproductos que se dividen en dos documentos (bovino/porcino), que
+   * necesitan consecutivos DISTINTOS y consecutivos (p. ej. 2628 y 2629) porque
+   * Siesa no permite dos pedidos con la misma O.C.
+   */
+  private async reserveOrderNumbers(
+    companyId: string,
+    type: string,
+    manager: EntityManager,
+    count: number,
+  ): Promise<string[]> {
     const repo = manager.getRepository(Order);
     // Clave del pool: los subproductos usan la compañía base (Agropecuaria).
     const key = type === 'subproducto' ? baseCompanyId(companyId) : companyId;
@@ -1416,9 +1468,17 @@ export class OrdersService {
       (id) => baseCompanyId(id) === key,
     );
 
+    // El máximo del pool considera tanto `order_number` como `second_number`
+    // (el segundo consecutivo de los subproductos divididos), para no repetirlo.
     const qb = repo
       .createQueryBuilder('o')
-      .select('COALESCE(MAX(CAST(o.order_number AS INTEGER)), 0)', 'max')
+      .select(
+        'GREATEST(' +
+          'COALESCE(MAX(CAST(o.order_number AS INTEGER)), 0), ' +
+          'COALESCE(MAX(CAST(o.second_number AS INTEGER)), 0)' +
+          ')',
+        'max',
+      )
       .where("(o.company_id = :key AND o.type = 'corte')", { key });
     if (bases.length > 0) {
       qb.orWhere("(o.type = 'subproducto' AND o.company_id IN (:...bases))", {
@@ -1427,6 +1487,7 @@ export class OrdersService {
     }
 
     const row = await qb.getRawOne<{ max: string }>();
-    return String(Number(row?.max ?? 0) + 1);
+    const start = Number(row?.max ?? 0) + 1;
+    return Array.from({ length: count }, (_, i) => String(start + i));
   }
 }

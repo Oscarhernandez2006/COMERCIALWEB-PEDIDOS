@@ -26,6 +26,7 @@ import { UsersPage } from '@/pages/UsersPage';
 import { OrderSchedulePage } from '@/pages/OrderSchedulePage';
 import { CarteraPage } from '@/pages/CarteraPage';
 import { BudgetsPage } from '@/pages/BudgetsPage';
+import { RentabilidadPage } from '@/pages/RentabilidadPage';
 import { ControladorSubproductosPage } from '@/pages/ControladorSubproductosPage';
 
 function App() {
@@ -72,6 +73,7 @@ function App() {
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="presupuestos" element={<BudgetsPage />} />
+        <Route path="rentabilidad" element={<RentabilidadPage />} />
         <Route path="cartera" element={<CarteraPage />} />
         <Route
           path="controlador-subproductos"

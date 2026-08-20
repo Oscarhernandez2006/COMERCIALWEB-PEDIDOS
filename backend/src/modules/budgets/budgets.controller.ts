@@ -9,6 +9,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BudgetsService } from './budgets.service';
 import { SaveBudgetsDto } from './dto/save-budgets.dto';
+import { SaveClientBudgetsDto } from './dto/save-client-budgets.dto';
 import { SaveProjectionDto } from './dto/save-projection.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -46,6 +47,30 @@ export class BudgetsController {
     @CurrentUser() user: User,
   ) {
     return this.budgetsService.save(companyId, dto, user);
+  }
+
+  /** Clientes/tiendas de un vendedor "por cliente" con su presupuesto del mes. */
+  @Get('clients')
+  listClients(
+    @CompanyId() companyId: string,
+    @Query('sellerId') sellerId: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    const now = new Date();
+    const m = Number(month) || now.getMonth() + 1;
+    const y = Number(year) || now.getFullYear();
+    return this.budgetsService.listClientBudgets(companyId, sellerId, m, y);
+  }
+
+  /** Guarda el presupuesto por cliente/tienda de un vendedor "por cliente". */
+  @Put('clients')
+  saveClients(
+    @CompanyId() companyId: string,
+    @Body() dto: SaveClientBudgetsDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.budgetsService.saveClientBudgets(companyId, dto, user);
   }
 
   /** Proyección de ventas de la compañía para un mes/año. */
