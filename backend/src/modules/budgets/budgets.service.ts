@@ -210,15 +210,27 @@ export class BudgetsService {
       undefined,
       sellerCode,
     );
+    // El presupuesto es POR CLIENTE (código): un cliente con varias sucursales
+    // debe aparecer UNA sola vez (igual que la Cartera de Clientes, que
+    // deduplica por NIT/código). Se conserva la primera sucursal como referencia.
+    const seen = new Set<string>();
+    const uniqueClients = clients.filter((c) => {
+      const key = (c.code ?? '').trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     const saved = await this.clientBudgetsRepository.find({
       where: { companyId, sellerId, month, year },
     });
-    const byCode = new Map(saved.map((b) => [b.clientCode, b]));
+    const byCode = new Map(saved.map((b) => [b.clientCode.trim(), b]));
 
-    const rows: ClientBudgetRow[] = clients.map((c) => {
-      const b = byCode.get(c.code);
+    const rows: ClientBudgetRow[] = uniqueClients.map((c) => {
+      const code = c.code.trim();
+      const b = byCode.get(code);
       return {
-        clientCode: c.code,
+        clientCode: code,
         clientName: c.name,
         branch: c.branch ?? null,
         branchName: c.branchName ?? null,
