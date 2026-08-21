@@ -65,6 +65,60 @@ interface VendorProductSalesResponse {
 }
 
 /**
+ * Clasificación canónica de subproductos (RES=bovino / CERDO=porcino) por
+ * referencia. Es la fuente de la verdad para dividir el pedido: si el ERP
+ * (`/ventas/subproductos`) no devuelve la categoría de una referencia (o la
+ * devuelve distinta), este mapa manda. Así la división por especie es
+ * consistente entre la creación del pedido y su subida a Siesa, evitando que
+ * ambas mitades queden con el mismo consecutivo y Siesa rechace una.
+ */
+const SUBPRODUCTO_CATEGORIA_CANONICA: Record<string, 'RES' | 'CERDO'> = {
+  // Subproductos de RES (bovino)
+  '3202': 'RES',
+  '3213': 'RES',
+  '3222': 'RES',
+  '3235': 'RES',
+  '3252': 'RES',
+  '3023': 'RES',
+  '3258': 'RES',
+  '3212': 'RES',
+  '3002': 'RES',
+  '3021': 'RES',
+  '3241': 'RES',
+  '3014': 'RES',
+  '3003': 'RES',
+  '3210': 'RES',
+  '3250': 'RES',
+  '3251': 'RES',
+  '3207': 'RES',
+  '1618': 'RES',
+  '1635': 'RES',
+  '1700': 'RES',
+  '3243': 'RES',
+  '3208': 'RES',
+  // Subproductos de CERDO (porcino)
+  '4002': 'CERDO',
+  '4010': 'CERDO',
+  '4003': 'CERDO',
+  '2002': 'CERDO',
+  '2416': 'CERDO',
+  '2133': 'CERDO',
+  '2132': 'CERDO',
+  '4015': 'CERDO',
+  '4040': 'CERDO',
+  '4009': 'CERDO',
+  '2444': 'CERDO',
+  '2446': 'CERDO',
+  '2417': 'CERDO',
+  '2445': 'CERDO',
+  '2448': 'CERDO',
+  '2447': 'CERDO',
+  '2442': 'CERDO',
+  '2431': 'CERDO',
+  '2177': 'CERDO',
+};
+
+/**
  * Cliente del endpoint de listas de precios del Grupo Santacruz.
  *
  * GET {baseUrl}/listas-precios?cia={companyId}&token={token}
@@ -144,6 +198,18 @@ export class PriceListsClient {
         const cat = (row.categoria ?? '').trim().toUpperCase();
         if (sku && cat) map.set(sku, cat);
       }
+      // La clasificación canónica manda sobre lo que devuelva el ERP: corrige
+      // categorías erróneas y llena las que el ERP no trae, garantizando una
+      // división RES/CERDO consistente.
+      for (const [sku, cat] of Object.entries(SUBPRODUCTO_CATEGORIA_CANONICA)) {
+        if (map.get(sku) !== cat) {
+          this.logger.warn(
+            `Subproducto ${sku}: categoría canónica ${cat} ` +
+              `(ERP devolvió ${map.get(sku) ?? 'nada'}).`,
+          );
+        }
+        map.set(sku, cat);
+      }
       this.subproductoCache.set(companyId, {
         expiresAt: Date.now() + PriceListsClient.SUBPRODUCTO_TTL_MS,
         data: map,
@@ -157,8 +223,11 @@ export class PriceListsClient {
       this.logger.error(
         `Error consultando subproductos (compañía ${companyId}): ${message}`,
       );
-      // Si falla, se devuelve un mapa vacío para no romper el listado.
-      return new Map();
+      // Si el ERP falla, se usa al menos la clasificación canónica para no
+      // romper la división por especie.
+      return new Map<string, string>(
+        Object.entries(SUBPRODUCTO_CATEGORIA_CANONICA),
+      );
     }
   }
 

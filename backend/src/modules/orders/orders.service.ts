@@ -127,16 +127,23 @@ export class OrdersService {
         );
       }
 
-      // 2) Con el stock ya confirmado, se valida la cartera del cliente. Si el
-      // endpoint devuelve documentos (saldo pendiente), el pedido queda
-      // retenido para aprobación en cartera; si no aparece (o el servicio
-      // falla), se procesa con normalidad. Los subproductos no pasan por
-      // cartera: van directo al controlador de subproductos.
+      // 2) Con el stock ya confirmado, se evalúa la cartera del cliente para
+      // decidir si el pedido pasa directo o queda retenido para aprobación.
+      // Regla: solo se retiene si el cliente está EN MORA (tiene documentos
+      // vencidos con saldo) o si el pedido superaría su cupo de crédito
+      // (saldo actual + total del pedido > cupo). Un cliente al día y con cupo
+      // disponible pasa automático, aunque tenga saldo pendiente. Si el ERP no
+      // provee el cupo (creditLimit = 0), solo se aplica la regla de mora. Los
+      // subproductos no pasan por cartera: van al controlador de subproductos.
       const isSubproducto = orderType === 'subproducto';
-      const carteraBalance = isSubproducto
-        ? 0
-        : await this.resolveCarteraBalance(companyId, customer.code);
-      const needsApproval = carteraBalance > 0;
+      const cartera = isSubproducto
+        ? { balance: 0, hasOverdue: false, creditLimit: 0 }
+        : await this.resolveCarteraStatus(companyId, customer.code);
+      const exceedsCredit =
+        cartera.creditLimit > 0 &&
+        cartera.balance + total > cartera.creditLimit;
+      const needsApproval = cartera.hasOverdue || exceedsCredit;
+      const carteraBalance = cartera.balance;
 
       // Numeración. Los subproductos que llevan RES y CERDO se dividen en dos
       // documentos en Siesa (bovino/porcino) y cada uno necesita un consecutivo
@@ -230,24 +237,30 @@ export class OrdersService {
   }
 
   /**
-   * Consulta el saldo de cartera del cliente. Devuelve 0 si no debe o si el
-   * servicio externo no está disponible (para no bloquear la venta por una
-   * caída del endpoint de cartera).
+   * Evalúa la cartera del cliente para decidir la retención del pedido. Devuelve
+   * el saldo total, si está en mora (documentos vencidos con saldo) y el cupo de
+   * crédito (0 si el ERP no lo provee). Ante una falla del servicio externo
+   * devuelve valores neutros (sin mora ni cupo) para no bloquear la venta por
+   * una caída del endpoint de cartera.
    */
-  private async resolveCarteraBalance(
+  private async resolveCarteraStatus(
     companyId: string,
     code: string,
-  ): Promise<number> {
+  ): Promise<{ balance: number; hasOverdue: boolean; creditLimit: number }> {
     try {
       const portfolio = await this.clientsService.getPortfolio(companyId, code);
-      return portfolio.totalBalance > 0 ? portfolio.totalBalance : 0;
+      return {
+        balance: portfolio.totalBalance > 0 ? portfolio.totalBalance : 0,
+        hasOverdue: portfolio.hasOverdue,
+        creditLimit: portfolio.creditLimit > 0 ? portfolio.creditLimit : 0,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `No se pudo consultar la cartera del cliente ${code} ` +
           `(compañía ${companyId}): ${message}. El pedido se crea sin retención.`,
       );
-      return 0;
+      return { balance: 0, hasOverdue: false, creditLimit: 0 };
     }
   }
 
@@ -681,18 +694,24 @@ export class OrdersService {
       throw new BadRequestException('El pedido no está pendiente de control.');
     }
 
-    // Verifica la cartera del cliente (el controlador ya revisó el pedido).
-    const carteraBalance = await this.resolveCarteraBalance(
+    // Evalúa la cartera del cliente (el controlador ya revisó el pedido).
+    // Misma regla que en la creación: solo se retiene por mora o por superar el
+    // cupo de crédito con este pedido; si está al día y con cupo, pasa directo.
+    const cartera = await this.resolveCarteraStatus(
       order.companyId,
       order.customer.code,
     );
+    const exceedsCredit =
+      cartera.creditLimit > 0 &&
+      cartera.balance + Number(order.total) > cartera.creditLimit;
+    const needsApproval = cartera.hasOverdue || exceedsCredit;
 
-    if (carteraBalance > 0) {
+    if (needsApproval) {
       // Queda retenido para aprobación en cartera (ventana de 2 horas). El
       // vendedor lo ve reflejado en el estado; la notificación final la dispara
       // la decisión de cartera (aprobado/desaprobado/vencido).
       order.status = OrderStatus.PENDING_APPROVAL;
-      order.carteraBalance = carteraBalance;
+      order.carteraBalance = cartera.balance;
       order.approvalDeadline = new Date(
         Date.now() + APPROVAL_WINDOW_HOURS * 60 * 60 * 1000,
       );
@@ -701,7 +720,7 @@ export class OrdersService {
       return this.ordersRepository.save(order);
     }
 
-    // Sin deuda: se confirma y se sube a Siesa (dividido por categoría).
+    // Al día y con cupo: se confirma y se sube a Siesa (dividido por categoría).
     order.status = OrderStatus.CONFIRMED;
     order.approvedBy = user.name;
     order.approvedAt = new Date();

@@ -45,12 +45,23 @@ export interface PortfolioRaw {
   DEBITO?: number;
   CREDITO?: number;
   SALDO?: number;
+  // Cupo de crédito del cliente si el ERP lo incluye en la fila (nombre de
+  // campo variable según la instancia de Siesa). Best-effort: si no viene,
+  // la validación de cupo se omite y solo se evalúa la mora.
+  CUPO?: number;
+  CUPO_CREDITO?: number;
+  VLR_CUPO?: number;
+  CUPO_APROBADO?: number;
 }
 
 interface PortfolioResponse {
   cia: number;
   nit: string;
   count: number;
+  // El cupo puede venir a nivel de encabezado de la respuesta (no por fila).
+  cupo?: number;
+  cupo_credito?: number;
+  CUPO?: number;
   data: PortfolioRaw[];
 }
 
@@ -103,11 +114,14 @@ export class ClientsClient {
    * Trae la cartera (documentos por cobrar) de un cliente.
    *
    * GET {baseUrl}/cartera?cia={companyId}&nit={nit}&token={token}
+   *
+   * Devuelve los documentos y, si el ERP lo incluye, el cupo de crédito del
+   * cliente (a nivel de encabezado o de fila). Si no viene, `creditLimit` es 0.
    */
   async fetchPortfolio(
     companyId: string,
     nit: string,
-  ): Promise<PortfolioRaw[]> {
+  ): Promise<{ rows: PortfolioRaw[]; creditLimit: number }> {
     const baseUrl = this.config.get<string>('priceLists.baseUrl');
     const token = this.config.get<string>('priceLists.token');
     const timeout = this.config.get<number>('priceLists.timeoutMs');
@@ -119,7 +133,15 @@ export class ClientsClient {
           timeout,
         }),
       );
-      return response.data?.data ?? [];
+      const body = response.data;
+      const rows = body?.data ?? [];
+      const headerCupo = Number(body?.cupo ?? body?.cupo_credito ?? body?.CUPO ?? 0) || 0;
+      const rowCupo = rows.reduce((max, r) => {
+        const c =
+          Number(r.CUPO ?? r.CUPO_CREDITO ?? r.VLR_CUPO ?? r.CUPO_APROBADO ?? 0) || 0;
+        return c > max ? c : max;
+      }, 0);
+      return { rows, creditLimit: headerCupo > 0 ? headerCupo : rowCupo };
     } catch (error) {
       const message =
         error && typeof error === 'object' && 'message' in error

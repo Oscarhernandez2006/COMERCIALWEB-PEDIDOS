@@ -46,6 +46,12 @@ export interface ClientPortfolio {
   name?: string;
   count: number;
   totalBalance: number;
+  /** Saldo de los documentos ya vencidos (mora). */
+  overdueBalance: number;
+  /** El cliente tiene al menos un documento vencido con saldo (mora). */
+  hasOverdue: boolean;
+  /** Cupo de crédito del cliente si el ERP lo provee (0 si se desconoce). */
+  creditLimit: number;
   documents: PortfolioDocument[];
 }
 
@@ -326,18 +332,51 @@ export class ClientsService {
       throw new NotFoundException('Debe indicar el NIT del cliente.');
     }
 
-    const raws = await this.client.fetchPortfolio(companyId, code);
-    const documents = raws.map((r) => this.normalizePortfolio(r));
+    const { rows, creditLimit } = await this.client.fetchPortfolio(
+      companyId,
+      code,
+    );
+    const documents = rows.map((r) => this.normalizePortfolio(r));
     const totalBalance = documents.reduce((sum, d) => sum + d.balance, 0);
-    const name = this.clean(raws.find((r) => r.RAZON_SOCIAL)?.RAZON_SOCIAL);
+    const today = this.bogotaToday();
+    const overdueBalance = documents.reduce(
+      (sum, d) =>
+        d.balance > 0 && this.isOverdue(d.dueDate, today)
+          ? sum + d.balance
+          : sum,
+      0,
+    );
+    const name = this.clean(rows.find((r) => r.RAZON_SOCIAL)?.RAZON_SOCIAL);
 
     return {
       nit: code,
       name,
       count: documents.length,
       totalBalance: Number(totalBalance.toFixed(2)),
+      overdueBalance: Number(overdueBalance.toFixed(2)),
+      hasOverdue: overdueBalance > 0,
+      creditLimit: Number(creditLimit) || 0,
       documents,
     };
+  }
+
+  /**
+   * Un documento está en mora si su fecha de vencimiento ya pasó (respecto a
+   * hoy, hora de Colombia) y todavía tiene saldo por cobrar.
+   */
+  private isOverdue(dueDate: string | undefined, today: string): boolean {
+    if (!dueDate) return false;
+    return dueDate.slice(0, 10) < today;
+  }
+
+  /** Fecha de hoy (YYYY-MM-DD) en horario de Colombia (America/Bogota). */
+  private bogotaToday(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
   }
 
   /** Normaliza una fila cruda de cartera (recorta cadenas y asegura números). */
