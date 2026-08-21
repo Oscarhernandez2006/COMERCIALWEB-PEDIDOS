@@ -111,6 +111,23 @@ export class ProvisioningService implements OnModuleInit {
     return user;
   }
 
+  /**
+   * Lista todos los usuarios (para que la suite los importe y refleje su rol y
+   * permisos actuales). Forma normalizada común con las demás apps.
+   */
+  async listarUsuarios() {
+    const users = await this.usersRepository.find({ order: { name: 'ASC' } });
+    return users.map((u) => ({
+      cedula: u.documentId,
+      nombre: u.name,
+      email: u.email ?? null,
+      rol: u.role,
+      activo: u.active,
+      bloqueadoSuite: u.suiteBlocked,
+      permisos: u.permissions ?? [],
+    }));
+  }
+
   /** Crea o actualiza (upsert por cédula) un usuario. */
   async upsertUsuario(dto: ProvisionUsuarioDto): Promise<User> {
     const documentId = dto.cedula.trim();
