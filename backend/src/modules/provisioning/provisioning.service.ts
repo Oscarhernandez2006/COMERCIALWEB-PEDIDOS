@@ -9,6 +9,8 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { User, UserRole } from '../users/entities/user.entity';
+import { UserCompany } from '../users/entities/user-company.entity';
+import { COMPANIES } from '../../common/companies';
 import { ProvisionUsuarioDto } from './dto/provisioning.dto';
 
 /**
@@ -75,6 +77,8 @@ export class ProvisioningService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    @InjectRepository(UserCompany)
+    private readonly userCompaniesRepository: Repository<UserCompany>,
   ) {}
 
   async onModuleInit() {
@@ -88,6 +92,8 @@ export class ProvisioningService implements OnModuleInit {
     return {
       roles: Object.values(UserRole),
       grupos: MODULE_GROUPS,
+      // Sigcom asigna los módulos POR compañía: la suite las usa como pestañas.
+      companies: COMPANIES.map((c) => ({ id: c.id, name: c.name })),
     };
   }
 
@@ -111,21 +117,68 @@ export class ProvisioningService implements OnModuleInit {
     return user;
   }
 
+  /** Forma normalizada de un usuario (con permisos por compañía). */
+  private async toRemote(user: User) {
+    const mappings = await this.userCompaniesRepository.find({
+      where: { userId: user.id },
+    });
+    return {
+      cedula: user.documentId,
+      nombre: user.name,
+      email: user.email ?? null,
+      rol: user.role,
+      activo: user.active,
+      bloqueadoSuite: user.suiteBlocked,
+      permisos: user.permissions ?? [],
+      companies: mappings
+        .filter((m) => m.active !== false)
+        .map((m) => ({
+          companyId: m.companyId,
+          name: COMPANIES.find((c) => c.id === m.companyId)?.name ?? m.companyId,
+          permisos: m.permissions ?? [],
+        })),
+    };
+  }
+
+  /** Un usuario por cédula, normalizado (para refresco puntual desde la suite). */
+  async obtenerRemoto(cedula: string) {
+    return this.toRemote(await this.obtenerPorCedula(cedula));
+  }
+
   /**
    * Lista todos los usuarios (para que la suite los importe y refleje su rol y
-   * permisos actuales). Forma normalizada común con las demás apps.
+   * permisos actuales por compañía). Forma normalizada común con las demás apps.
    */
   async listarUsuarios() {
     const users = await this.usersRepository.find({ order: { name: 'ASC' } });
-    return users.map((u) => ({
-      cedula: u.documentId,
-      nombre: u.name,
-      email: u.email ?? null,
-      rol: u.role,
-      activo: u.active,
-      bloqueadoSuite: u.suiteBlocked,
-      permisos: u.permissions ?? [],
-    }));
+    return Promise.all(users.map((u) => this.toRemote(u)));
+  }
+
+  /**
+   * Define los módulos del usuario EN una compañía. Crea el acceso a la
+   * compañía si no existe (equivale a habilitarla). Sigcom es multi-compañía.
+   */
+  async setCompanyPermisos(
+    cedula: string,
+    companyId: string,
+    permisos: string[],
+  ) {
+    const user = await this.obtenerPorCedula(cedula);
+    let mapping = await this.userCompaniesRepository.findOne({
+      where: { userId: user.id, companyId },
+    });
+    if (!mapping) {
+      mapping = this.userCompaniesRepository.create({
+        userId: user.id,
+        companyId,
+        active: true,
+        permissions: [],
+      });
+    }
+    mapping.permissions = this.sanitizarPermisos(permisos);
+    mapping.active = true;
+    await this.userCompaniesRepository.save(mapping);
+    return this.toRemote(user);
   }
 
   /** Crea o actualiza (upsert por cédula) un usuario. */

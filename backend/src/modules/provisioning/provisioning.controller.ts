@@ -16,6 +16,7 @@ import {
   PasswordDto,
   PermisosDto,
   ProvisionUsuarioDto,
+  CompanyPermisosDto,
 } from './dto/provisioning.dto';
 
 /**
@@ -40,7 +41,7 @@ export class ProvisioningController {
 
   @Get('usuarios/:cedula')
   obtener(@Param('cedula') cedula: string) {
-    return this.provisioning.obtenerPorCedula(cedula);
+    return this.provisioning.obtenerRemoto(cedula);
   }
 
   @Post('usuarios')
@@ -62,5 +63,18 @@ export class ProvisioningController {
   @Patch('usuarios/:cedula/permisos')
   setPermisos(@Param('cedula') cedula: string, @Body() dto: PermisosDto) {
     return this.provisioning.setPermisos(cedula, dto.rol, dto.permisos);
+  }
+
+  /** Define los módulos del usuario en una compañía (Sigcom es multi-compañía). */
+  @Patch('usuarios/:cedula/company-permisos')
+  setCompanyPermisos(
+    @Param('cedula') cedula: string,
+    @Body() dto: CompanyPermisosDto,
+  ) {
+    return this.provisioning.setCompanyPermisos(
+      cedula,
+      dto.companyId,
+      dto.permisos ?? [],
+    );
   }
 }

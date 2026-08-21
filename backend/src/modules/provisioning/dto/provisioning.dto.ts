@@ -70,3 +70,14 @@ export class PermisosDto {
   @IsOptional()
   permisos?: string[];
 }
+
+export class CompanyPermisosDto {
+  @IsString()
+  @IsNotEmpty()
+  companyId: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  permisos?: string[];
+}
