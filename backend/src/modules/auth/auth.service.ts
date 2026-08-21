@@ -29,6 +29,12 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales invalidas');
     }
 
+    if (user.suiteBlocked) {
+      throw new UnauthorizedException(
+        'Usuario bloqueado desde la suite. Contacte al administrador.',
+      );
+    }
+
     const valid = await this.usersService.validatePassword(user, dto.password);
     if (!valid) {
       throw new UnauthorizedException('Credenciales invalidas');
@@ -95,6 +101,12 @@ export class AuthService {
     if (!user || !user.active) {
       throw new UnauthorizedException(
         'El usuario no está registrado en esta aplicación',
+      );
+    }
+
+    if (user.suiteBlocked) {
+      throw new UnauthorizedException(
+        'Usuario bloqueado desde la suite. Contacte al administrador.',
       );
     }
 

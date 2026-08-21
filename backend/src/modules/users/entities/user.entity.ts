@@ -53,6 +53,13 @@ export class User extends BaseEntity {
   @Column({ default: true })
   active: boolean;
 
+  /**
+   * Bloqueo desde la suite (SCTOOLS). Si es true, el usuario no puede iniciar
+   * sesión en esta app aunque `active` sea true. Lo controla la suite.
+   */
+  @Column({ name: 'suite_blocked', default: false })
+  suiteBlocked: boolean;
+
   /** Si es true, el usuario debe cambiar su contraseña antes de usar el sistema. */
   @Column({ name: 'must_change_password', default: true })
   mustChangePassword: boolean;
