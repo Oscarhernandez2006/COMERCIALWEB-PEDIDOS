@@ -135,6 +135,7 @@ export class ProvisioningService implements OnModuleInit {
         .map((m) => ({
           companyId: m.companyId,
           name: COMPANIES.find((c) => c.id === m.companyId)?.name ?? m.companyId,
+          sellerCode: m.siesaSellerCode ?? null,
           permisos: m.permissions ?? [],
         })),
     };
@@ -178,6 +179,39 @@ export class ProvisioningService implements OnModuleInit {
     mapping.permissions = this.sanitizarPermisos(permisos);
     mapping.active = true;
     await this.userCompaniesRepository.save(mapping);
+    return this.toRemote(user);
+  }
+
+  /** Asigna (o actualiza) el acceso del usuario a una compañía, con su código de vendedor. */
+  async assignCompany(
+    cedula: string,
+    companyId: string,
+    siesaSellerCode?: string,
+  ) {
+    const user = await this.obtenerPorCedula(cedula);
+    let mapping = await this.userCompaniesRepository.findOne({
+      where: { userId: user.id, companyId },
+    });
+    if (!mapping) {
+      mapping = this.userCompaniesRepository.create({
+        userId: user.id,
+        companyId,
+        active: true,
+        permissions: [],
+      });
+    }
+    if (siesaSellerCode !== undefined) {
+      mapping.siesaSellerCode = siesaSellerCode.trim() || undefined;
+    }
+    mapping.active = true;
+    await this.userCompaniesRepository.save(mapping);
+    return this.toRemote(user);
+  }
+
+  /** Quita el acceso del usuario a una compañía. */
+  async removeCompany(cedula: string, companyId: string) {
+    const user = await this.obtenerPorCedula(cedula);
+    await this.userCompaniesRepository.delete({ userId: user.id, companyId });
     return this.toRemote(user);
   }
 

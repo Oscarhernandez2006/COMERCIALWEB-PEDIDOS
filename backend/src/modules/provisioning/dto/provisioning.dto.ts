@@ -81,3 +81,13 @@ export class CompanyPermisosDto {
   @IsOptional()
   permisos?: string[];
 }
+
+export class AssignCompanyDto {
+  @IsString()
+  @IsNotEmpty()
+  companyId: string;
+
+  @IsString()
+  @IsOptional()
+  siesaSellerCode?: string;
+}

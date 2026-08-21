@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -17,6 +18,7 @@ import {
   PermisosDto,
   ProvisionUsuarioDto,
   CompanyPermisosDto,
+  AssignCompanyDto,
 } from './dto/provisioning.dto';
 
 /**
@@ -76,5 +78,27 @@ export class ProvisioningController {
       dto.companyId,
       dto.permisos ?? [],
     );
+  }
+
+  /** Asigna/actualiza el acceso a una compañía con su código de vendedor. */
+  @Patch('usuarios/:cedula/company')
+  assignCompany(
+    @Param('cedula') cedula: string,
+    @Body() dto: AssignCompanyDto,
+  ) {
+    return this.provisioning.assignCompany(
+      cedula,
+      dto.companyId,
+      dto.siesaSellerCode,
+    );
+  }
+
+  /** Quita el acceso a una compañía. */
+  @Delete('usuarios/:cedula/company/:companyId')
+  removeCompany(
+    @Param('cedula') cedula: string,
+    @Param('companyId') companyId: string,
+  ) {
+    return this.provisioning.removeCompany(cedula, companyId);
   }
 }
