@@ -98,8 +98,16 @@ function prettyRange(from: string, to: string): string {
   return `${f} — ${t}`;
 }
 
+/**
+ * Venta a mostrar de una compañía: para AGROPECUARIA (con margen) es la
+ * facturación real del ERP; para las demás, el total de pedidos de la app.
+ */
+function companyRevenue(c: ManagerialCompanyStats): number {
+  return c.margin ? c.margin.revenue : c.totals.revenue;
+}
+
 export function AdminDashboardPage() {
-  // Por defecto se muestra el mes en curso para ver a todos los vendedores y su
+  // Por defecto el mes en curso, para ver a todos los vendedores y su
   // facturación acumulada (el ERP puede no tener cargado el día en curso aún).
   const [from, setFrom] = useState(() => startOfMonth());
   const [to, setTo] = useState(() => todayStr());
@@ -118,11 +126,11 @@ export function AdminDashboardPage() {
     [companies, selectedCompanyId],
   );
   const maxRevenue = useMemo(
-    () => Math.max(1, ...companies.map((c) => c.totals.revenue)),
+    () => Math.max(1, ...companies.map((c) => companyRevenue(c))),
     [companies],
   );
   const grandTotal = useMemo(
-    () => companies.reduce((acc, c) => acc + c.totals.revenue, 0),
+    () => companies.reduce((acc, c) => acc + companyRevenue(c), 0),
     [companies],
   );
 
@@ -288,10 +296,11 @@ export function AdminDashboardPage() {
             <CardContent className="space-y-4">
               {companies.map((c) => {
                 const accent = accentFor(c.companyId);
-                const share = Math.round((c.totals.revenue / maxRevenue) * 100);
+                const revenue = companyRevenue(c);
+                const share = Math.round((revenue / maxRevenue) * 100);
                 const pctTotal =
                   grandTotal > 0
-                    ? Math.round((c.totals.revenue / grandTotal) * 100)
+                    ? Math.round((revenue / grandTotal) * 100)
                     : 0;
                 return (
                   <div key={c.companyId} className="space-y-1.5">
@@ -307,7 +316,7 @@ export function AdminDashboardPage() {
                       </span>
                       <span className="flex items-center gap-2">
                         <span className={cn('font-bold', accent.text)}>
-                          {formatCurrency(c.totals.revenue)}
+                          {formatCurrency(revenue)}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {pctTotal}%
