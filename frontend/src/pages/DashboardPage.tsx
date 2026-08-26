@@ -172,6 +172,8 @@ export function DashboardPage() {
   const [customerView, setCustomerView] = useState<'buying' | 'not-buying'>(
     'buying',
   );
+  // Búsqueda dentro de la lista de clientes (aplica a ambas vistas).
+  const [customerSearch, setCustomerSearch] = useState('');
   // Categoría seleccionada para abrir el modal con su detalle ítem por ítem.
   const [categoryModal, setCategoryModal] = useState<
     NonNullable<SellerCommercialDashboard['salesByCategory']>[number] | null
@@ -754,14 +756,29 @@ export function DashboardPage() {
                 </button>
               ))}
             </div>
+            <input
+              type="text"
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              placeholder="Buscar cliente o tienda…"
+              className="mt-2 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
           </CardHeader>
           <CardContent className="p-0">
             <div className="max-h-96 divide-y divide-border overflow-y-auto">
               {(() => {
-                const list =
+                const source =
                   customerView === 'buying'
                     ? data?.topCustomers
                     : data?.customersNotBuying;
+                const q = customerSearch.trim().toLowerCase();
+                const list = q
+                  ? source?.filter((c) =>
+                      [c.name, c.branchName, c.branch, c.city, c.code]
+                        .filter(Boolean)
+                        .some((v) => String(v).toLowerCase().includes(q)),
+                    )
+                  : source;
                 if (data && list && list.length > 0) {
                   return list.map((c, i) => (
                     <div
@@ -819,9 +836,11 @@ export function DashboardPage() {
                   <p className="px-4 py-10 text-center text-sm text-muted-foreground">
                     {isLoading
                       ? 'Cargando…'
-                      : customerView === 'buying'
-                        ? 'Sin ventas en el período.'
-                        : 'Todos tus clientes compraron.'}
+                      : q
+                        ? 'Sin coincidencias para la búsqueda.'
+                        : customerView === 'buying'
+                          ? 'Sin ventas en el período.'
+                          : 'Todos tus clientes compraron.'}
                   </p>
                 );
               })()}
