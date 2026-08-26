@@ -99,7 +99,9 @@ function prettyRange(from: string, to: string): string {
 }
 
 export function AdminDashboardPage() {
-  const [from, setFrom] = useState(() => todayStr());
+  // Por defecto se muestra el mes en curso para ver a todos los vendedores y su
+  // facturación acumulada (el ERP puede no tener cargado el día en curso aún).
+  const [from, setFrom] = useState(() => startOfMonth());
   const [to, setTo] = useState(() => todayStr());
   // 'comparativo' = vista general que compara todas las compañías (predeterminada).
   const [selectedCompanyId, setSelectedCompanyId] = useState('comparativo');
@@ -353,38 +355,27 @@ export function AdminDashboardPage() {
 function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
   const accent = accentFor(company.companyId);
   const t = company.totals;
-
-  const kpis = [
-    {
-      label: 'Pedidos',
-      value: t.orders.toLocaleString('es-CO'),
-      icon: ShoppingCart,
-    },
-    {
-      label: 'Ticket promedio',
-      value: formatCurrency(t.avgTicket),
-      icon: Receipt,
-    },
-    {
-      label: 'Unidades',
-      value: t.units.toLocaleString('es-CO'),
-      icon: Boxes,
-    },
-    {
-      label: 'Clientes',
-      value: t.customers.toLocaleString('es-CO'),
-      icon: Users,
-    },
-  ];
-
-  const maxProductQty = Math.max(
-    1,
-    ...company.topProducts.map((p) => p.quantity),
-  );
-  const maxSellerRevenue = Math.max(
-    1,
-    ...company.topSellers.map((s) => s.revenue),
-  );
+  const m = company.margin;
+  // AGROPECUARIA (con margen): la venta es la facturación real del ERP y el
+  // margen se muestra como un KPI; las demás compañías usan el total de la app.
+  const ventas = m ? m.revenue : t.revenue;
+  const kpis = m
+    ? [
+        {
+          label: `Margen ${m.marginPct.toFixed(1)}%`,
+          value: formatCurrency(m.profit),
+          icon: TrendingUp,
+        },
+        { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
+        { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
+        { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
+      ]
+    : [
+        { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
+        { label: 'Ticket promedio', value: formatCurrency(t.avgTicket), icon: Receipt },
+        { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
+        { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
+      ];
 
   return (
     <div className="space-y-4">
@@ -411,7 +402,7 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
             <div className="text-right">
               <p className="text-xs text-muted-foreground">Ventas</p>
               <p className={cn('text-xl font-bold', accent.text)}>
-                {formatCurrency(t.revenue)}
+                {formatCurrency(ventas)}
               </p>
             </div>
           </div>
@@ -433,107 +424,10 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
         </CardContent>
       </Card>
 
-      {/* Pedidos por vendedor y productos, lado a lado */}
+      {/* Ventas por vendedor y productos, lado a lado */}
       <div className="grid gap-4 xl:grid-cols-2">
-      {/* Pedidos y ventas por vendedor */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Users className={cn('h-4 w-4', accent.text)} />
-            Pedidos por vendedor
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {company.topSellers.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Sin ventas en el rango.
-            </p>
-          ) : (
-            <ol className="space-y-2.5">
-              {company.topSellers.map((s, i) => (
-                <li key={`${s.documentId}-${i}`} className="space-y-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
-                        {i + 1}
-                      </span>
-                      <span className="truncate text-sm font-medium">
-                        {s.name}
-                      </span>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className={cn('text-sm font-semibold', accent.text)}>
-                        {formatCurrency(s.revenue)}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {s.orders.toLocaleString('es-CO')} pedido(s)
-                      </p>
-                    </div>
-                  </div>
-                  <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn('h-full rounded-full', accent.bar)}
-                      style={{
-                        width: `${Math.round((s.revenue / maxSellerRevenue) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Productos más vendidos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Trophy className="h-4 w-4 text-amber-500" />
-            Productos más vendidos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {company.topProducts.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Sin ventas en el rango.
-            </p>
-          ) : (
-            <ol className="space-y-2.5">
-              {company.topProducts.map((p, i) => (
-                <li key={p.sku} className="space-y-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
-                        {i + 1}
-                      </span>
-                      <span className="truncate text-sm font-medium">
-                        {p.name}
-                      </span>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-semibold tabular-nums">
-                        {p.quantity.toLocaleString('es-CO')}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {formatCurrency(p.revenue)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn('h-full rounded-full', accent.bar)}
-                      style={{
-                        width: `${Math.round((p.quantity / maxProductQty) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </CardContent>
-      </Card>
+        <SellersCard company={company} />
+        <ProductsCard company={company} />
       </div>
 
       {/* Tendencia de ventas */}
