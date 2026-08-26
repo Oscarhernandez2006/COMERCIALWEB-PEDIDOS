@@ -373,7 +373,58 @@ export class DashboardService {
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    return { revenue, kilos, cost, byDay, byProduct, byCanal, byCategory };
+    // La venta acumulada, los kilos y el costo se toman de la consulta GENERAL
+    // del ERP (dashboard-comercial) filtrada por vendedor: es la facturación
+    // real. El desglose (tendencia, productos, canales, categorías) sigue del
+    // detalle producto a producto. Si la consulta general falla, se usan los
+    // totales del detalle como respaldo.
+    const general = await this.getErpGeneralTotals(nits, from, to).catch(
+      () => null,
+    );
+    return {
+      revenue: general ? general.revenue : revenue,
+      kilos: general ? general.kilos : kilos,
+      cost: general ? general.cost : cost,
+      byDay,
+      byProduct,
+      byCanal,
+      byCategory,
+    };
+  }
+
+  /**
+   * Totales (venta, kilos, costo) por vendedor desde la consulta GENERAL del
+   * ERP (`dashboard-comercial`). Filtra por NIT del vendedor cuando aplica.
+   */
+  private async getErpGeneralTotals(
+    nits: Set<string>,
+    from: string,
+    to: string,
+  ): Promise<{ revenue: number; kilos: number; cost: number }> {
+    const filterByNit = nits.size > 0;
+    let revenue = 0;
+    let kilos = 0;
+    let cost = 0;
+    for (const periodo of this.periodsBetween(from, to)) {
+      const monthStart = `${periodo.slice(0, 4)}-${periodo.slice(4, 6)}-01`;
+      const monthEnd = this.endOfMonth(monthStart);
+      const fi = from > monthStart ? from : monthStart;
+      const ff = to < monthEnd ? to : monthEnd;
+      const rows = await this.priceListsService.getVendorMonthlySales(
+        '3',
+        periodo,
+        fi,
+        ff,
+      );
+      for (const g of rows) {
+        const nit = (g.nit_vendedor ?? '').trim();
+        if (filterByNit && !nits.has(nit)) continue;
+        revenue += Number(g.total_facturas) || 0;
+        kilos += Number(g.kilos) || 0;
+        cost += Number(g.costo_total) || 0;
+      }
+    }
+    return { revenue, kilos, cost };
   }
 
   /** Último día (YYYY-MM-DD) del mes de una fecha. */
@@ -539,8 +590,9 @@ export class DashboardService {
       ]);
       revenue = erp.revenue;
       totalKilos = erp.kilos;
-      // Rentabilidad: solo si hay costos cargados (si no, "sin datos").
-      if (costMap.size > 0) {
+      // Rentabilidad con el COSTO REAL del ERP (consulta general). Solo se
+      // muestra si hay costo (>0); si no, queda "sin datos".
+      if (erp.cost > 0) {
         const margin = erp.revenue - erp.cost;
         profitability = {
           cost: erp.cost,
