@@ -367,7 +367,11 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
           icon: TrendingUp,
         },
         { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
-        { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
+        {
+          label: 'Kilos',
+          value: `${m.kilos.toLocaleString('es-CO', { maximumFractionDigits: 0 })} kg`,
+          icon: Boxes,
+        },
         { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
       ]
     : [
@@ -550,7 +554,11 @@ function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
           icon: TrendingUp,
         },
         { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
-        { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
+        {
+          label: 'Kilos',
+          value: `${m.kilos.toLocaleString('es-CO', { maximumFractionDigits: 0 })} kg`,
+          icon: Boxes,
+        },
         { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
       ]
     : [
@@ -641,6 +649,12 @@ function SellersCard({ company }: { company: ManagerialCompanyStats }) {
                       </p>
                       <p className="text-[11px] font-medium text-emerald-600">
                         Margen {formatCurrency(s.profit)} · {s.marginPct.toFixed(1)}%
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {s.kilos.toLocaleString('es-CO', {
+                          maximumFractionDigits: 1,
+                        })}{' '}
+                        kg
                       </p>
                     </div>
                   </div>

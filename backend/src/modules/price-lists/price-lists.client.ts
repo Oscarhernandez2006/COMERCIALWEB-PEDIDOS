@@ -65,6 +65,29 @@ interface VendorProductSalesResponse {
 }
 
 /**
+ * Fila cruda del endpoint GENERAL por vendedor (una fila por vendedor con la
+ * venta acumulada, kilos, costo y margen del período/rango). No trae desglose
+ * por producto: ese sigue en `vendedor-productos-mes`.
+ */
+export interface VendorMonthlySaleRaw {
+  nit_vendedor?: string;
+  razon_social_vendedor?: string;
+  codigo_vendedor?: string;
+  kilos?: number;
+  total_facturas?: number;
+  costo_total?: number;
+  margen?: number;
+  periodo?: number;
+}
+
+interface VendorMonthlySalesResponse {
+  total?: number;
+  has_more?: boolean;
+  next_offset?: number;
+  data: VendorMonthlySaleRaw[];
+}
+
+/**
  * Clasificación canónica de subproductos (RES=bovino / CERDO=porcino) por
  * referencia. Es la fuente de la verdad para dividir el pedido: si el ERP
  * (`/ventas/subproductos`) no devuelve la categoría de una referencia (o la
@@ -316,6 +339,65 @@ export class PriceListsClient {
       );
       throw new InternalServerErrorException(
         'Error consultando las ventas por vendedor en Siesa.',
+      );
+    }
+  }
+
+  /**
+   * Ventas GENERALES por vendedor (acumulado del rango): una fila por vendedor
+   * con `total_facturas` (venta), `kilos`, `costo_total` y `margen`.
+   * GET {baseUrl}/ventas/dashboard-comercial?compania&periodo&fecha_inicio&fecha_fin&token
+   */
+  async fetchVendorMonthlySales(
+    compania: string,
+    periodo: string,
+    fechaInicio?: string,
+    fechaFin?: string,
+  ): Promise<VendorMonthlySaleRaw[]> {
+    const baseUrl = this.config.get<string>('priceLists.baseUrl');
+    const token = this.config.get<string>('priceLists.token');
+    const timeout = this.config.get<number>('priceLists.timeoutMs');
+    const PAGE = 5000;
+    const MAX_PAGES = 20;
+    try {
+      const rows: VendorMonthlySaleRaw[] = [];
+      let offset = 0;
+      let page = 0;
+      while (page < MAX_PAGES) {
+        const response = await firstValueFrom(
+          this.http.get<VendorMonthlySalesResponse>(
+            `${baseUrl}/ventas/dashboard-comercial`,
+            {
+              params: {
+                compania,
+                periodo,
+                fecha_inicio: fechaInicio,
+                fecha_fin: fechaFin,
+                limit: PAGE,
+                offset,
+                token,
+              },
+              timeout,
+            },
+          ),
+        );
+        const batch = response.data?.data ?? [];
+        rows.push(...batch);
+        page++;
+        if (batch.length === 0 || !response.data?.has_more) break;
+        offset = response.data?.next_offset ?? offset + batch.length;
+      }
+      return rows;
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? (error as { message: string }).message
+          : 'Error desconocido';
+      this.logger.error(
+        `Error consultando ventas generales por vendedor (compañía ${compania}, periodo ${periodo}): ${message}`,
+      );
+      throw new InternalServerErrorException(
+        'Error consultando las ventas generales por vendedor en Siesa.',
       );
     }
   }

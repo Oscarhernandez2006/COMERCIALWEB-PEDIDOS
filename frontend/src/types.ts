@@ -447,6 +447,7 @@ export interface ManagerialCompanyStats {
     cost: number;
     profit: number;
     marginPct: number;
+    kilos: number;
     bySeller: {
       name: string;
       nit: string;
@@ -454,6 +455,7 @@ export interface ManagerialCompanyStats {
       cost: number;
       profit: number;
       marginPct: number;
+      kilos: number;
     }[];
     byProduct: {
       ref: string;

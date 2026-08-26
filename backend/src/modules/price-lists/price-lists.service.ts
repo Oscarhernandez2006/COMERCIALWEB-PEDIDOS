@@ -34,6 +34,21 @@ export class PriceListsService {
     return this.client.fetchVendorProductSales(periodo);
   }
 
+  /** Ventas GENERALES por vendedor (venta, kilos, costo, margen) del rango. */
+  getVendorMonthlySales(
+    compania: string,
+    periodo: string,
+    fechaInicio?: string,
+    fechaFin?: string,
+  ) {
+    return this.client.fetchVendorMonthlySales(
+      compania,
+      periodo,
+      fechaInicio,
+      fechaFin,
+    );
+  }
+
   /** Lista los nombres de las listas de precios de una compañía. */
   async findLists(companyId: string): Promise<PriceListSummary[]> {
     companyId = baseCompanyId(companyId);

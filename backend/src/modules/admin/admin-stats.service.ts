@@ -89,6 +89,7 @@ export interface ManagerialCompanyStats {
     cost: number;
     profit: number;
     marginPct: number;
+    kilos: number;
     bySeller: {
       name: string;
       nit: string;
@@ -96,6 +97,7 @@ export interface ManagerialCompanyStats {
       cost: number;
       profit: number;
       marginPct: number;
+      kilos: number;
     }[];
     byProduct: {
       ref: string;
@@ -462,80 +464,71 @@ export class AdminStatsService {
     return res;
   }
 
+  /** Último día (YYYY-MM-DD) del mes de una fecha. */
+  private endOfMonth(date: string): string {
+    const y = Number(date.slice(0, 4));
+    const m = Number(date.slice(5, 7));
+    const last = new Date(y, m, 0).getDate();
+    return `${date.slice(0, 7)}-${String(last).padStart(2, '0')}`;
+  }
+
   /**
-   * Facturación real y margen de AGROPECUARIA desde el ERP Siesa, agrupada por
-   * vendedor y por producto. Excluye SERVICIOS y categorías que no son de la
-   * agropecuaria (víveres/embutidos de otra compañía). El margen es
-   * `valor_bruto - costo_total`. Si el ERP falla, retorna `undefined` para no
-   * romper el resto del tablero.
+   * Facturación real y margen de AGROPECUARIA. Los totales y el desglose POR
+   * VENDEDOR se toman de la consulta GENERAL del ERP (`dashboard-comercial`):
+   * `total_facturas` (venta), `kilos`, `costo_total` y margen por vendedor.
+   * El desglose POR PRODUCTO se toma de `vendedor-productos-mes` (única fuente
+   * con el detalle de referencias), excluyendo servicios y categorías ajenas.
+   * Si el ERP falla, retorna `undefined` para no romper el resto del tablero.
    */
   private async getErpMargin(
     from: string,
     to: string,
   ): Promise<ManagerialCompanyStats['margin']> {
     try {
+      const marginPct = (rev: number, prof: number) =>
+        rev !== 0 ? Number(((prof / rev) * 100).toFixed(1)) : 0;
+
+      // --- Totales y por vendedor: consulta general por vendedor ---
       const sellerMap = new Map<
         string,
-        { name: string; nit: string; revenue: number; cost: number }
-      >();
-      const productMap = new Map<
-        string,
-        { ref: string; name: string; quantity: number; revenue: number; cost: number }
+        { name: string; nit: string; revenue: number; cost: number; kilos: number }
       >();
       let totRevenue = 0;
       let totCost = 0;
+      let totKilos = 0;
 
       for (const periodo of this.periodsBetween(from, to)) {
-        const rows = await this.priceListsService.getVendorProductSales(periodo);
-        for (const row of rows) {
-          const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
-          if (!day || day < from || day > to) continue;
-          const ref = (row.referencia ?? '').trim() || '—';
-          const name = (row.descripcion ?? '').trim() || ref;
-          const crit = (row.criterio_producto ?? '').trim().toUpperCase();
-          // Se excluyen servicios y categorías ajenas a la agropecuaria; solo
-          // canales, cortes y subproductos cuentan como facturación real.
-          if (
-            crit === 'SERVICIO' ||
-            ref.startsWith('99') ||
-            name.toUpperCase().startsWith('SERVICIO')
-          ) {
-            continue;
-          }
-          const esCanal =
-            crit === 'CANAL' || name.toUpperCase().startsWith('CANAL');
-          const esAgro =
-            esCanal || crit === 'CORTE' || crit === 'SUBPRODUCTO';
-          if (!esAgro) continue;
-
-          const bruto = Number(row.valor_bruto) || 0;
-          const costo = Number(row.costo_total) || 0;
-          const qty = Number(row.cantidad_base) || 0;
-          totRevenue += bruto;
-          totCost += costo;
-
+        const monthStart = `${periodo.slice(0, 4)}-${periodo.slice(4, 6)}-01`;
+        const monthEnd = this.endOfMonth(monthStart);
+        const fi = from > monthStart ? from : monthStart;
+        const ff = to < monthEnd ? to : monthEnd;
+        const grows = await this.priceListsService.getVendorMonthlySales(
+          '3',
+          periodo,
+          fi,
+          ff,
+        );
+        for (const g of grows) {
           const nit =
-            (row.nit_vendedor ?? '').trim() ||
-            (row.razon_social_vendedor ?? '').trim() ||
+            (g.nit_vendedor ?? '').trim() ||
+            (g.razon_social_vendedor ?? '').trim() ||
             '—';
-          const sName = (row.razon_social_vendedor ?? '').trim() || nit;
+          const name = (g.razon_social_vendedor ?? '').trim() || nit;
+          const rev = Number(g.total_facturas) || 0;
+          const cost = Number(g.costo_total) || 0;
+          const kg = Number(g.kilos) || 0;
+          totRevenue += rev;
+          totCost += cost;
+          totKilos += kg;
           const sg =
-            sellerMap.get(nit) ?? { name: sName, nit, revenue: 0, cost: 0 };
-          sg.revenue += bruto;
-          sg.cost += costo;
+            sellerMap.get(nit) ??
+            { name, nit, revenue: 0, cost: 0, kilos: 0 };
+          sg.revenue += rev;
+          sg.cost += cost;
+          sg.kilos += kg;
           sellerMap.set(nit, sg);
-
-          const pg =
-            productMap.get(ref) ?? { ref, name, quantity: 0, revenue: 0, cost: 0 };
-          pg.quantity += qty;
-          pg.revenue += bruto;
-          pg.cost += costo;
-          productMap.set(ref, pg);
         }
       }
-
-      const marginPct = (rev: number, prof: number) =>
-        rev !== 0 ? Number(((prof / rev) * 100).toFixed(1)) : 0;
 
       const bySeller = [...sellerMap.values()]
         .map((s) => ({
@@ -545,8 +538,46 @@ export class AdminStatsService {
           cost: s.cost,
           profit: s.revenue - s.cost,
           marginPct: marginPct(s.revenue, s.revenue - s.cost),
+          kilos: s.kilos,
         }))
         .sort((a, b) => b.revenue - a.revenue);
+
+      // --- Por producto: detalle producto a producto (única fuente) ---
+      const productMap = new Map<
+        string,
+        { ref: string; name: string; quantity: number; revenue: number; cost: number }
+      >();
+      for (const periodo of this.periodsBetween(from, to)) {
+        const rows = await this.priceListsService.getVendorProductSales(periodo);
+        for (const row of rows) {
+          const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
+          if (!day || day < from || day > to) continue;
+          const ref = (row.referencia ?? '').trim() || '—';
+          const name = (row.descripcion ?? '').trim() || ref;
+          const crit = (row.criterio_producto ?? '').trim().toUpperCase();
+          if (
+            crit === 'SERVICIO' ||
+            ref.startsWith('99') ||
+            name.toUpperCase().startsWith('SERVICIO')
+          ) {
+            continue;
+          }
+          const esCanal =
+            crit === 'CANAL' || name.toUpperCase().startsWith('CANAL');
+          const esAgro = esCanal || crit === 'CORTE' || crit === 'SUBPRODUCTO';
+          if (!esAgro) continue;
+          const bruto = Number(row.valor_bruto) || 0;
+          const costo = Number(row.costo_total) || 0;
+          const qty = Number(row.cantidad_base) || 0;
+          const pg =
+            productMap.get(ref) ??
+            { ref, name, quantity: 0, revenue: 0, cost: 0 };
+          pg.quantity += qty;
+          pg.revenue += bruto;
+          pg.cost += costo;
+          productMap.set(ref, pg);
+        }
+      }
 
       const byProduct = [...productMap.values()]
         .map((p) => ({
@@ -566,6 +597,7 @@ export class AdminStatsService {
         cost: totCost,
         profit: totRevenue - totCost,
         marginPct: marginPct(totRevenue, totRevenue - totCost),
+        kilos: totKilos,
         bySeller,
         byProduct,
       };
