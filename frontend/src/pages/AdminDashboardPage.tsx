@@ -646,12 +646,25 @@ function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
   // Para AGROPECUARIA (con margen) la venta mostrada es la facturación real del
   // ERP; para las demás compañías se usa el total de pedidos de la app.
   const ventas = m ? m.revenue : t.revenue;
-  const kpis = [
-    { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
-    { label: 'Ticket promedio', value: formatCurrency(t.avgTicket), icon: Receipt },
-    { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
-    { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
-  ];
+  // El margen (solo Agropecuaria) se muestra como un KPI más, para que todas
+  // las tarjetas de encabezado mantengan la misma estructura y altura.
+  const kpis = m
+    ? [
+        {
+          label: `Margen ${m.marginPct.toFixed(1)}%`,
+          value: formatCurrency(m.profit),
+          icon: TrendingUp,
+        },
+        { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
+        { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
+        { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
+      ]
+    : [
+        { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
+        { label: 'Ticket promedio', value: formatCurrency(t.avgTicket), icon: Receipt },
+        { label: 'Unidades', value: t.units.toLocaleString('es-CO'), icon: Boxes },
+        { label: 'Clientes', value: t.customers.toLocaleString('es-CO'), icon: Users },
+      ];
   return (
     <Card className={cn('border', accent.ring)}>
       <CardContent className="p-5">
@@ -673,24 +686,12 @@ function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">
-              {m ? 'Facturación' : 'Ventas'}
-            </p>
+            <p className="text-xs text-muted-foreground">Ventas</p>
             <p className={cn('text-xl font-bold', accent.text)}>
               {formatCurrency(ventas)}
             </p>
           </div>
         </div>
-        {m && (
-          <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              Margen de ganancia
-            </span>
-            <span className="text-sm font-bold tabular-nums text-emerald-600">
-              {formatCurrency(m.profit)} · {m.marginPct.toFixed(1)}%
-            </span>
-          </div>
-        )}
         <div className="mt-4 grid grid-cols-2 gap-2">
           {kpis.map((k) => (
             <div
@@ -774,7 +775,7 @@ function SellersCard({ company }: { company: ManagerialCompanyStats }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <Users className={cn('h-4 w-4', accent.text)} />
-          Pedidos por vendedor
+          Ventas por vendedor
         </CardTitle>
       </CardHeader>
       <CardContent>
