@@ -7,6 +7,7 @@ import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
 import { COMPANIES } from '../../common/companies';
 import { bogotaToday } from '../orders/order-cortes';
+import { PriceListsService } from '../price-lists/price-lists.service';
 
 /** Estados que representan una venta real (excluye borradores y cancelados). */
 const SALE_STATUSES = [
@@ -79,6 +80,33 @@ export interface ManagerialCompanyStats {
     orders: number;
     revenue: number;
   }[];
+  /**
+   * Facturación real y margen desde el ERP Siesa (solo AGROPECUARIA, cía 3).
+   * `revenue` = venta bruta, `cost` = costo total, `profit` = margen.
+   */
+  margin?: {
+    revenue: number;
+    cost: number;
+    profit: number;
+    marginPct: number;
+    bySeller: {
+      name: string;
+      nit: string;
+      revenue: number;
+      cost: number;
+      profit: number;
+      marginPct: number;
+    }[];
+    byProduct: {
+      ref: string;
+      name: string;
+      quantity: number;
+      revenue: number;
+      cost: number;
+      profit: number;
+      marginPct: number;
+    }[];
+  };
 }
 
 /** Dashboard gerencial: las mismas métricas divididas por compañía y por rango. */
@@ -99,6 +127,7 @@ export class AdminStatsService {
     private readonly customersRepository: Repository<Customer>,
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
+    private readonly priceListsService: PriceListsService,
   ) {}
 
   /** KPIs y series del panel de administración (agregando ambas compañías). */
@@ -389,6 +418,11 @@ export class AdminStatsService {
         this.getCompanyTopSellers(companyId, from, to),
       ]);
 
+    // Solo AGROPECUARIA (cía 3) tiene facturación con costo en el ERP; para las
+    // demás compañías no hay fuente de costo, así que no se calcula margen.
+    const margin =
+      companyId === '3' ? await this.getErpMargin(from, to) : undefined;
+
     return {
       companyId,
       name,
@@ -404,7 +438,140 @@ export class AdminStatsService {
       topProducts,
       topCustomers,
       topSellers,
+      margin,
     };
+  }
+
+  /** Lista de períodos (YYYYMM) que cubre un rango de fechas. */
+  private periodsBetween(from: string, to: string): string[] {
+    const res: string[] = [];
+    let y = Number(from.slice(0, 4));
+    let m = Number(from.slice(5, 7));
+    const ey = Number(to.slice(0, 4));
+    const em = Number(to.slice(5, 7));
+    let guard = 0;
+    while ((y < ey || (y === ey && m <= em)) && guard < 36) {
+      res.push(`${y}${String(m).padStart(2, '0')}`);
+      m++;
+      if (m > 12) {
+        m = 1;
+        y++;
+      }
+      guard++;
+    }
+    return res;
+  }
+
+  /**
+   * Facturación real y margen de AGROPECUARIA desde el ERP Siesa, agrupada por
+   * vendedor y por producto. Excluye SERVICIOS y categorías que no son de la
+   * agropecuaria (víveres/embutidos de otra compañía). El margen es
+   * `valor_bruto - costo_total`. Si el ERP falla, retorna `undefined` para no
+   * romper el resto del tablero.
+   */
+  private async getErpMargin(
+    from: string,
+    to: string,
+  ): Promise<ManagerialCompanyStats['margin']> {
+    try {
+      const sellerMap = new Map<
+        string,
+        { name: string; nit: string; revenue: number; cost: number }
+      >();
+      const productMap = new Map<
+        string,
+        { ref: string; name: string; quantity: number; revenue: number; cost: number }
+      >();
+      let totRevenue = 0;
+      let totCost = 0;
+
+      for (const periodo of this.periodsBetween(from, to)) {
+        const rows = await this.priceListsService.getVendorProductSales(periodo);
+        for (const row of rows) {
+          const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
+          if (!day || day < from || day > to) continue;
+          const ref = (row.referencia ?? '').trim() || '—';
+          const name = (row.descripcion ?? '').trim() || ref;
+          const crit = (row.criterio_producto ?? '').trim().toUpperCase();
+          // Se excluyen servicios y categorías ajenas a la agropecuaria; solo
+          // canales, cortes y subproductos cuentan como facturación real.
+          if (
+            crit === 'SERVICIO' ||
+            ref.startsWith('99') ||
+            name.toUpperCase().startsWith('SERVICIO')
+          ) {
+            continue;
+          }
+          const esCanal =
+            crit === 'CANAL' || name.toUpperCase().startsWith('CANAL');
+          const esAgro =
+            esCanal || crit === 'CORTE' || crit === 'SUBPRODUCTO';
+          if (!esAgro) continue;
+
+          const bruto = Number(row.valor_bruto) || 0;
+          const costo = Number(row.costo_total) || 0;
+          const qty = Number(row.cantidad_base) || 0;
+          totRevenue += bruto;
+          totCost += costo;
+
+          const nit =
+            (row.nit_vendedor ?? '').trim() ||
+            (row.razon_social_vendedor ?? '').trim() ||
+            '—';
+          const sName = (row.razon_social_vendedor ?? '').trim() || nit;
+          const sg =
+            sellerMap.get(nit) ?? { name: sName, nit, revenue: 0, cost: 0 };
+          sg.revenue += bruto;
+          sg.cost += costo;
+          sellerMap.set(nit, sg);
+
+          const pg =
+            productMap.get(ref) ?? { ref, name, quantity: 0, revenue: 0, cost: 0 };
+          pg.quantity += qty;
+          pg.revenue += bruto;
+          pg.cost += costo;
+          productMap.set(ref, pg);
+        }
+      }
+
+      const marginPct = (rev: number, prof: number) =>
+        rev !== 0 ? Number(((prof / rev) * 100).toFixed(1)) : 0;
+
+      const bySeller = [...sellerMap.values()]
+        .map((s) => ({
+          name: s.name,
+          nit: s.nit,
+          revenue: s.revenue,
+          cost: s.cost,
+          profit: s.revenue - s.cost,
+          marginPct: marginPct(s.revenue, s.revenue - s.cost),
+        }))
+        .sort((a, b) => b.revenue - a.revenue);
+
+      const byProduct = [...productMap.values()]
+        .map((p) => ({
+          ref: p.ref,
+          name: p.name,
+          quantity: p.quantity,
+          revenue: p.revenue,
+          cost: p.cost,
+          profit: p.revenue - p.cost,
+          marginPct: marginPct(p.revenue, p.revenue - p.cost),
+        }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 15);
+
+      return {
+        revenue: totRevenue,
+        cost: totCost,
+        profit: totRevenue - totCost,
+        marginPct: marginPct(totRevenue, totRevenue - totCost),
+        bySeller,
+        byProduct,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   private async getCompanyTrend(

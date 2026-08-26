@@ -442,6 +442,29 @@ export interface ManagerialCompanyStats {
     orders: number;
     revenue: number;
   }[];
+  margin?: {
+    revenue: number;
+    cost: number;
+    profit: number;
+    marginPct: number;
+    bySeller: {
+      name: string;
+      nit: string;
+      revenue: number;
+      cost: number;
+      profit: number;
+      marginPct: number;
+    }[];
+    byProduct: {
+      ref: string;
+      name: string;
+      quantity: number;
+      revenue: number;
+      cost: number;
+      profit: number;
+      marginPct: number;
+    }[];
+  };
 }
 
 /** Dashboard gerencial: mismas métricas divididas por compañía y por rango. */

@@ -642,6 +642,10 @@ function ComparativoGrid({
 function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
   const accent = accentFor(company.companyId);
   const t = company.totals;
+  const m = company.margin;
+  // Para AGROPECUARIA (con margen) la venta mostrada es la facturación real del
+  // ERP; para las demás compañías se usa el total de pedidos de la app.
+  const ventas = m ? m.revenue : t.revenue;
   const kpis = [
     { label: 'Pedidos', value: t.orders.toLocaleString('es-CO'), icon: ShoppingCart },
     { label: 'Ticket promedio', value: formatCurrency(t.avgTicket), icon: Receipt },
@@ -669,12 +673,24 @@ function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground">Ventas</p>
+            <p className="text-xs text-muted-foreground">
+              {m ? 'Facturación' : 'Ventas'}
+            </p>
             <p className={cn('text-xl font-bold', accent.text)}>
-              {formatCurrency(t.revenue)}
+              {formatCurrency(ventas)}
             </p>
           </div>
         </div>
+        {m && (
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Margen de ganancia
+            </span>
+            <span className="text-sm font-bold tabular-nums text-emerald-600">
+              {formatCurrency(m.profit)} · {m.marginPct.toFixed(1)}%
+            </span>
+          </div>
+        )}
         <div className="mt-4 grid grid-cols-2 gap-2">
           {kpis.map((k) => (
             <div
@@ -694,6 +710,61 @@ function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
 
 function SellersCard({ company }: { company: ManagerialCompanyStats }) {
   const accent = accentFor(company.companyId);
+  const m = company.margin;
+  // Con margen (AGROPECUARIA): ventas facturadas + margen por vendedor del ERP.
+  if (m) {
+    const maxRevenue = Math.max(1, ...m.bySeller.map((s) => s.revenue));
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Users className={cn('h-4 w-4', accent.text)} />
+            Ventas y margen por vendedor
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {m.bySeller.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Sin ventas en el rango.
+            </p>
+          ) : (
+            <ol className="space-y-2.5">
+              {m.bySeller.map((s, i) => (
+                <li key={`${s.nit}-${i}`} className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                        {i + 1}
+                      </span>
+                      <span className="truncate text-sm font-medium">
+                        {s.name}
+                      </span>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={cn('text-sm font-semibold', accent.text)}>
+                        {formatCurrency(s.revenue)}
+                      </p>
+                      <p className="text-[11px] font-medium text-emerald-600">
+                        Margen {formatCurrency(s.profit)} · {s.marginPct.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn('h-full rounded-full', accent.bar)}
+                      style={{
+                        width: `${Math.round((s.revenue / maxRevenue) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
   const maxSellerRevenue = Math.max(
     1,
     ...company.topSellers.map((s) => s.revenue),
@@ -752,6 +823,61 @@ function SellersCard({ company }: { company: ManagerialCompanyStats }) {
 
 function ProductsCard({ company }: { company: ManagerialCompanyStats }) {
   const accent = accentFor(company.companyId);
+  const m = company.margin;
+  // Con margen (AGROPECUARIA): venta y margen por producto del ERP.
+  if (m) {
+    const maxRevenue = Math.max(1, ...m.byProduct.map((p) => p.revenue));
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Trophy className="h-4 w-4 text-amber-500" />
+            Ventas y margen por producto
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {m.byProduct.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Sin ventas en el rango.
+            </p>
+          ) : (
+            <ol className="space-y-2.5">
+              {m.byProduct.map((p, i) => (
+                <li key={`${p.ref}-${i}`} className="space-y-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                        {i + 1}
+                      </span>
+                      <span className="truncate text-sm font-medium">
+                        {p.name}
+                      </span>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-semibold tabular-nums">
+                        {formatCurrency(p.revenue)}
+                      </p>
+                      <p className="text-[11px] font-medium text-emerald-600">
+                        Margen {formatCurrency(p.profit)} · {p.marginPct.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn('h-full rounded-full', accent.bar)}
+                      style={{
+                        width: `${Math.round((p.revenue / maxRevenue) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
   const maxProductQty = Math.max(
     1,
     ...company.topProducts.map((p) => p.quantity),
