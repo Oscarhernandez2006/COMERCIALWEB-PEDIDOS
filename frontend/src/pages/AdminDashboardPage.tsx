@@ -234,6 +234,63 @@ export function AdminDashboardPage() {
         </CardContent>
       </Card>
 
+      {/* Ingresos por compañía: primero para verlo sin hacer scroll al cambiar fecha */}
+      {isComparativo && companies.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ingresos por compañía</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {companies.map((c) => {
+              const accent = accentFor(c.companyId);
+              const revenue = companyRevenue(c);
+              const share = Math.round((revenue / maxRevenue) * 100);
+              const pctTotal =
+                grandTotal > 0
+                  ? Math.round((revenue / grandTotal) * 100)
+                  : 0;
+              return (
+                <div key={c.companyId} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 font-medium">
+                      <span
+                        className={cn('h-2.5 w-2.5 rounded-full', accent.dot)}
+                      />
+                      {c.name}
+                      <span className="text-xs text-muted-foreground">
+                        #{c.companyId}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className={cn('font-bold', accent.text)}>
+                        {formatCurrency(revenue)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {pctTotal}%
+                      </span>
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn('h-full rounded-full', accent.bar)}
+                      style={{ width: `${share}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
+              <span className="font-medium text-muted-foreground">
+                Total general
+              </span>
+              <span className="text-base font-bold">
+                {formatCurrency(grandTotal)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Venta acumulada del mes por vendedor (ERP) */}
       <VentaAcumuladaSection />
 
@@ -287,66 +344,7 @@ export function AdminDashboardPage() {
           </CardContent>
         </Card>
       ) : isComparativo ? (
-        <>
-          {/* Comparativa de ingresos (barras) */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Ingresos por compañía</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {companies.map((c) => {
-                const accent = accentFor(c.companyId);
-                const revenue = companyRevenue(c);
-                const share = Math.round((revenue / maxRevenue) * 100);
-                const pctTotal =
-                  grandTotal > 0
-                    ? Math.round((revenue / grandTotal) * 100)
-                    : 0;
-                return (
-                  <div key={c.companyId} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2 font-medium">
-                        <span
-                          className={cn('h-2.5 w-2.5 rounded-full', accent.dot)}
-                        />
-                        {c.name}
-                        <span className="text-xs text-muted-foreground">
-                          #{c.companyId}
-                        </span>
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className={cn('font-bold', accent.text)}>
-                          {formatCurrency(revenue)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {pctTotal}%
-                        </span>
-                      </span>
-                    </div>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={cn('h-full rounded-full', accent.bar)}
-                        style={{ width: `${share}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
-                <span className="font-medium text-muted-foreground">
-                  Total general
-                </span>
-                <span className="text-base font-bold">
-                  {formatCurrency(grandTotal)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Columnas por compañía con las filas alineadas (cada sección al
-              mismo nivel para poder comparar mientras se baja). */}
-          <ComparativoGrid companies={companies} />
-        </>
+        <ComparativoGrid companies={companies} />
       ) : selectedCompany ? (
         <CompanyColumn company={selectedCompany} />
       ) : (
