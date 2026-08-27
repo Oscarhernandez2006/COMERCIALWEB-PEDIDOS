@@ -23,6 +23,7 @@ import { CanalOrdersModule } from './modules/canal-orders/canal-orders.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { SeederService } from './database/seeder.service';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { SeederService } from './database/seeder.service';
     ProvisioningModule,
     DispatchModule,
   ],
+  controllers: [AppController],
   providers: [SeederService],
 })
 export class AppModule {}
