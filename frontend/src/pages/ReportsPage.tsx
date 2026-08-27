@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   FileBarChart,
   Building2,
@@ -152,6 +153,7 @@ const REPORTS: {
 ];
 
 export function ReportsPage() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState<ReportKey | null>(null);
 
   return (
@@ -169,7 +171,11 @@ export function ReportsPage() {
           {REPORTS.map((r) => (
             <button
               key={r.key}
-              onClick={() => setOpen(r.key)}
+              onClick={() =>
+                r.key === 'seller-sales'
+                  ? navigate('/admin/reportes/ventas-por-vendedor')
+                  : setOpen(r.key)
+              }
               className="flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-accent"
             >
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

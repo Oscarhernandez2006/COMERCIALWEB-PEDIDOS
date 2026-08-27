@@ -28,6 +28,7 @@ import { CarteraPage } from '@/pages/CarteraPage';
 import { BudgetsPage } from '@/pages/BudgetsPage';
 import { RentabilidadPage } from '@/pages/RentabilidadPage';
 import { ControladorSubproductosPage } from '@/pages/ControladorSubproductosPage';
+import { VentasPorVendedorPage } from '@/pages/VentasPorVendedorPage';
 
 function App() {
   return (
@@ -61,6 +62,7 @@ function App() {
         <Route path="inventario" element={<InventoryPage />} />
         <Route path="pedidos" element={<AdminOrdersPage />} />
         <Route path="reportes" element={<ReportsPage />} />
+        <Route path="reportes/ventas-por-vendedor" element={<VentasPorVendedorPage />} />
         <Route path="descargar-pedidos" element={<DownloadOrdersPage />} />
         <Route
           path="descargar-pedidos-subproductos-cerdo"
