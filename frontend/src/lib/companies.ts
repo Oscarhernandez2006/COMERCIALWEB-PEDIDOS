@@ -24,3 +24,17 @@ export const MIN_ORDER_TOTAL: Record<string, number> = {
 export function getMinOrderTotal(companyId?: string): number {
   return (companyId && MIN_ORDER_TOTAL[companyId]) || 0;
 }
+
+/**
+ * Cédulas (documentId) de vendedores excluidos del tablero comercial: no
+ * aparecen en el selector de vendedores (mismo criterio que el backend).
+ */
+export const DASHBOARD_EXCLUDED_SELLER_DOCS: string[] = [
+  '72004911', // Juan Sierra
+];
+
+/** Indica si el vendedor está excluido del tablero comercial por su cédula. */
+export function isDashboardExcludedSellerDoc(documentId?: string): boolean {
+  const doc = (documentId ?? '').trim();
+  return doc !== '' && DASHBOARD_EXCLUDED_SELLER_DOCS.some((d) => d.trim() === doc);
+}

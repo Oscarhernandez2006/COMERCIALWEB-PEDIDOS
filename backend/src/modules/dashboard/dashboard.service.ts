@@ -9,7 +9,7 @@ import { User, UserRole } from '../users/entities/user.entity';
 import { bogotaToday } from '../orders/order-cortes';
 import { BudgetsService } from '../budgets/budgets.service';
 import { ProductCostsService } from '../product-costs/product-costs.service';
-import { baseCompanyId } from '../../common/companies';
+import { baseCompanyId, isDashboardExcludedSellerDoc } from '../../common/companies';
 import { ChannelSalesClient, ChannelSaleRaw } from '../channel-sales/channel-sales.client';
 import { PriceListsService } from '../price-lists/price-lists.service';
 import { VendorProductSaleRaw } from '../price-lists/price-lists.client';
@@ -218,6 +218,7 @@ export class DashboardService {
     from: string,
     to: string,
     costMap?: Map<string, number>,
+    exclude?: { nits: Set<string>; codes: Set<string>; names: Set<string> },
   ): Promise<{
     revenue: number;
     kilos: number;
@@ -270,6 +271,19 @@ export class DashboardService {
     for (const row of rows) {
       const nit = (row.nit_vendedor ?? '').trim();
       if (filterByNit && !nits.has(nit)) continue;
+      // Se descuentan las ventas de los vendedores excluidos del consolidado
+      // general (p. ej. Juan Sierra): se cruza por NIT, código o razón social.
+      if (exclude) {
+        const code = (row.codigo_vendedor ?? '').trim();
+        const razon = (row.razon_social_vendedor ?? '').trim().toUpperCase();
+        if (
+          (nit && exclude.nits.has(nit)) ||
+          (code && exclude.codes.has(code)) ||
+          (razon && exclude.names.has(razon))
+        ) {
+          continue;
+        }
+      }
       // El ERP renombró la fecha del movimiento de `fecha` a `dia`.
       const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
       if (!day) continue;
@@ -509,6 +523,11 @@ export class DashboardService {
     let channelCodes: Set<string>;
     let activeCodes: string[];
     let nitSet: Set<string>;
+    // Identificadores del/los vendedor(es) excluidos del consolidado general
+    // (p. ej. Juan Sierra) para descontar también su venta del ERP.
+    let erpExclude:
+      | { nits: Set<string>; codes: Set<string>; names: Set<string> }
+      | undefined;
     if (allSellers) {
       const base = baseCompanyId(companyId);
       const mappings = await this.userCompaniesRepository.find({
@@ -517,7 +536,7 @@ export class DashboardService {
       });
       // Vendedores asignados: rol vendedor, activos y con código de Siesa
       // (mismo criterio que el reporte de ventas por vendedor).
-      const assigned = mappings
+      const assignedAll = mappings
         .map((m) => ({
           m,
           code: (m.siesaSellerCode || m.user?.siesaSellerCode || '').trim(),
@@ -526,6 +545,13 @@ export class DashboardService {
           ({ m, code }) =>
             m.user && m.user.active && m.user.role === UserRole.SELLER && code,
         );
+      // Vendedores excluidos del tablero general (configuración de código).
+      const excluded = assignedAll.filter(({ m }) =>
+        isDashboardExcludedSellerDoc(m.user.documentId),
+      );
+      const assigned = assignedAll.filter(
+        ({ m }) => !isDashboardExcludedSellerDoc(m.user.documentId),
+      );
       sellerIds = assigned.map(({ m }) => m.user.id);
       channelCodes = new Set(assigned.map(({ code }) => code));
       activeCodes = [...channelCodes];
@@ -533,6 +559,21 @@ export class DashboardService {
       // ERP no separa por compañía ni exige código Siesa), así que no se filtra
       // por NIT: se suma todo lo facturado del período/rango.
       nitSet = new Set();
+      if (excluded.length > 0) {
+        erpExclude = {
+          nits: new Set(
+            excluded
+              .map(({ m }) => (m.user.documentId ?? '').trim())
+              .filter(Boolean),
+          ),
+          codes: new Set(excluded.map(({ code }) => code).filter(Boolean)),
+          names: new Set(
+            excluded
+              .map(({ m }) => (m.user.name ?? '').trim().toUpperCase())
+              .filter(Boolean),
+          ),
+        };
+      }
     } else {
       seller = await this.usersRepository.findOne({ where: { id: sellerId } });
       const link = await this.userCompaniesRepository.findOne({
@@ -585,8 +626,8 @@ export class DashboardService {
       // AGROPECUARIA: ventas facturadas en Siesa (valor_neto) y kilos.
       const costMap = await this.productCostsService.costMap(companyId);
       const [erp, erpPrev] = await Promise.all([
-        this.getErpSales(nitSet, from, to, costMap),
-        this.getErpSales(nitSet, prevFrom, prevTo),
+        this.getErpSales(nitSet, from, to, costMap, erpExclude),
+        this.getErpSales(nitSet, prevFrom, prevTo, undefined, erpExclude),
       ]);
       revenue = erp.revenue;
       totalKilos = erp.kilos;

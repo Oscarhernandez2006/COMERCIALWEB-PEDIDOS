@@ -33,6 +33,7 @@ export const ADMIN_MODULES: ModuleDef[] = [
     key: '/admin/descargar-pedidos-subproductos-res',
     label: 'Descargar subproductos · Res',
   },
+  { key: '/admin/despacho-drivin-tat', label: 'Despacho · Drivin TAT Facturas' },
   { key: '/admin/listas-precios', label: 'Listas de precios' },
   { key: '/admin/clientes', label: 'Clientes' },
   { key: '/admin/presupuestos', label: 'Presupuestos' },
@@ -43,6 +44,7 @@ export const ADMIN_MODULES: ModuleDef[] = [
     label: 'Controlador Subproductos',
   },
   { key: '/admin/horario-pedidos', label: 'Horario de pedidos' },
+  { key: '/admin/api', label: 'API' },
   { key: '/admin/usuarios', label: 'Usuarios' },
 ];
 

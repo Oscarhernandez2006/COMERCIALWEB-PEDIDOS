@@ -21,6 +21,7 @@ import { ProductCostsModule } from './modules/product-costs/product-costs.module
 import { ChannelSalesModule } from './modules/channel-sales/channel-sales.module';
 import { CanalOrdersModule } from './modules/canal-orders/canal-orders.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
+import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { SeederService } from './database/seeder.service';
 
 @Module({
@@ -49,6 +50,7 @@ import { SeederService } from './database/seeder.service';
     ChannelSalesModule,
     CanalOrdersModule,
     ProvisioningModule,
+    DispatchModule,
   ],
   providers: [SeederService],
 })

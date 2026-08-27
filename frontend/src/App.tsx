@@ -29,6 +29,8 @@ import { BudgetsPage } from '@/pages/BudgetsPage';
 import { RentabilidadPage } from '@/pages/RentabilidadPage';
 import { ControladorSubproductosPage } from '@/pages/ControladorSubproductosPage';
 import { VentasPorVendedorPage } from '@/pages/VentasPorVendedorPage';
+import { DispatchTatInvoicesPage } from '@/pages/DispatchTatInvoicesPage';
+import { ApiDocsPage } from '@/pages/ApiDocsPage';
 
 function App() {
   return (
@@ -72,6 +74,10 @@ function App() {
           path="descargar-pedidos-subproductos-res"
           element={<DownloadOrdersPage orderType="subproducto" category="RES" />}
         />
+        <Route
+          path="despacho-drivin-tat"
+          element={<DispatchTatInvoicesPage />}
+        />
         <Route path="listas-precios" element={<PriceListsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="presupuestos" element={<BudgetsPage />} />
@@ -82,6 +88,7 @@ function App() {
           element={<ControladorSubproductosPage />}
         />
         <Route path="horario-pedidos" element={<OrderSchedulePage />} />
+        <Route path="api" element={<ApiDocsPage />} />
         <Route path="usuarios" element={<UsersPage />} />
       </Route>
 

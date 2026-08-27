@@ -26,6 +26,23 @@ export const BUDGET_APART_SELLER_DOCS: string[] = [
   '72004911 ', // Juan Sierra 
 ];
 
+/**
+ * Cédulas (document_id) de vendedores que se EXCLUYEN por completo del tablero
+ * comercial: no aparecen en el selector de vendedores y su venta no suma en el
+ * consolidado "general" (todos los vendedores). Solo configuración de código.
+ */
+export const DASHBOARD_EXCLUDED_SELLER_DOCS: string[] = [
+  '72004911', // Juan Sierra
+];
+
+/** Indica si la cédula del vendedor está excluida del tablero comercial. */
+export function isDashboardExcludedSellerDoc(
+  documentId: string | null | undefined,
+): boolean {
+  const doc = (documentId ?? '').trim();
+  return doc !== '' && DASHBOARD_EXCLUDED_SELLER_DOCS.some((d) => d.trim() === doc);
+}
+
 export function isValidCompany(id: string | undefined): id is string {
   return !!id && COMPANY_IDS.includes(id);
 }

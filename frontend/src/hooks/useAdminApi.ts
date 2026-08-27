@@ -20,6 +20,7 @@ import type {
   SellerSalesReportData,
   VendorProductSalesReportData,
   SellableProduct,
+  TatInvoice,
 } from '@/types';
 
 /** KPIs consolidados de ambas compañías para el panel de administración. */
@@ -365,6 +366,75 @@ export function useSaveProductCosts() {
       qc.invalidateQueries({
         queryKey: ['admin', 'product-costs', vars.companyId],
       });
+    },
+  });
+}
+
+/* ---- Despacho · Facturas TAT (Drivin) ---- */
+
+/** Facturas TAT guardadas de la compañía con su estado de selección. */
+export function useTatInvoices(companyId: string) {
+  return useQuery({
+    queryKey: ['admin', 'dispatch', 'tat-invoices', companyId],
+    queryFn: async () => {
+      const res = await api.get<TatInvoice[]>('/admin/dispatch/tat-invoices', {
+        headers: { 'X-Company-Id': companyId },
+      });
+      return res.data;
+    },
+    enabled: Boolean(companyId),
+    retry: false,
+  });
+}
+
+interface SyncTatInvoicesInput {
+  companyId: string;
+  /** Fecha final (YYYY-MM-DD). El backend trae esa fecha y los 5 días previos. */
+  date: string;
+}
+
+/** Sincroniza desde Siesa las facturas TAT de la fecha y los 5 días anteriores. */
+export function useSyncTatInvoices() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ companyId, date }: SyncTatInvoicesInput) => {
+      const res = await api.post<TatInvoice[]>(
+        '/admin/dispatch/tat-invoices/sync',
+        null,
+        { params: { date }, headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    // El sync reemplaza la tabla por el rango elegido: se refleja de inmediato
+    // en la caché para no lanzar una segunda consulta.
+    onSuccess: (data, vars) => {
+      qc.setQueryData(
+        ['admin', 'dispatch', 'tat-invoices', vars.companyId],
+        data,
+      );
+    },
+  });
+}
+
+interface SaveTatSelectionInput {
+  companyId: string;
+  items: { invoiceNumber: string; selected: boolean }[];
+}
+
+/**
+ * Guarda la selección de facturas a despachar en Drivin. Se usa como
+ * autoguardado por cada marca/desmarca: NO invalida la query para no resetear
+ * la selección local en curso (la BD queda como respaldo ante un refresco).
+ */
+export function useSaveTatDispatchSelection() {
+  return useMutation({
+    mutationFn: async ({ companyId, items }: SaveTatSelectionInput) => {
+      const res = await api.put<string[]>(
+        '/admin/dispatch/tat-invoices/selection',
+        { items },
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
     },
   });
 }

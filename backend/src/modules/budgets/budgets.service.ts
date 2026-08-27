@@ -299,11 +299,26 @@ export class BudgetsService {
     year: number,
   ): Promise<{ targetKilos: number; expectedRevenue: number } | null> {
     const apartIds = await this.apartSellerIds();
+    // Solo cuentan los vendedores actualmente asignados y activos (rol
+    // vendedor), igual que la página de Presupuestos. Se descartan filas
+    // huérfanas de usuarios inactivos, no asignados o que ya no son vendedores
+    // (p. ej. un presupuesto viejo de alguien que pasó a admin).
+    const mappings = await this.userCompaniesRepository.find({
+      where: { companyId: baseCompanyId(companyId), active: true },
+      relations: { user: true },
+    });
+    const validSellerIds = new Set(
+      mappings
+        .filter(
+          (m) => m.user && m.user.active && m.user.role === UserRole.SELLER,
+        )
+        .map((m) => m.userId),
+    );
     const rows = (
       await this.budgetsRepository.find({
         where: { companyId, month, year },
       })
-    ).filter((b) => !apartIds.has(b.sellerId));
+    ).filter((b) => validSellerIds.has(b.sellerId) && !apartIds.has(b.sellerId));
     if (rows.length === 0) return null;
     return {
       targetKilos: rows.reduce((sum, b) => sum + Number(b.targetKilos), 0),

@@ -21,6 +21,8 @@ import {
   Target,
   Coins,
   ClipboardCheck,
+  Truck,
+  BookOpen,
   ChevronDown,
   Menu,
   X,
@@ -80,6 +82,11 @@ const adminSections: { label: string; items: typeof sellerNav }[] = [
         label: 'Descargar subproductos · Res',
         icon: FileDown,
       },
+      {
+        to: '/admin/despacho-drivin-tat',
+        label: 'Despacho · Drivin TAT Facturas',
+        icon: Truck,
+      },
     ],
   },
   {
@@ -96,6 +103,7 @@ const adminSections: { label: string; items: typeof sellerNav }[] = [
     label: 'Configuración',
     items: [
       { to: '/admin/horario-pedidos', label: 'Horario de pedidos', icon: Clock },
+      { to: '/admin/api', label: 'API', icon: BookOpen },
       { to: '/admin/usuarios', label: 'Usuarios', icon: Users },
     ],
   },

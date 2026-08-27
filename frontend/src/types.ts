@@ -365,6 +365,23 @@ export interface ProductCost {
   unitCost: number;
 }
 
+/** Factura TAT (Siesa) con su estado de selección para despacho en Drivin. */
+export interface TatInvoice {
+  id: string;
+  /** Consecutivo de la factura (nro_documento). */
+  invoiceNumber: string;
+  documentDate: string;
+  clientCode: string;
+  clientName: string;
+  /** Tipos comerciales de la factura (p. ej. "CORTE, SUBPRODUCTO"). */
+  tipoComercial: string | null;
+  /** Cantidad total (kilos). */
+  quantity: number;
+  /** Valor subtotal total (pesos). */
+  subtotal: number;
+  selected: boolean;
+}
+
 /** Definición de un ítem de canal seleccionable en la toma de pedidos. */
 export interface CanalItemDef {
   ref: string;

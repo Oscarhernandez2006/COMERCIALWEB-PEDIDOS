@@ -17,6 +17,7 @@ import {
 import { useAuth } from '@/auth/useAuth';
 import { useSellerDashboard, useSellers } from '@/hooks/useApi';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { isDashboardExcludedSellerDoc } from '@/lib/companies';
 import type { SellerCommercialDashboard } from '@/types';
 import {
   Card,
@@ -186,9 +187,13 @@ export function DashboardPage() {
   const [sellerSearch, setSellerSearch] = useState('');
   const [sellerOpen, setSellerOpen] = useState(false);
   const { data: sellers = [] } = useSellers();
-  // Solo usuarios con rol de vendedor.
+  // Solo usuarios con rol de vendedor. Se excluyen los vendedores apartados del
+  // tablero comercial (p. ej. Juan Sierra) del selector.
   const sellerOptions = useMemo(
-    () => sellers.filter((s) => s.role === 'seller'),
+    () =>
+      sellers.filter(
+        (s) => s.role === 'seller' && !isDashboardExcludedSellerDoc(s.documentId),
+      ),
     [sellers],
   );
   const filteredSellers = useMemo(() => {

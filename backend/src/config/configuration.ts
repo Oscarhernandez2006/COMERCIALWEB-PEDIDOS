@@ -44,4 +44,21 @@ export default () => ({
     token: process.env.PRICE_LISTS_TOKEN ?? '',
     timeoutMs: parseInt(process.env.PRICE_LISTS_TIMEOUT_MS ?? '30000', 10),
   },
+
+  // Despacho: endpoints de Siesa con las facturas TAT que se suben a Drivin.
+  // Cada compañía tiene su propio endpoint (AGROPECUARIA=3, CARNES FRIAS=8).
+  dispatch: {
+    tatInvoicesUrls: {
+      '3':
+        process.env.DISPATCH_TAT_INVOICES_URL ??
+        'https://apiconsulta.grupo-santacruz.com/ventas/facturas-agropecuaria-tat',
+      '8':
+        process.env.DISPATCH_TAT_INVOICES_URL_CARNES ??
+        'https://apiconsulta.grupo-santacruz.com/ventas/facturas-tat-inversiones',
+    } as Record<string, string>,
+    tatInvoicesToken: process.env.DISPATCH_TAT_INVOICES_TOKEN ?? '',
+    timeoutMs: parseInt(process.env.DISPATCH_TIMEOUT_MS ?? '30000', 10),
+    // Token de la API pública que expone las facturas marcadas para despacho.
+    apiToken: process.env.DISPATCH_API_TOKEN ?? '',
+  },
 });

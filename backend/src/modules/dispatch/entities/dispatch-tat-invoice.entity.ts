@@ -1,0 +1,49 @@
+import { Column, Entity, Index, Unique } from 'typeorm';
+import { BaseEntity } from '../../../common/entities/base.entity';
+
+/**
+ * Factura TAT (Siesa) descargada para despacho en Drivin. Una fila por
+ * CONSECUTIVO (nro_documento), agregando sus líneas (corte/canal/subproducto).
+ * `selected` indica si está marcada para despachar. Aislada por compañía.
+ */
+@Entity('dispatch_tat_invoice')
+@Unique('uq_dispatch_tat_company_invoice', ['companyId', 'invoiceNumber'])
+export class DispatchTatInvoice extends BaseEntity {
+  @Index()
+  @Column({ name: 'company_id' })
+  companyId: string;
+
+  /** Consecutivo de la factura (nro_documento). Clave del negocio. */
+  @Index()
+  @Column({ name: 'invoice_number' })
+  invoiceNumber: string;
+
+  /** Fecha del documento (YYYY-MM-DD). */
+  @Index()
+  @Column({ name: 'document_date', type: 'date' })
+  documentDate: string;
+
+  /** Código/NIT del cliente (cliente_factura). */
+  @Column({ name: 'client_code' })
+  clientCode: string;
+
+  /** Razón social del cliente. */
+  @Column({ name: 'client_name' })
+  clientName: string;
+
+  /** Tipos comerciales presentes en la factura (p. ej. "CORTE, SUBPRODUCTO"). */
+  @Column({ name: 'tipo_comercial', type: 'varchar', nullable: true })
+  tipoComercial: string | null;
+
+  /** Cantidad inventario total (kilos) de la factura. */
+  @Column({ name: 'quantity', type: 'numeric', precision: 16, scale: 2, default: 0 })
+  quantity: number;
+
+  /** Valor subtotal total de la factura (pesos). */
+  @Column({ name: 'subtotal', type: 'numeric', precision: 16, scale: 2, default: 0 })
+  subtotal: number;
+
+  /** Si la factura está marcada para despacho. */
+  @Column({ name: 'selected', type: 'boolean', default: false })
+  selected: boolean;
+}
