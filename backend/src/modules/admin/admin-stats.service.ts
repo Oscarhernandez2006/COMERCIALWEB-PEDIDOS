@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { Customer } from '../customers/entities/customer.entity';
 import { Product } from '../products/entities/product.entity';
-import { COMPANIES } from '../../common/companies';
+import {
+  COMPANIES,
+  DASHBOARD_EXCLUDED_SELLER_DOCS,
+  isDashboardExcludedSellerDoc,
+} from '../../common/companies';
 import { bogotaToday } from '../orders/order-cortes';
 import { PriceListsService } from '../price-lists/price-lists.service';
 
@@ -381,6 +385,25 @@ export class AdminStatsService {
     return d.toISOString().slice(0, 10);
   }
 
+  /**
+   * Excluye del tablero gerencial a los vendedores marcados como no
+   * contabilizables (p. ej. Juan Sierra). Une la relación `seller` y descarta
+   * sus pedidos. El `orderAlias` debe apuntar a la entidad Order en el query.
+   */
+  private excludeDashboardSellers(
+    qb: SelectQueryBuilder<Order | OrderItem>,
+    orderAlias = 'o',
+  ): void {
+    const docs = DASHBOARD_EXCLUDED_SELLER_DOCS.map((d) => d.trim()).filter(
+      Boolean,
+    );
+    if (docs.length === 0) return;
+    qb.leftJoin(`${orderAlias}.seller`, 'excl_seller').andWhere(
+      '(excl_seller.document_id IS NULL OR TRIM(excl_seller.document_id) NOT IN (:...exclDocs))',
+      { exclDocs: docs },
+    );
+  }
+
   private async getCompanyStats(
     companyId: string,
     name: string,
@@ -395,21 +418,27 @@ export class AdminStatsService {
       .addSelect('COUNT(DISTINCT o.customer_id)', 'customers')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from, to })
-      .getRawOne<{ revenue: string; orders: string; customers: string }>();
+      .andWhere(this.bogotaDateFilter, { from, to });
+    this.excludeDashboardSellers(sale);
+    const saleRow = await sale.getRawOne<{
+      revenue: string;
+      orders: string;
+      customers: string;
+    }>();
 
     // Unidades vendidas (suma de cantidades de los ítems) en el rango.
-    const unitsRow = await this.orderItemsRepository
+    const unitsQb = this.orderItemsRepository
       .createQueryBuilder('it')
       .innerJoin('it.order', 'o')
       .select('COALESCE(SUM(it.quantity), 0)', 'units')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from, to })
-      .getRawOne<{ units: string }>();
+      .andWhere(this.bogotaDateFilter, { from, to });
+    this.excludeDashboardSellers(unitsQb);
+    const unitsRow = await unitsQb.getRawOne<{ units: string }>();
 
-    const revenue = Number(sale?.revenue ?? 0);
-    const orders = Number(sale?.orders ?? 0);
+    const revenue = Number(saleRow?.revenue ?? 0);
+    const orders = Number(saleRow?.orders ?? 0);
 
     const [salesTrend, ordersByStatus, topProducts, topCustomers, topSellers] =
       await Promise.all([
@@ -433,7 +462,7 @@ export class AdminStatsService {
         orders,
         units: Number(unitsRow?.units ?? 0),
         avgTicket: orders > 0 ? Number((revenue / orders).toFixed(2)) : 0,
-        customers: Number(sale?.customers ?? 0),
+        customers: Number(saleRow?.customers ?? 0),
       },
       salesTrend,
       ordersByStatus,
@@ -464,21 +493,13 @@ export class AdminStatsService {
     return res;
   }
 
-  /** Último día (YYYY-MM-DD) del mes de una fecha. */
-  private endOfMonth(date: string): string {
-    const y = Number(date.slice(0, 4));
-    const m = Number(date.slice(5, 7));
-    const last = new Date(y, m, 0).getDate();
-    return `${date.slice(0, 7)}-${String(last).padStart(2, '0')}`;
-  }
-
   /**
    * Facturación real y margen de AGROPECUARIA. Los totales y el desglose POR
-   * VENDEDOR se toman de la consulta GENERAL del ERP (`dashboard-comercial`):
-   * `total_facturas` (venta), `kilos`, `costo_total` y margen por vendedor.
-   * El desglose POR PRODUCTO se toma de `vendedor-productos-mes` (única fuente
-   * con el detalle de referencias), excluyendo servicios y categorías ajenas.
-   * Si el ERP falla, retorna `undefined` para no romper el resto del tablero.
+   * VENDEDOR se toman de `vendedor-productos-mes` (venta neta `valor_neto`),
+   * el MISMO origen que el reporte de "ventas acumuladas por vendedor", para
+   * que ambos totales cuadren. El desglose POR PRODUCTO usa también esa fuente,
+   * excluyendo servicios y categorías ajenas. Si el ERP falla, retorna
+   * `undefined` para no romper el resto del tablero.
    */
   private async getErpMargin(
     from: string,
@@ -488,7 +509,11 @@ export class AdminStatsService {
       const marginPct = (rev: number, prof: number) =>
         rev !== 0 ? Number(((prof / rev) * 100).toFixed(1)) : 0;
 
-      // --- Totales y por vendedor: consulta general por vendedor ---
+      // --- Totales y por vendedor: se toman del MISMO origen que las ventas
+      // acumuladas (endpoint `vendedor-productos-mes`, venta neta) para que el
+      // total del tablero cuadre exactamente con esa vista. Solo se excluye al
+      // vendedor apartado (Juan Sierra); los demás vendedores del ERP se
+      // cuentan tal cual (p. ej. León Gutiérrez). ---
       const sellerMap = new Map<
         string,
         { name: string; nit: string; revenue: number; cost: number; kilos: number }
@@ -498,35 +523,30 @@ export class AdminStatsService {
       let totKilos = 0;
 
       for (const periodo of this.periodsBetween(from, to)) {
-        const monthStart = `${periodo.slice(0, 4)}-${periodo.slice(4, 6)}-01`;
-        const monthEnd = this.endOfMonth(monthStart);
-        const fi = from > monthStart ? from : monthStart;
-        const ff = to < monthEnd ? to : monthEnd;
-        const grows = await this.priceListsService.getVendorMonthlySales(
+        const grows = await this.priceListsService.getVendorProductSales(
           '3',
           periodo,
-          fi,
-          ff,
         );
         for (const g of grows) {
-          const nit =
-            (g.nit_vendedor ?? '').trim() ||
-            (g.razon_social_vendedor ?? '').trim() ||
-            '—';
-          const name = (g.razon_social_vendedor ?? '').trim() || nit;
-          const rev = Number(g.total_facturas) || 0;
+          const day = (g.dia ?? g.fecha ?? '').slice(0, 10);
+          if (!day || day < from || day > to) continue;
+          const nit = (g.nit_vendedor ?? '').trim();
+          if (isDashboardExcludedSellerDoc(nit)) continue;
+          const name = (g.razon_social_vendedor ?? '').trim() || nit || '—';
+          const key = nit || name;
+          const rev = Number(g.valor_neto) || 0;
           const cost = Number(g.costo_total) || 0;
-          const kg = Number(g.kilos) || 0;
+          const kg = Number(g.cantidad_base) || 0;
           totRevenue += rev;
           totCost += cost;
           totKilos += kg;
           const sg =
-            sellerMap.get(nit) ??
-            { name, nit, revenue: 0, cost: 0, kilos: 0 };
+            sellerMap.get(key) ??
+            { name, nit: nit || '—', revenue: 0, cost: 0, kilos: 0 };
           sg.revenue += rev;
           sg.cost += cost;
           sg.kilos += kg;
-          sellerMap.set(nit, sg);
+          sellerMap.set(key, sg);
         }
       }
 
@@ -555,6 +575,9 @@ export class AdminStatsService {
         for (const row of rows) {
           const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
           if (!day || day < from || day > to) continue;
+          // Excluye del desglose por producto al vendedor no contabilizable.
+          if (isDashboardExcludedSellerDoc((row.nit_vendedor ?? '').trim()))
+            continue;
           const ref = (row.referencia ?? '').trim() || '—';
           const name = (row.descripcion ?? '').trim() || ref;
           const crit = (row.criterio_producto ?? '').trim().toUpperCase();
@@ -620,14 +643,16 @@ export class AdminStatsService {
       return this.getCompanyHourlyTrend(companyId, from);
     }
 
-    const rows = await this.ordersRepository
+    const trendQb = this.ordersRepository
       .createQueryBuilder('o')
       .select(this.bogotaDateExpr, 'date')
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .addSelect('COUNT(*)', 'orders')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from, to })
+      .andWhere(this.bogotaDateFilter, { from, to });
+    this.excludeDashboardSellers(trendQb);
+    const rows = await trendQb
       .groupBy('date')
       .orderBy('date', 'ASC')
       .getRawMany<{ date: string; revenue: string; orders: string }>();
@@ -661,14 +686,16 @@ export class AdminStatsService {
     companyId: string,
     day: string,
   ): Promise<ManagerialCompanyStats['salesTrend']> {
-    const rows = await this.ordersRepository
+    const hourQb = this.ordersRepository
       .createQueryBuilder('o')
       .select(this.bogotaHourExpr, 'hour')
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .addSelect('COUNT(*)', 'orders')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from: day, to: day })
+      .andWhere(this.bogotaDateFilter, { from: day, to: day });
+    this.excludeDashboardSellers(hourQb);
+    const rows = await hourQb
       .groupBy('hour')
       .orderBy('hour', 'ASC')
       .getRawMany<{ hour: string; revenue: string; orders: string }>();
@@ -700,12 +727,14 @@ export class AdminStatsService {
     from: string,
     to: string,
   ): Promise<ManagerialCompanyStats['ordersByStatus']> {
-    const rows = await this.ordersRepository
+    const statusQb = this.ordersRepository
       .createQueryBuilder('o')
       .select('o.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .where('o.companyId = :companyId', { companyId })
-      .andWhere(this.bogotaDateFilter, { from, to })
+      .andWhere(this.bogotaDateFilter, { from, to });
+    this.excludeDashboardSellers(statusQb);
+    const rows = await statusQb
       .groupBy('o.status')
       .getRawMany<{ status: string; count: string }>();
 
@@ -717,7 +746,7 @@ export class AdminStatsService {
     from: string,
     to: string,
   ): Promise<ManagerialCompanyStats['topProducts']> {
-    const rows = await this.orderItemsRepository
+    const prodQb = this.orderItemsRepository
       .createQueryBuilder('it')
       .innerJoin('it.order', 'o')
       .select('it.sku', 'sku')
@@ -726,7 +755,9 @@ export class AdminStatsService {
       .addSelect('COALESCE(SUM(it.line_total), 0)', 'revenue')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from, to })
+      .andWhere(this.bogotaDateFilter, { from, to });
+    this.excludeDashboardSellers(prodQb);
+    const rows = await prodQb
       .groupBy('it.sku')
       .addGroupBy('it.product_name')
       .orderBy('quantity', 'DESC')
@@ -751,7 +782,7 @@ export class AdminStatsService {
     from: string,
     to: string,
   ): Promise<ManagerialCompanyStats['topCustomers']> {
-    const rows = await this.ordersRepository
+    const custQb = this.ordersRepository
       .createQueryBuilder('o')
       .innerJoin('o.customer', 'c')
       .select('c.name', 'name')
@@ -760,7 +791,9 @@ export class AdminStatsService {
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from, to })
+      .andWhere(this.bogotaDateFilter, { from, to });
+    this.excludeDashboardSellers(custQb);
+    const rows = await custQb
       .groupBy('c.name')
       .addGroupBy('c.code')
       .orderBy('revenue', 'DESC')
@@ -785,7 +818,10 @@ export class AdminStatsService {
     from: string,
     to: string,
   ): Promise<ManagerialCompanyStats['topSellers']> {
-    const rows = await this.ordersRepository
+    const excludedDocs = DASHBOARD_EXCLUDED_SELLER_DOCS.map((d) =>
+      d.trim(),
+    ).filter(Boolean);
+    const qb = this.ordersRepository
       .createQueryBuilder('o')
       .innerJoin('o.seller', 's')
       .select('s.name', 'name')
@@ -794,7 +830,13 @@ export class AdminStatsService {
       .addSelect('COALESCE(SUM(o.total), 0)', 'revenue')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from, to })
+      .andWhere(this.bogotaDateFilter, { from, to });
+    if (excludedDocs.length > 0) {
+      qb.andWhere('TRIM(s.document_id) NOT IN (:...excludedDocs)', {
+        excludedDocs,
+      });
+    }
+    const rows = await qb
       .groupBy('s.name')
       .addGroupBy('s.document_id')
       .orderBy('revenue', 'DESC')

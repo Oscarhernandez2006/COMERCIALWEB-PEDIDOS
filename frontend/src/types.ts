@@ -662,6 +662,21 @@ export interface VendorProductSalesReportData {
   grandTotalNet: number;
 }
 
+/** Pedidos (de la BD) por vendedor, para comparar contra la venta del ERP. */
+export interface OrdersBySellerReportData {
+  periodo: string;
+  fecha?: string;
+  periodLabel: string;
+  sellers: {
+    sellerId: string;
+    name: string;
+    total: number;
+    orders: number;
+  }[];
+  grandTotal: number;
+  grandOrders: number;
+}
+
 /** Fila del reporte vendedor–producto. */
 export interface SellerProductRow {
   sellerId: string;

@@ -500,6 +500,23 @@ export class AdminReportsController {
     return this.reportsService.getVendorProductSalesReport(periodo, fecha);
   }
 
+  /**
+   * Pedidos (de la app/BD) por vendedor para un período (YYYYMM) u opcional día.
+   * Para comparar lo PEDIDO contra lo VENDIDO del ERP. Por defecto compañía 3.
+   */
+  @Get('orders-by-seller/data')
+  ordersBySellerData(
+    @Query('periodo') periodo: string,
+    @Query('fecha') fecha?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.reportsService.getOrdersBySellerReport(
+      companyId?.trim() || '3',
+      periodo,
+      fecha,
+    );
+  }
+
   /** Reporte de ventas acumuladas por vendedor por producto en PDF. */
   @Get('vendor-product-sales/pdf')
   async vendorProductSalesPdf(

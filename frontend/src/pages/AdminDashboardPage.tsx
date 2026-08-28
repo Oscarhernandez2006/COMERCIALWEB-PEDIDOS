@@ -15,6 +15,7 @@ import {
 import {
   useManagerialDashboard,
   useVendorProductSalesReport,
+  useOrdersBySellerReport,
 } from '@/hooks/useAdminApi';
 import { formatCurrency, cn } from '@/lib/utils';
 import {
@@ -119,7 +120,10 @@ export function AdminDashboardPage() {
     to,
   );
 
-  const companies = data?.companies ?? [];
+  // Se excluye MONTERIA TAT (MTAT) de este panel.
+  const companies = (data?.companies ?? []).filter(
+    (c) => c.companyId !== 'MTAT',
+  );
   const isComparativo = selectedCompanyId === 'comparativo';
   const selectedCompany = useMemo(
     () => companies.find((c) => c.companyId === selectedCompanyId),
@@ -543,7 +547,11 @@ function ComparativoGrid({
         <HeaderKpisCard key={`h-${c.companyId}`} company={c} />
       ))}
       {companies.map((c) => (
-        <SellersCard key={`s-${c.companyId}`} company={c} />
+        <SellersCard
+          key={`s-${c.companyId}`}
+          company={c}
+          sideBySide={!!c.margin}
+        />
       ))}
       {companies.map((c) => (
         <ProductsCard key={`p-${c.companyId}`} company={c} />
@@ -632,65 +640,126 @@ function HeaderKpisCard({ company }: { company: ManagerialCompanyStats }) {
   );
 }
 
-function SellersCard({ company }: { company: ManagerialCompanyStats }) {
+function SellersCard({
+  company,
+  sideBySide = false,
+}: {
+  company: ManagerialCompanyStats;
+  sideBySide?: boolean;
+}) {
   const accent = accentFor(company.companyId);
   const m = company.margin;
-  // Con margen (AGROPECUARIA): ventas facturadas + margen por vendedor del ERP.
+  // Con margen (AGROPECUARIA): comparativo Facturado (ERP) vs. Pedido (app).
   if (m) {
-    const maxRevenue = Math.max(1, ...m.bySeller.map((s) => s.revenue));
+    const maxFact = Math.max(1, ...m.bySeller.map((s) => s.revenue));
+    const maxPed = Math.max(1, ...company.topSellers.map((s) => s.revenue));
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">
             <Users className={cn('h-4 w-4', accent.text)} />
-            Ventas y margen por vendedor
+            Facturado vs. Pedido por vendedor
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          {m.bySeller.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Sin ventas en el rango.
+        <CardContent
+          className={cn(sideBySide ? 'grid gap-6 md:grid-cols-2' : 'space-y-5')}
+        >
+          {/* Facturado (ERP) */}
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Facturado (ERP)
             </p>
-          ) : (
-            <ol className="space-y-2.5">
-              {m.bySeller.map((s, i) => (
-                <li key={`${s.nit}-${i}`} className="space-y-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
-                        {i + 1}
-                      </span>
-                      <span className="truncate text-sm font-medium">
-                        {s.name}
-                      </span>
+            {m.bySeller.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                Sin ventas en el rango.
+              </p>
+            ) : (
+              <ol className="space-y-2.5">
+                {m.bySeller.map((s, i) => (
+                  <li key={`f-${s.nit}-${i}`} className="space-y-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                          {i + 1}
+                        </span>
+                        <span className="truncate text-sm font-medium">
+                          {s.name}
+                        </span>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={cn('text-sm font-semibold', accent.text)}>
+                          {formatCurrency(s.revenue)}
+                        </p>
+                        <p className="text-[11px] font-medium text-emerald-600">
+                          Margen {formatCurrency(s.profit)} ·{' '}
+                          {s.marginPct.toFixed(1)}%
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {s.kilos.toLocaleString('es-CO', {
+                            maximumFractionDigits: 1,
+                          })}{' '}
+                          kg
+                        </p>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className={cn('text-sm font-semibold', accent.text)}>
-                        {formatCurrency(s.revenue)}
-                      </p>
-                      <p className="text-[11px] font-medium text-emerald-600">
-                        Margen {formatCurrency(s.profit)} · {s.marginPct.toFixed(1)}%
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {s.kilos.toLocaleString('es-CO', {
-                          maximumFractionDigits: 1,
-                        })}{' '}
-                        kg
-                      </p>
+                    <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn('h-full rounded-full', accent.bar)}
+                        style={{
+                          width: `${Math.round((s.revenue / maxFact) * 100)}%`,
+                        }}
+                      />
                     </div>
-                  </div>
-                  <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn('h-full rounded-full', accent.bar)}
-                      style={{
-                        width: `${Math.round((s.revenue / maxRevenue) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+
+          {/* Pedido (app) */}
+          <div className={cn(!sideBySide && 'border-t border-border pt-4')}>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Pedido (app)
+            </p>
+            {company.topSellers.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                Sin pedidos en el rango.
+              </p>
+            ) : (
+              <ol className="space-y-2.5">
+                {company.topSellers.map((s, i) => (
+                  <li key={`p-${s.documentId}-${i}`} className="space-y-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                          {i + 1}
+                        </span>
+                        <span className="truncate text-sm font-medium">
+                          {s.name}
+                        </span>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                          {formatCurrency(s.revenue)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {s.orders.toLocaleString('es-CO')} pedido(s)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-blue-500"
+                        style={{
+                          width: `${Math.round((s.revenue / maxPed) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </CardContent>
       </Card>
     );
@@ -871,6 +940,93 @@ function currentMonthStr(): string {
 }
 
 /**
+ * Columna de ranking (una grilla): total arriba y lista de vendedores con
+ * barra proporcional. Se usa para Venta (ERP) y Pedido (BD).
+ */
+function RankingColumn({
+  title,
+  subtitle,
+  total,
+  items,
+  isLoading,
+  emptyText,
+  color,
+}: {
+  title: string;
+  subtitle: string;
+  total: number;
+  items: { key: string; name: string; value: number }[];
+  isLoading: boolean;
+  emptyText: string;
+  color: 'green' | 'blue';
+}) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  const valueClass =
+    color === 'blue' ? 'text-blue-600 dark:text-blue-400' : 'text-primary';
+  const barClass = color === 'blue' ? 'bg-blue-500' : 'bg-primary';
+  const boxClass =
+    color === 'blue'
+      ? 'border-blue-500/30 bg-blue-500/5'
+      : 'border-primary/30 bg-primary/5';
+  return (
+    <div className="space-y-4">
+      <div className={cn('rounded-xl border p-4', boxClass)}>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {title}
+        </p>
+        <p className={cn('mt-1 text-2xl font-bold tabular-nums', valueClass)}>
+          {isLoading ? (
+            <Loader2 className="h-6 w-6 animate-spin" />
+          ) : (
+            formatCurrency(total)
+          )}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+
+      {isLoading ? (
+        <p className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
+        </p>
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          {emptyText}
+        </p>
+      ) : (
+        <ol className="space-y-2.5">
+          {items.map((it, i) => (
+            <li key={it.key} className="space-y-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <span className="truncate text-sm font-medium">{it.name}</span>
+                </div>
+                <p
+                  className={cn(
+                    'shrink-0 text-sm font-semibold tabular-nums',
+                    valueClass,
+                  )}
+                >
+                  {formatCurrency(it.value)}
+                </p>
+              </div>
+              <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn('h-full rounded-full', barClass)}
+                  style={{ width: `${Math.round((it.value / max) * 100)}%` }}
+                />
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/**
  * Venta acumulada del mes por vendedor, tomada del ERP (cortes, subproductos y
  * canales). La suma de todos los vendedores es la venta acumulada del período.
  */
@@ -886,9 +1042,11 @@ function VentaAcumuladaSection() {
     dayStr || undefined,
     true,
   );
+  // Pedidos por vendedor (de la BD), para comparar contra la venta del ERP.
+  const ordersQuery = useOrdersBySellerReport(periodo, dayStr || undefined, true);
 
   const sellers = data?.sellers ?? [];
-  const maxNet = Math.max(1, ...sellers.map((s) => s.totalNet));
+  const orderSellers = ordersQuery.data?.sellers ?? [];
   const periodLabel = data?.periodLabel ?? monthStr;
 
   return (
@@ -898,8 +1056,8 @@ function VentaAcumuladaSection() {
           <CardTitle className="flex items-center gap-2 text-base">
             <TrendingUp className="h-4 w-4 text-primary" />
             {dayStr
-              ? 'Venta del día por vendedor'
-              : 'Venta acumulada del mes por vendedor'}
+              ? 'Venta vs. Pedido del día por vendedor'
+              : 'Venta vs. Pedido del mes por vendedor'}
           </CardTitle>
           <p className="mt-1 text-sm capitalize text-muted-foreground">
             {periodLabel}
@@ -935,60 +1093,35 @@ function VentaAcumuladaSection() {
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {dayStr ? 'Venta del día' : 'Venta acumulada del período'}
-          </p>
-          <p className="mt-1 text-3xl font-bold tabular-nums text-primary">
-            {isFetching && !data ? (
-              <Loader2 className="h-7 w-7 animate-spin" />
-            ) : (
-              formatCurrency(data?.grandTotalNet ?? 0)
-            )}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {sellers.length} vendedor(es) · suma de todas las ventas del mes
-          </p>
+      <CardContent>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <RankingColumn
+            title={dayStr ? 'Venta del día (facturado)' : 'Venta del mes (facturado)'}
+            subtitle={`${sellers.length} vendedor(es) · ERP`}
+            total={data?.grandTotalNet ?? 0}
+            isLoading={isFetching && !data}
+            emptyText="Sin ventas registradas para este período."
+            color="green"
+            items={sellers.map((s) => ({
+              key: s.nit,
+              name: s.name,
+              value: s.totalNet,
+            }))}
+          />
+          <RankingColumn
+            title={dayStr ? 'Pedido del día (app)' : 'Pedido del mes (app)'}
+            subtitle={`${orderSellers.length} vendedor(es) · pedidos`}
+            total={ordersQuery.data?.grandTotal ?? 0}
+            isLoading={ordersQuery.isFetching && !ordersQuery.data}
+            emptyText="Sin pedidos registrados para este período."
+            color="blue"
+            items={orderSellers.map((s) => ({
+              key: s.sellerId,
+              name: s.name,
+              value: s.total,
+            }))}
+          />
         </div>
-
-        {isFetching && !data ? (
-          <p className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Cargando ventas…
-          </p>
-        ) : sellers.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            Sin ventas registradas para este período.
-          </p>
-        ) : (
-          <ol className="space-y-2.5">
-            {sellers.map((s, i) => (
-              <li key={s.nit} className="space-y-1">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
-                      {i + 1}
-                    </span>
-                    <span className="truncate text-sm font-medium">
-                      {s.name}
-                    </span>
-                  </div>
-                  <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">
-                    {formatCurrency(s.totalNet)}
-                  </p>
-                </div>
-                <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{
-                      width: `${Math.round((s.totalNet / maxNet) * 100)}%`,
-                    }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
       </CardContent>
     </Card>
   );

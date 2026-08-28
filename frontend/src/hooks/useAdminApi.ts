@@ -19,6 +19,7 @@ import type {
   ProductSellerReportData,
   SellerSalesReportData,
   VendorProductSalesReportData,
+  OrdersBySellerReportData,
   SellableProduct,
   TatInvoice,
 } from '@/types';
@@ -1079,6 +1080,25 @@ export function useVendorProductSalesReport(
     queryFn: async () => {
       const res = await api.get<VendorProductSalesReportData>(
         '/admin/reports/vendor-product-sales/data',
+        { params: { periodo, ...(fecha ? { fecha } : {}) } },
+      );
+      return res.data;
+    },
+  });
+}
+
+/** Pedidos (de la BD) por vendedor, para comparar contra la venta del ERP. */
+export function useOrdersBySellerReport(
+  periodo: string | undefined,
+  fecha: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ['admin', 'reports', 'orders-by-seller', periodo, fecha],
+    enabled: enabled && !!periodo,
+    queryFn: async () => {
+      const res = await api.get<OrdersBySellerReportData>(
+        '/admin/reports/orders-by-seller/data',
         { params: { periodo, ...(fecha ? { fecha } : {}) } },
       );
       return res.data;

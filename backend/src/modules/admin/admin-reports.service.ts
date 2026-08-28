@@ -2,9 +2,15 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
+import { UserRole } from '../users/entities/user.entity';
 import { Product } from '../products/entities/product.entity';
 import { PriceListItem } from '../price-lists/entities/price-list-item.entity';
-import { COMPANIES, isValidCompany } from '../../common/companies';
+import {
+  COMPANIES,
+  isValidCompany,
+  isDashboardExcludedSellerDoc,
+  DASHBOARD_EXCLUDED_SELLER_DOCS,
+} from '../../common/companies';
 import { bogotaParts, bogotaToday } from '../orders/order-cortes';
 import {
   buildInventoryReportPdf,
@@ -74,6 +80,21 @@ const SALE_STATUSES = [
   OrderStatus.SYNCED,
   OrderStatus.FAILED,
 ];
+
+/** Pedidos por vendedor (de la BD) para comparar contra la venta del ERP. */
+export interface OrdersBySellerReportData {
+  periodo: string;
+  fecha?: string;
+  periodLabel: string;
+  sellers: {
+    sellerId: string;
+    name: string;
+    total: number;
+    orders: number;
+  }[];
+  grandTotal: number;
+  grandOrders: number;
+}
 
 @Injectable()
 export class AdminReportsService {
@@ -1112,8 +1133,11 @@ export class AdminReportsService {
       }
     >();
 
+    // Solo se excluye al vendedor apartado (Juan Sierra). Los demás vendedores
+    // del ERP se cuentan tal cual, incluido León Gutiérrez.
     for (const row of rows) {
       const nit = (row.nit_vendedor ?? '').trim();
+      if (isDashboardExcludedSellerDoc(nit)) continue;
       const name =
         (row.razon_social_vendedor ?? '').trim() || 'SIN VENDEDOR';
       // El ERP ya no envía NIT: se agrupa por nombre cuando no hay NIT.
@@ -1184,6 +1208,99 @@ export class AdminReportsService {
       sellers,
       grandTotalQuantity,
       grandTotalNet,
+    };
+  }
+
+  /**
+   * Pedidos (de la app) por vendedor para un período (YYYYMM) u opcionalmente
+   * un día. Se toma de la base de datos (no del ERP), para comparar lo PEDIDO
+   * contra lo VENDIDO. Suma los pedidos en estados de venta real.
+   */
+  async getOrdersBySellerReport(
+    companyId: string,
+    periodo: string,
+    fecha?: string,
+  ): Promise<OrdersBySellerReportData> {
+    const clean = (periodo ?? '').trim();
+    if (!/^\d{6}$/.test(clean)) {
+      throw new BadRequestException('El período debe tener el formato YYYYMM.');
+    }
+    const day = (fecha ?? '').trim();
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      throw new BadRequestException('La fecha debe tener el formato YYYY-MM-DD.');
+    }
+    const year = Number(clean.slice(0, 4));
+    const monthNum = Number(clean.slice(4, 6));
+    const mm = String(monthNum).padStart(2, '0');
+    const lastDay = new Date(year, monthNum, 0).getDate();
+    const from = day || `${year}-${mm}-01`;
+    const to = day || `${year}-${mm}-${String(lastDay).padStart(2, '0')}`;
+
+    const excludedDocs = DASHBOARD_EXCLUDED_SELLER_DOCS.map((d) =>
+      d.trim(),
+    ).filter(Boolean);
+    const qb = this.ordersRepository
+      .createQueryBuilder('o')
+      .leftJoin('o.seller', 'u')
+      .select('o.seller_id', 'sellerId')
+      .addSelect('MAX(u.name)', 'name')
+      .addSelect('COALESCE(SUM(o.total), 0)', 'total')
+      .addSelect('COUNT(*)', 'orders')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
+      // Solo vendedores: se excluyen admins u otros roles que hayan creado pedidos.
+      .andWhere('u.role = :sellerRole', { sellerRole: UserRole.SELLER })
+      .andWhere(
+        "(o.created_at AT TIME ZONE 'America/Bogota')::date BETWEEN :from::date AND :to::date",
+        { from, to },
+      );
+    if (excludedDocs.length > 0) {
+      // Excluye del reporte a vendedores no contabilizables (Juan Sierra).
+      qb.andWhere('TRIM(u.document_id) NOT IN (:...excludedDocs)', {
+        excludedDocs,
+      });
+    }
+    const rows = await qb
+      .groupBy('o.seller_id')
+      .getRawMany<{
+        sellerId: string;
+        name: string | null;
+        total: string;
+        orders: string;
+      }>();
+
+    const sellers = rows
+      .map((r) => ({
+        sellerId: r.sellerId,
+        name: (r.name ?? '').trim() || 'Sin vendedor',
+        total: Number(r.total) || 0,
+        orders: Number(r.orders) || 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const grandTotal = sellers.reduce((s, x) => s + x.total, 0);
+    const grandOrders = sellers.reduce((s, x) => s + x.orders, 0);
+
+    const monthLabel = new Date(year, monthNum - 1, 1).toLocaleDateString(
+      'es-CO',
+      { month: 'long', year: 'numeric' },
+    );
+    const periodLabel = day
+      ? new Date(`${day}T12:00:00`).toLocaleDateString('es-CO', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })
+      : monthLabel;
+
+    return {
+      periodo: clean,
+      fecha: day || undefined,
+      periodLabel,
+      sellers,
+      grandTotal,
+      grandOrders,
     };
   }
 

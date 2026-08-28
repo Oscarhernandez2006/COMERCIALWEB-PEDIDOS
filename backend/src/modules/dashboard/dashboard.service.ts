@@ -399,7 +399,7 @@ export class DashboardService {
     // real. El desglose (tendencia, productos, canales, categorías) sigue del
     // detalle producto a producto. Si la consulta general falla, se usan los
     // totales del detalle como respaldo.
-    const general = await this.getErpGeneralTotals(nits, from, to).catch(
+    const general = await this.getErpGeneralTotals(nits, from, to, exclude).catch(
       () => null,
     );
     return {
@@ -415,12 +415,14 @@ export class DashboardService {
 
   /**
    * Totales (venta, kilos, costo) por vendedor desde la consulta GENERAL del
-   * ERP (`dashboard-comercial`). Filtra por NIT del vendedor cuando aplica.
+   * ERP (`dashboard-comercial`). Filtra por NIT del vendedor cuando aplica y
+   * descuenta los vendedores excluidos del consolidado (p. ej. Juan Sierra).
    */
   private async getErpGeneralTotals(
     nits: Set<string>,
     from: string,
     to: string,
+    exclude?: { nits: Set<string>; codes: Set<string>; names: Set<string> },
   ): Promise<{ revenue: number; kilos: number; cost: number }> {
     const filterByNit = nits.size > 0;
     let revenue = 0;
@@ -440,6 +442,18 @@ export class DashboardService {
       for (const g of rows) {
         const nit = (g.nit_vendedor ?? '').trim();
         if (filterByNit && !nits.has(nit)) continue;
+        // Se descuentan los vendedores excluidos del consolidado (Juan Sierra).
+        if (exclude) {
+          const code = (g.codigo_vendedor ?? '').trim();
+          const razon = (g.razon_social_vendedor ?? '').trim().toUpperCase();
+          if (
+            (nit && exclude.nits.has(nit)) ||
+            (code && exclude.codes.has(code)) ||
+            (razon && exclude.names.has(razon))
+          ) {
+            continue;
+          }
+        }
         revenue += Number(g.total_facturas) || 0;
         kilos += Number(g.kilos) || 0;
         cost += Number(g.costo_total) || 0;
