@@ -54,4 +54,13 @@ export class DispatchController {
   ) {
     return this.service.saveSelection(companyId, dto);
   }
+
+  /**
+   * Publica el borrador: las facturas marcadas pasan a viajar por la API
+   * pública. Es el botón "Guardar" del módulo.
+   */
+  @Post('tat-invoices/publish')
+  publish(@CompanyId() companyId: string) {
+    return this.service.publish(companyId);
+  }
 }

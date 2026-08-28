@@ -47,12 +47,13 @@ export function useSellerDashboard(
   sellerId?: string,
   from?: string,
   to?: string,
+  national = false,
 ) {
   const { company } = useCompany();
   return useQuery({
     queryKey: [
       'dashboard',
-      'commercial',
+      national ? 'national-business' : 'commercial',
       company?.id,
       month,
       year,
@@ -63,7 +64,7 @@ export function useSellerDashboard(
     ],
     queryFn: async () => {
       const res = await api.get<SellerCommercialDashboard>(
-        '/dashboard/commercial',
+        national ? '/dashboard/national-business' : '/dashboard/commercial',
         {
           params: {
             // Un rango de fechas explícito prima sobre mes/día.
@@ -72,7 +73,7 @@ export function useSellerDashboard(
               : day > 0
                 ? { month, year, day }
                 : { month, year }),
-            ...(sellerId ? { sellerId } : {}),
+            ...(sellerId && !national ? { sellerId } : {}),
           },
         },
       );

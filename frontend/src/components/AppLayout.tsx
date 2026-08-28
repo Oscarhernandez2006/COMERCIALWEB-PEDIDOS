@@ -23,6 +23,7 @@ import {
   ClipboardCheck,
   Truck,
   BookOpen,
+  Globe,
   ChevronDown,
   Menu,
   X,
@@ -53,6 +54,7 @@ const adminSections: { label: string; items: typeof sellerNav }[] = [
     label: 'General',
     items: [
       { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/admin/negocios-nacionales', label: 'Dashboard Negocios Nacionales', icon: Globe },
       { to: '/admin/reportes', label: 'Reportes', icon: FileBarChart },
     ],
   },

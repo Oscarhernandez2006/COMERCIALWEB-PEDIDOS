@@ -58,10 +58,34 @@ export interface VendorProductSaleRaw {
   criterio_producto?: string;
 }
 
-interface VendorProductSalesResponse {
-  total: number;
+/**
+ * Fila cruda del endpoint corregido de ventas por producto. Trae detalle por
+ * día y por vendedor, con los nombres nuevos de producto (`categoria`,
+ * `referencia_producto`, `kilos`, `total_facturas`, `costo_total`).
+ */
+interface VendorProductAggRaw {
+  compania?: number;
+  dia?: string;
+  nit_vendedor?: string;
+  codigo_vendedor?: string;
+  razon_social_vendedor?: string;
+  id_categoria?: string;
+  categoria?: string;
+  codigo_producto?: number;
+  referencia_producto?: string;
+  descripcion_producto?: string;
+  periodo?: number;
+  kilos?: number;
+  total_facturas?: number;
+  costo_total?: number;
+  margen?: number;
+}
+
+interface VendorProductAggResponse {
+  total?: number;
   has_more?: boolean;
-  data: VendorProductSaleRaw[];
+  next_offset?: number | null;
+  data: VendorProductAggRaw[];
 }
 
 /**
@@ -255,90 +279,82 @@ export class PriceListsClient {
   }
 
   /**
-   * Ventas por vendedor y producto de un mes (cortes, subproductos y canales).
-   * GET {baseUrl}/ventas/vendedor-productos-mes?periodo={YYYYMM}&token={token}
+   * Ventas por producto de un mes/rango (cortes, subproductos y canales),
+   * AGREGADAS por producto (una fila por referencia). El ERP corrigió la
+   * consulta: ya no trae detalle por día ni por vendedor y excluye traslados
+   * (AGROPECUARIA SANTACRUZ LTDA) y vendedores sin clase.
+   *
+   * GET {baseUrl}/ventas/vendedor-productos-mes?compania&periodo&fecha_inicio&fecha_fin&token
+   *
+   * Se mapea a {@link VendorProductSaleRaw} (compatibilidad): `categoria` →
+   * `criterio_producto`, `total_facturas` → `valor_bruto`/`valor_neto`, etc.
    */
   async fetchVendorProductSales(
+    compania: string,
     periodo: string,
+    fechaInicio?: string,
+    fechaFin?: string,
   ): Promise<VendorProductSaleRaw[]> {
     const baseUrl = this.config.get<string>('priceLists.baseUrl');
     const token = this.config.get<string>('priceLists.token');
     const timeout = this.config.get<number>('priceLists.timeoutMs');
-    // El ERP tope el `limit` en 5000 y su paginación por `offset` es inestable
-    // (duplica/salta filas). Para no perder ventas cuando el mes supera 5000
-    // filas se pagina con solape y se deduplica por la identidad de la fila,
-    // avanzando hasta reunir el `total` que informa el ERP.
     const PAGE = 5000;
-    const STEP = 4000; // solape de 1000 filas para recuperar filas saltadas
-    const MAX_PAGES = 60;
+    const MAX_PAGES = 20;
     try {
-      const unique = new Map<string, VendorProductSaleRaw>();
-      let expectedTotal = Number.POSITIVE_INFINITY;
+      const out: VendorProductSaleRaw[] = [];
       let offset = 0;
       let page = 0;
-      let staleStreak = 0;
       while (page < MAX_PAGES) {
         const response = await firstValueFrom(
-          this.http.get<VendorProductSalesResponse>(
+          this.http.get<VendorProductAggResponse>(
             `${baseUrl}/ventas/vendedor-productos-mes`,
-            { params: { periodo, limit: PAGE, offset, token }, timeout },
+            {
+              params: {
+                compania,
+                periodo,
+                fecha_inicio: fechaInicio,
+                fecha_fin: fechaFin,
+                limit: PAGE,
+                offset,
+                token,
+              },
+              timeout,
+            },
           ),
         );
-        const rows = response.data?.data ?? [];
-        if (
-          typeof response.data?.total === 'number' &&
-          response.data.total >= 0
-        ) {
-          expectedTotal = response.data.total;
-        }
-        const before = unique.size;
-        for (const row of rows) {
-          // El ERP renombró `fecha`->`dia` y ya no envía `nit_vendedor`
-          // (solo `razon_social_vendedor`). La clave usa los campos actuales
-          // para no colapsar filas distintas como duplicadas.
-          const key = [
-            (row.razon_social_vendedor ?? row.nit_vendedor ?? '').trim(),
-            (row.referencia ?? '').trim(),
-            (row.dia ?? row.fecha ?? '').trim(),
-            (row.criterio ?? '').trim(),
-            String(row.valor_neto ?? ''),
-            String(row.valor_bruto ?? ''),
-            String(row.cantidad_base ?? ''),
-          ].join('|');
-          if (!unique.has(key)) unique.set(key, row);
+        const batch = response.data?.data ?? [];
+        for (const r of batch) {
+          const bruto = Number(r.total_facturas) || 0;
+          out.push({
+            dia: r.dia,
+            periodo: Number(r.periodo) || undefined,
+            nit_vendedor: r.nit_vendedor,
+            codigo_vendedor: r.codigo_vendedor,
+            razon_social_vendedor: r.razon_social_vendedor,
+            referencia: (r.referencia_producto ?? '').trim(),
+            descripcion: (r.descripcion_producto ?? '').trim(),
+            criterio_producto: (r.categoria ?? '').trim(),
+            cantidad_base: Number(r.kilos) || 0,
+            valor_bruto: bruto,
+            valor_neto: bruto,
+            costo_total: Number(r.costo_total) || 0,
+          });
         }
         page++;
-        const added = unique.size - before;
-        // Fin: página vacía, o el offset dejó de traer filas nuevas (agotado o
-        // ignorado por el ERP) durante dos páginas seguidas, o ya se reunió el
-        // total informado, o la última página vino incompleta sin `has_more`.
-        if (rows.length === 0) break;
-        if (added === 0) {
-          staleStreak++;
-          if (staleStreak >= 2) break;
-        } else {
-          staleStreak = 0;
-        }
-        if (rows.length < PAGE && !response.data?.has_more) break;
-        if (unique.size >= expectedTotal) break;
-        offset += STEP;
+        if (batch.length === 0 || !response.data?.has_more) break;
+        offset = response.data?.next_offset ?? offset + batch.length;
       }
-      if (page >= MAX_PAGES && unique.size < expectedTotal) {
-        this.logger.warn(
-          `Ventas por vendedor (periodo ${periodo}): se alcanzó el máximo de páginas; el total puede quedar incompleto.`,
-        );
-      }
-      return [...unique.values()];
+      return out;
     } catch (error) {
       const message =
         error && typeof error === 'object' && 'message' in error
           ? (error as { message: string }).message
           : 'Error desconocido';
       this.logger.error(
-        `Error consultando ventas por vendedor (periodo ${periodo}): ${message}`,
+        `Error consultando ventas por producto (compañía ${compania}, periodo ${periodo}): ${message}`,
       );
       throw new InternalServerErrorException(
-        'Error consultando las ventas por vendedor en Siesa.',
+        'Error consultando las ventas por producto en Siesa.',
       );
     }
   }

@@ -36,8 +36,8 @@ export class DispatchService {
   }
 
   /**
-   * API pública: facturas MARCADAS y guardadas para despacho de una compañía,
-   * con los campos del ERP. Es lo que consume Drivin.
+   * API pública: facturas PUBLICADAS (confirmadas con el botón Guardar) para
+   * despacho de una compañía, con los campos del ERP. Es lo que consume Drivin.
    */
   async listSelectedPublic(companyId: string): Promise<
     {
@@ -51,7 +51,7 @@ export class DispatchService {
     }[]
   > {
     const rows = await this.invoiceRepository.find({
-      where: { companyId: baseCompanyId(companyId), selected: true },
+      where: { companyId: baseCompanyId(companyId), published: true },
       order: { documentDate: 'DESC', invoiceNumber: 'ASC' },
     });
     return rows.map((r) => ({
@@ -83,15 +83,17 @@ export class DispatchService {
     );
     const grouped = this.groupByInvoice(lines);
 
-    // Se conserva la selección previa (por consecutivo) para no perderla al
-    // re-sincronizar el mismo rango.
+    // Se conserva el estado previo (por consecutivo): borrador `selected` y
+    // publicado `published`, para no perderlos al re-sincronizar el rango.
+    const prev = await this.invoiceRepository.find({
+      where: { companyId: company },
+      select: { invoiceNumber: true, selected: true, published: true },
+    });
     const prevSelected = new Set(
-      (
-        await this.invoiceRepository.find({
-          where: { companyId: company, selected: true },
-          select: { invoiceNumber: true },
-        })
-      ).map((r) => r.invoiceNumber),
+      prev.filter((r) => r.selected).map((r) => r.invoiceNumber),
+    );
+    const prevPublished = new Set(
+      prev.filter((r) => r.published).map((r) => r.invoiceNumber),
     );
 
     // Reemplazo total: la tabla refleja únicamente el rango elegido.
@@ -107,6 +109,7 @@ export class DispatchService {
       quantity: inv.quantity,
       subtotal: inv.subtotal,
       selected: prevSelected.has(inv.invoiceNumber),
+      published: prevPublished.has(inv.invoiceNumber),
     }));
     // Inserción en lotes (un INSERT por lote) para que sea rápido.
     const CHUNK = 500;
@@ -139,6 +142,25 @@ export class DispatchService {
       select: { invoiceNumber: true },
     });
     return selected.map((s) => s.invoiceNumber);
+  }
+
+  /**
+   * Publica el borrador: copia `selected` a `published`. A partir de aquí, la
+   * API pública devuelve exactamente lo que estaba marcado al pulsar Guardar
+   * (un desmarcado accidental posterior no afecta hasta volver a publicar).
+   */
+  async publish(companyId: string): Promise<{ published: number }> {
+    const company = baseCompanyId(companyId);
+    await this.invoiceRepository
+      .createQueryBuilder()
+      .update(DispatchTatInvoice)
+      .set({ published: () => 'selected' })
+      .where('company_id = :company', { company })
+      .execute();
+    const published = await this.invoiceRepository.count({
+      where: { companyId: company, published: true },
+    });
+    return { published };
   }
 
   /** Agrupa las líneas por consecutivo, sumando cantidad y valor. */

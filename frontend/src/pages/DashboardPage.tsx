@@ -159,7 +159,7 @@ function KpiCard({ label, value, icon: Icon, accent, subLabel, subValue }: KpiPr
   );
 }
 
-export function DashboardPage() {
+export function DashboardPage({ national = false }: { national?: boolean }) {
   const { user } = useAuth();
   // Fecha seleccionada y modo de vista: mes completo, un día, o un rango de
   // fechas (desde/hasta). De la fecha se derivan mes, año y día.
@@ -181,8 +181,9 @@ export function DashboardPage() {
   >(null);
 
   // Solo los administradores pueden ver el tablero de otro vendedor o el
-  // general. Por defecto, un administrador ve el general (todos los vendedores).
-  const isAdmin = user?.role === 'admin';
+  // general. En "negocios nacionales" el tablero es fijo (Juan Sierra), sin
+  // selector de vendedor.
+  const isAdmin = user?.role === 'admin' && !national;
   const [sellerId, setSellerId] = useState('all');
   const [sellerSearch, setSellerSearch] = useState('');
   const [sellerOpen, setSellerOpen] = useState(false);
@@ -219,6 +220,7 @@ export function DashboardPage() {
     effectiveSellerId,
     rangeFrom,
     rangeTo,
+    national,
   );
 
   const daysInMonth = useMemo(
@@ -272,7 +274,7 @@ export function DashboardPage() {
       <div className="flex flex-col gap-3 rounded-xl bg-gradient-to-r from-primary/10 to-transparent p-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
-            Tablero de Gestión Comercial
+            {national ? 'Dashboard Negocios Nacionales' : 'Tablero de Gestión Comercial'}
           </h2>
           <p className="text-sm text-muted-foreground">
             Vendedor:{' '}

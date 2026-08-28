@@ -29,9 +29,19 @@ export class PriceListsService {
     return this.client.fetchSubproductoCategories(baseCompanyId(companyId));
   }
 
-  /** Ventas por vendedor y producto de un mes (YYYYMM), desde el ERP. */
-  getVendorProductSales(periodo: string) {
-    return this.client.fetchVendorProductSales(periodo);
+  /** Ventas por producto (agregado) del rango, desde el ERP. */
+  getVendorProductSales(
+    compania: string,
+    periodo: string,
+    fechaInicio?: string,
+    fechaFin?: string,
+  ) {
+    return this.client.fetchVendorProductSales(
+      compania,
+      periodo,
+      fechaInicio,
+      fechaFin,
+    );
   }
 
   /** Ventas GENERALES por vendedor (venta, kilos, costo, margen) del rango. */

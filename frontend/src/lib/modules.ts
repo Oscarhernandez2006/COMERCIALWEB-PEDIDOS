@@ -21,6 +21,7 @@ export const SELLER_MODULES: ModuleDef[] = [
 /** Área "Administrativa" (rol administrador). */
 export const ADMIN_MODULES: ModuleDef[] = [
   { key: '/admin', label: 'Dashboard' },
+  { key: '/admin/negocios-nacionales', label: 'Dashboard Negocios Nacionales' },
   { key: '/admin/inventario', label: 'Inventario' },
   { key: '/admin/pedidos', label: 'Administración de pedidos' },
   { key: '/admin/reportes', label: 'Reportes' },

@@ -43,7 +43,14 @@ export class DispatchTatInvoice extends BaseEntity {
   @Column({ name: 'subtotal', type: 'numeric', precision: 16, scale: 2, default: 0 })
   subtotal: number;
 
-  /** Si la factura está marcada para despacho. */
+  /** Si la factura está marcada para despacho (borrador, autoguardado). */
   @Column({ name: 'selected', type: 'boolean', default: false })
   selected: boolean;
+
+  /**
+   * Si la factura está PUBLICADA: solo las publicadas viajan por la API pública.
+   * Se fija con el botón "Guardar" (confirma el borrador `selected`).
+   */
+  @Column({ name: 'published', type: 'boolean', default: false })
+  published: boolean;
 }

@@ -6,12 +6,15 @@ import {
   Search,
   AlertCircle,
   Calendar,
+  Save,
+  Send,
 } from 'lucide-react';
 import { useCompany } from '@/company/useCompany';
 import {
   useTatInvoices,
   useSyncTatInvoices,
   useSaveTatDispatchSelection,
+  usePublishTatDispatch,
 } from '@/hooks/useAdminApi';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,6 +53,7 @@ export function DispatchTatInvoicesPage() {
   const { data, isLoading, error } = useTatInvoices(companyId);
   const syncMutation = useSyncTatInvoices();
   const saveMutation = useSaveTatDispatchSelection();
+  const publishMutation = usePublishTatDispatch();
 
   // Selección local por consecutivo (se inicializa con lo guardado en BD).
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -176,20 +180,46 @@ export function DispatchTatInvoicesPage() {
     [invoices, selected],
   );
 
+  // Facturas publicadas (las que viajan por el endpoint) y si el borrador tiene
+  // cambios sin publicar respecto a lo publicado.
+  const publishedSet = useMemo(
+    () =>
+      new Set(invoices.filter((i) => i.published).map((i) => i.invoiceNumber)),
+    [invoices],
+  );
+  const hasUnpublishedChanges = useMemo(() => {
+    if (selected.size !== publishedSet.size) return true;
+    for (const n of selected) if (!publishedSet.has(n)) return true;
+    return false;
+  }, [selected, publishedSet]);
+
+  const handlePublish = async () => {
+    // El borrador debe estar persistido antes de publicar (autoguardado en
+    // curso): se envía el estado actual y luego se publica.
+    if (saveMutation.isPending) {
+      await saveMutation.mutateAsync({
+        companyId,
+        items: invoices.map((i) => ({
+          invoiceNumber: i.invoiceNumber,
+          selected: selected.has(i.invoiceNumber),
+        })),
+      });
+    }
+    await publishMutation.mutateAsync({ companyId });
+  };
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Truck className="h-6 w-6 text-primary" />
-            Despacho · Drivin TAT Facturas
-          </h2>
-          <p className="text-muted-foreground">
-            Facturas TAT de Siesa · {companyName}. Sincroniza por fecha (trae esa
-            fecha y los 5 días anteriores), selecciona por consecutivo las que se
-            despachan en Drivin y guarda la selección.
-          </p>
-        </div>
+      <div>
+        <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+          <Truck className="h-6 w-6 text-primary" />
+          Despacho · Drivin TAT Facturas
+        </h2>
+        <p className="text-muted-foreground">
+          Facturas TAT de Siesa · {companyName}. El marcado se autoguarda como
+          borrador; pulsa <span className="font-medium">Guardar</span> para que
+          las facturas marcadas viajen por el endpoint.
+        </p>
       </div>
 
       <Card>
@@ -227,30 +257,64 @@ export function DispatchTatInvoicesPage() {
             {syncMutation.isPending ? 'Sincronizando…' : 'Sincronizar'}
           </Button>
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              Seleccionadas:{' '}
-              <span className="font-semibold text-foreground">
-                {selected.size}
-              </span>{' '}
-              · {formatCurrency(selectedTotal)}
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              {saveMutation.isPending ? (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  Guardando…
-                </>
-              ) : saveMutation.isError ? (
-                <span className="text-destructive">
-                  Error al guardar, reintenta
-                </span>
-              ) : (
-                <>
-                  <Check className="h-3.5 w-3.5 text-green-600" />
-                  Guardado automáticamente
-                </>
-              )}
-            </span>
+            <div className="flex flex-col items-end">
+              <span className="text-sm text-muted-foreground">
+                Marcadas:{' '}
+                <span className="font-semibold text-foreground">
+                  {selected.size}
+                </span>{' '}
+                · {formatCurrency(selectedTotal)}
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                {saveMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Guardando borrador…
+                  </>
+                ) : saveMutation.isError ? (
+                  <span className="text-destructive">
+                    Error al guardar, reintenta
+                  </span>
+                ) : (
+                  <>
+                    <Save className="h-3.5 w-3.5 text-muted-foreground" />
+                    Borrador guardado
+                  </>
+                )}
+              </span>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                onClick={handlePublish}
+                disabled={publishMutation.isPending || invoices.length === 0}
+                className={cn(
+                  hasUnpublishedChanges &&
+                    'ring-2 ring-primary/40 ring-offset-2 ring-offset-background',
+                )}
+              >
+                {publishMutation.isPending ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : hasUnpublishedChanges ? (
+                  <Send className="h-4 w-4" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                {publishMutation.isPending
+                  ? 'Guardando…'
+                  : hasUnpublishedChanges
+                    ? 'Guardar'
+                    : 'Guardado'}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {publishedSet.size} publicada
+                {publishedSet.size !== 1 ? 's' : ''}
+                {hasUnpublishedChanges && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-400">
+                    · cambios sin guardar
+                  </span>
+                )}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>

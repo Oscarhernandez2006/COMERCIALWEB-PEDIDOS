@@ -439,6 +439,29 @@ export function useSaveTatDispatchSelection() {
   });
 }
 
+/**
+ * Publica el borrador: las facturas marcadas pasan a viajar por la API pública.
+ * Es el botón "Guardar" del módulo.
+ */
+export function usePublishTatDispatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ companyId }: { companyId: string }) => {
+      const res = await api.post<{ published: number }>(
+        '/admin/dispatch/tat-invoices/publish',
+        null,
+        { headers: { 'X-Company-Id': companyId } },
+      );
+      return res.data;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({
+        queryKey: ['admin', 'dispatch', 'tat-invoices', vars.companyId],
+      });
+    },
+  });
+}
+
 /* ---- Proyección de ventas por compañía ---- */
 
 export function useProjection(

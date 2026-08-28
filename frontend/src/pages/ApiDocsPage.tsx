@@ -67,7 +67,7 @@ const API_MODULES: ApiModule[] = [
         title: 'Facturas marcadas para despacho',
         path: '/api/public/dispatch/tat-invoices',
         description:
-          'Devuelve únicamente las facturas TAT que fueron marcadas y guardadas para despacho en el módulo, de la compañía indicada. Consolidadas por consecutivo (kilos y valor sumados).',
+          'Devuelve las facturas TAT que fueron marcadas y publicadas con el botón "Guardar" del módulo, de la compañía indicada. Consolidadas por consecutivo (kilos y valor sumados).',
         auth: 'Token de API en el header "x-api-key" o en el query "token".',
         params: [
           {
@@ -113,8 +113,8 @@ const API_MODULES: ApiModule[] = [
   }
 ]`,
         notes: [
-          'Solo se devuelven las facturas con estado "seleccionado" (marcadas y guardadas).',
-          'La selección se guarda automáticamente al marcar/desmarcar en el módulo.',
+          'Solo viajan las facturas PUBLICADAS con el botón "Guardar" del módulo.',
+          'El marcado/desmarcado se autoguarda como borrador y no afecta al endpoint hasta pulsar Guardar.',
           'El token se configura en el backend (variable DISPATCH_API_TOKEN).',
         ],
       },

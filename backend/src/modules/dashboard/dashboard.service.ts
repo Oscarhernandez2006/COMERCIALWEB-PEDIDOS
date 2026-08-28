@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
@@ -9,7 +9,11 @@ import { User, UserRole } from '../users/entities/user.entity';
 import { bogotaToday } from '../orders/order-cortes';
 import { BudgetsService } from '../budgets/budgets.service';
 import { ProductCostsService } from '../product-costs/product-costs.service';
-import { baseCompanyId, isDashboardExcludedSellerDoc } from '../../common/companies';
+import {
+  baseCompanyId,
+  isDashboardExcludedSellerDoc,
+  DASHBOARD_EXCLUDED_SELLER_DOCS,
+} from '../../common/companies';
 import { ChannelSalesClient, ChannelSaleRaw } from '../channel-sales/channel-sales.client';
 import { PriceListsService } from '../price-lists/price-lists.service';
 import { VendorProductSaleRaw } from '../price-lists/price-lists.client';
@@ -235,7 +239,9 @@ export class DashboardService {
   }> {
     const rows: VendorProductSaleRaw[] = [];
     for (const periodo of this.periodsBetween(from, to)) {
-      const r = await this.priceListsService.getVendorProductSales(periodo);
+      // Se trae el MES completo (detalle por día) para poder graficar la
+      // tendencia; los totales se filtran luego por el rango seleccionado.
+      const r = await this.priceListsService.getVendorProductSales('3', periodo);
       rows.push(...r);
     }
 
@@ -284,7 +290,7 @@ export class DashboardService {
           continue;
         }
       }
-      // El ERP renombró la fecha del movimiento de `fecha` a `dia`.
+      // Fecha del movimiento (el endpoint volvió a traer `dia`).
       const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
       if (!day) continue;
       const ref = (row.referencia ?? '').trim() || '—';
@@ -312,17 +318,18 @@ export class DashboardService {
             ? 'Subproductos'
             : null;
       if (!category) continue;
-      // Se consolida la venta con el VALOR BRUTO. Las líneas negativas son
-      // devoluciones: se suman tal cual, de modo que restan del total.
+      // Se consolida la venta con el VALOR BRUTO (total_facturas). Las líneas
+      // negativas (devoluciones) ya vienen restadas.
       const bruto = Number(row.valor_bruto) || 0;
-      // La tendencia diaria usa TODOS los días del período consultado (sin
-      // filtrar por el rango), para poder graficar la evolución del mes.
+      // La tendencia diaria usa TODOS los días del período (sin filtrar por el
+      // rango) para graficar la evolución del mes.
       byDay.set(day, (byDay.get(day) ?? 0) + bruto);
       if (day < from || day > to) continue;
       const qty = Number(row.cantidad_base) || 0;
       revenue += bruto;
       kilos += qty;
-      cost += qty * (costMap?.get(ref) ?? 0);
+      // Costo real del ERP (costo_total por producto).
+      cost += Number(row.costo_total) || 0;
       let cat = categoryMap.get(category);
       if (!cat) {
         cat = { kilos: 0, revenue: 0, items: new Map() };
@@ -466,6 +473,39 @@ export class DashboardService {
       guard++;
     }
     return trend;
+  }
+
+  /**
+   * Tablero de "Negocios Nacionales": el mismo tablero comercial pero fijado al
+   * vendedor apartado (Juan Sierra), identificado por su cédula en
+   * {@link DASHBOARD_EXCLUDED_SELLER_DOCS}.
+   */
+  async getNationalBusinessDashboard(
+    companyId: string,
+    month: number,
+    year: number,
+    day?: number,
+    rangeFrom?: string,
+    rangeTo?: string,
+  ): Promise<SellerCommercialDashboard> {
+    const docs = new Set(DASHBOARD_EXCLUDED_SELLER_DOCS.map((d) => d.trim()));
+    const users = await this.usersRepository.find();
+    const seller = users.find((u) => docs.has((u.documentId ?? '').trim()));
+    if (!seller) {
+      throw new NotFoundException(
+        'No hay un vendedor de negocios nacionales configurado.',
+      );
+    }
+    return this.getSellerDashboard(
+      companyId,
+      seller.id,
+      month,
+      year,
+      day,
+      false,
+      rangeFrom,
+      rangeTo,
+    );
   }
 
   async getSellerDashboard(

@@ -16,6 +16,7 @@ import { StockPage } from '@/pages/StockPage';
 import { CustomersPage } from '@/pages/CustomersPage';
 import { ProductsPage } from '@/pages/ProductsPage';
 import { AdminDashboardPage } from '@/pages/AdminDashboardPage';
+import { DashboardPage } from '@/pages/DashboardPage';
 import { InventoryPage } from '@/pages/InventoryPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { AdminOrdersPage } from '@/pages/AdminOrdersPage';
@@ -61,6 +62,7 @@ function App() {
         }
       >
         <Route index element={<AdminDashboardPage />} />
+        <Route path="negocios-nacionales" element={<DashboardPage national />} />
         <Route path="inventario" element={<InventoryPage />} />
         <Route path="pedidos" element={<AdminOrdersPage />} />
         <Route path="reportes" element={<ReportsPage />} />

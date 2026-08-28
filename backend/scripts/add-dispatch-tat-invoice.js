@@ -35,9 +35,14 @@ const { Client } = require('pg');
         quantity numeric(16,2) NOT NULL DEFAULT 0,
         subtotal numeric(16,2) NOT NULL DEFAULT 0,
         selected boolean NOT NULL DEFAULT false,
+        published boolean NOT NULL DEFAULT false,
         CONSTRAINT uq_dispatch_tat_company_invoice UNIQUE (company_id, invoice_number)
       )
     `);
+    // Para tablas ya creadas antes de agregar la columna de publicación.
+    await client.query(
+      `ALTER TABLE dispatch_tat_invoice ADD COLUMN IF NOT EXISTS published boolean NOT NULL DEFAULT false`,
+    );
     await client.query(
       `CREATE INDEX IF NOT EXISTS idx_dispatch_tat_company ON dispatch_tat_invoice (company_id)`,
     );

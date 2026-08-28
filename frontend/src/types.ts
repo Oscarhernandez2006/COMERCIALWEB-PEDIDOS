@@ -380,6 +380,8 @@ export interface TatInvoice {
   /** Valor subtotal total (pesos). */
   subtotal: number;
   selected: boolean;
+  /** Publicada: viaja por la API pública (se fija con el botón Guardar). */
+  published: boolean;
 }
 
 /** Definición de un ítem de canal seleccionable en la toma de pedidos. */

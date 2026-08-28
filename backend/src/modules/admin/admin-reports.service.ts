@@ -1090,7 +1090,10 @@ export class AdminReportsService {
       throw new BadRequestException('La fecha debe tener el formato YYYY-MM-DD.');
     }
 
-    const allRows = await this.priceListsService.getVendorProductSales(clean);
+    const allRows = await this.priceListsService.getVendorProductSales(
+      '3',
+      clean,
+    );
     // Si se pide un día concreto, se filtra por la parte de fecha (YYYY-MM-DD).
     const rows = day
       ? allRows.filter((r) => (r.dia ?? r.fecha ?? '').slice(0, 10) === day)

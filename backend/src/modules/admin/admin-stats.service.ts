@@ -548,7 +548,10 @@ export class AdminStatsService {
         { ref: string; name: string; quantity: number; revenue: number; cost: number }
       >();
       for (const periodo of this.periodsBetween(from, to)) {
-        const rows = await this.priceListsService.getVendorProductSales(periodo);
+        const rows = await this.priceListsService.getVendorProductSales(
+          '3',
+          periodo,
+        );
         for (const row of rows) {
           const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
           if (!day || day < from || day > to) continue;

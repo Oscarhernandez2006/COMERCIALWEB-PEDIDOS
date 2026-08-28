@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, ForbiddenException } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -51,6 +51,39 @@ export class DashboardController {
       y,
       d,
       allSellers,
+      rangeFrom,
+      rangeTo,
+    );
+  }
+
+  /**
+   * Tablero de "Negocios Nacionales": mismo tablero comercial pero con los
+   * datos del vendedor apartado (Juan Sierra). Solo administradores.
+   */
+  @Get('national-business')
+  nationalBusiness(
+    @CompanyId() companyId: string,
+    @CurrentUser() user: User,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+    @Query('day') day?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    if (user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Solo administradores.');
+    }
+    const now = new Date();
+    const m = Number(month) || now.getMonth() + 1;
+    const y = Number(year) || now.getFullYear();
+    const d = Number(day) || undefined;
+    const rangeFrom = from?.trim() || undefined;
+    const rangeTo = to?.trim() || undefined;
+    return this.dashboardService.getNationalBusinessDashboard(
+      companyId,
+      m,
+      y,
+      d,
       rangeFrom,
       rangeTo,
     );
