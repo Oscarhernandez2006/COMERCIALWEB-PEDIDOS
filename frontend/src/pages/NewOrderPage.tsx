@@ -172,19 +172,38 @@ export function NewOrderPage() {
     () => new Set(featured.map((f) => f.sku)),
     [featured],
   );
-  // Subproductos: se divide el catálogo por categoría (CERDO / RES). Los que no
-  // traen categoría se muestran en ambas pestañas para no perderlos. Los
-  // productos estrella se muestran de primero para darles prioridad visual.
-  const visibleProducts = useMemo(() => {
-    const base = isSubproducto
-      ? products.filter((p) => !p.category || p.category === subproductoCategory)
-      : products;
-    if (featuredSkus.size === 0) return base;
-    return [...base].sort(
+  // Catálogo ordenado con los productos estrella de primero (prioridad visual).
+  const sortedProducts = useMemo(() => {
+    if (featuredSkus.size === 0) return products;
+    return [...products].sort(
       (a, b) =>
         (featuredSkus.has(a.sku) ? 0 : 1) - (featuredSkus.has(b.sku) ? 0 : 1),
     );
-  }, [products, isSubproducto, subproductoCategory, featuredSkus]);
+  }, [products, featuredSkus]);
+  // Subproductos: se divide el catálogo por especie (CERDO / RES). Los que no
+  // traen categoría se muestran en ambas pestañas para no perderlos.
+  const visibleProducts = useMemo(() => {
+    if (!isSubproducto) return sortedProducts;
+    return sortedProducts.filter(
+      (p) => !p.category || p.category === subproductoCategory,
+    );
+  }, [sortedProducts, isSubproducto, subproductoCategory]);
+  // Cortes: dos grillas. Cerdo = categoría CERDO; Res = todo lo demás (incluye
+  // Carnes Frías, Víveres y los que no traen categoría), para no perder ninguno.
+  const cerdoProducts = useMemo(
+    () =>
+      isSubproducto
+        ? []
+        : sortedProducts.filter((p) => p.category === 'CERDO'),
+    [sortedProducts, isSubproducto],
+  );
+  const resProducts = useMemo(
+    () =>
+      isSubproducto
+        ? []
+        : sortedProducts.filter((p) => p.category !== 'CERDO'),
+    [sortedProducts, isSubproducto],
+  );
   const createOrder = useCreateOrder();
 
   const totals = useMemo(() => {
@@ -275,6 +294,83 @@ export function NewOrderPage() {
 
   const removeLine = (sku: string) => {
     setCart((prev) => prev.filter((l) => l.product.sku !== sku));
+  };
+
+  // Fila de producto reutilizable (para la lista única de subproductos y para
+  // las dos grillas Res/Cerdo de cortes).
+  const renderProductRow = (p: SellableProduct) => {
+    const inCart = cart.find((l) => l.product.sku === p.sku);
+    const hasStock = Number(p.stock) > 0;
+    return (
+      <button
+        key={p.sku}
+        onClick={() => addProduct(p)}
+        disabled={!hasStock}
+        className={cn(
+          'group flex w-full items-end justify-between gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-all',
+          !hasStock
+            ? 'cursor-not-allowed border-border opacity-60'
+            : inCart
+              ? 'border-primary bg-primary/[0.06]'
+              : 'border-border hover:border-primary/40 hover:bg-accent',
+        )}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {featuredSkus.has(p.sku) && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-950">
+              <Star className="h-3 w-3 fill-amber-950" />
+              Estrella
+            </span>
+          )}
+          <span className="shrink-0 text-sm font-medium text-muted-foreground">
+            {p.sku}
+          </span>
+          <p className="text-sm font-medium">{p.name}</p>
+          {p.unitOfMeasure && (
+            <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-sm font-medium text-secondary-foreground">
+              {p.unitOfMeasure}
+            </span>
+          )}
+          <span
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-sm font-medium',
+              hasStock
+                ? 'bg-[var(--success)]/10 text-[var(--success)]'
+                : 'bg-destructive/10 text-destructive',
+            )}
+          >
+            <Boxes className="h-3 w-3" />
+            {hasStock ? `Stock ${Number(p.stock)}` : 'Sin stock'}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <span
+            className={cn(
+              'font-semibold',
+              hasStock ? 'text-foreground' : 'text-muted-foreground',
+            )}
+          >
+            {formatCurrency(Number(p.price))}
+          </span>
+          {hasStock && (
+            <span
+              className={cn(
+                'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
+                inCart
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground',
+              )}
+            >
+              {inCart ? (
+                <span className="text-xs font-bold">{inCart.quantity}</span>
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+            </span>
+          )}
+        </div>
+      </button>
+    );
   };
 
   const handleSubmit = async (skipFeaturedCheck = false) => {
@@ -815,100 +911,58 @@ export function NewOrderPage() {
                       className="pl-9"
                     />
                   </div>
-                  <div className="max-h-[26rem] space-y-1.5 overflow-auto pr-0.5">
-                    {visibleProducts.length === 0 ? (
-                      <p className="px-3 py-2 text-sm text-muted-foreground">
-                        No hay productos en la lista del cliente.
-                      </p>
-                    ) : (
-                      visibleProducts.map((p) => {
-                        const inCart = cart.find(
-                          (l) => l.product.sku === p.sku,
-                        );
-                        const hasStock = Number(p.stock) > 0;
-                        return (
-                          <button
-                            key={p.sku}
-                            onClick={() => addProduct(p)}
-                            disabled={!hasStock}
-                            className={cn(
-                              'group flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-all',
-                              !hasStock
-                                ? 'cursor-not-allowed border-border opacity-60'
-                                : inCart
-                                  ? 'border-primary bg-primary/[0.06]'
-                                  : 'border-border hover:border-primary/40 hover:bg-accent',
-                            )}
-                          >
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                {featuredSkus.has(p.sku) && (
-                                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-950">
-                                    <Star className="h-3 w-3 fill-amber-950" />
-                                    Estrella
-                                  </span>
-                                )}
-                                <p className="truncate font-medium">{p.name}</p>
-                              </div>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs">
-                                <span className="font-mono text-muted-foreground">
-                                  {p.sku}
-                                </span>
-                                {p.unitOfMeasure && (
-                                  <span className="rounded bg-secondary px-1.5 py-0.5 font-semibold text-secondary-foreground">
-                                    {p.unitOfMeasure}
-                                  </span>
-                                )}
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium',
-                                    hasStock
-                                      ? 'bg-[var(--success)]/10 text-[var(--success)]'
-                                      : 'bg-destructive/10 text-destructive',
-                                  )}
-                                >
-                                  <Boxes className="h-3 w-3" />
-                                  {hasStock
-                                    ? `Stock ${Number(p.stock)}`
-                                    : 'Sin stock'}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2.5">
-                              <span
-                                className={cn(
-                                  'font-semibold',
-                                  hasStock
-                                    ? 'text-foreground'
-                                    : 'text-muted-foreground',
-                                )}
-                              >
-                                {formatCurrency(Number(p.price))}
-                              </span>
-                              {hasStock && (
-                                <span
-                                  className={cn(
-                                    'flex h-7 w-7 items-center justify-center rounded-full transition-colors',
-                                    inCart
-                                      ? 'bg-primary text-primary-foreground'
-                                      : 'bg-muted text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground',
-                                  )}
-                                >
-                                  {inCart ? (
-                                    <span className="text-xs font-bold">
-                                      {inCart.quantity}
-                                    </span>
-                                  ) : (
-                                    <Plus className="h-4 w-4" />
-                                  )}
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
+                  {isSubproducto ? (
+                    <div className="max-h-[26rem] space-y-1.5 overflow-auto pr-0.5">
+                      {visibleProducts.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">
+                          No hay productos en la lista del cliente.
+                        </p>
+                      ) : (
+                        visibleProducts.map(renderProductRow)
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {/* Grilla RES (incluye Carnes Frías, Víveres y demás) */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between px-1">
+                          <h4 className="text-lg font-bold text-primary">Res</h4>
+                          <span className="text-xs text-muted-foreground">
+                            {resProducts.length}
+                          </span>
+                        </div>
+                        <div className="max-h-[26rem] space-y-1.5 overflow-auto pr-0.5">
+                          {resProducts.length === 0 ? (
+                            <p className="px-3 py-2 text-sm text-muted-foreground">
+                              Sin productos.
+                            </p>
+                          ) : (
+                            resProducts.map(renderProductRow)
+                          )}
+                        </div>
+                      </div>
+                      {/* Grilla CERDO */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between px-1">
+                          <h4 className="text-lg font-bold text-primary">
+                            Cerdo
+                          </h4>
+                          <span className="text-xs text-muted-foreground">
+                            {cerdoProducts.length}
+                          </span>
+                        </div>
+                        <div className="max-h-[26rem] space-y-1.5 overflow-auto pr-0.5">
+                          {cerdoProducts.length === 0 ? (
+                            <p className="px-3 py-2 text-sm text-muted-foreground">
+                              Sin productos.
+                            </p>
+                          ) : (
+                            cerdoProducts.map(renderProductRow)
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>

@@ -29,6 +29,11 @@ export class PriceListsService {
     return this.client.fetchSubproductoCategories(baseCompanyId(companyId));
   }
 
+  /** Mapa `SKU -> subcategoría` (RES/CERDO/...) de los cortes, desde el ERP. */
+  getCorteCategories(companyId: string): Promise<Map<string, string>> {
+    return this.client.fetchCorteCategories(companyId);
+  }
+
   /** Ventas por producto (agregado) del rango, desde el ERP. */
   getVendorProductSales(
     compania: string,

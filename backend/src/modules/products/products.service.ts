@@ -30,7 +30,11 @@ export interface SellableProduct {
   stock: number;
   /** Tasa de IVA (%) del producto. El IVA se agrega solo para mostrarlo. */
   taxRate: number;
-  /** Categoría del subproducto (CERDO / RES). Solo para type='subproducto'. */
+  /**
+   * Categoría/especie del producto (RES, CERDO, CARNES FRIAS, ...). En cortes
+   * viene de la SUBCATEGORIA de la lista de precios; en subproductos de la
+   * clasificación CERDO/RES del ERP.
+   */
   category?: string;
 }
 
@@ -137,6 +141,14 @@ export class ProductsService {
       // catálogo por especie en la toma de subproductos.
       const categories =
         await this.priceListsService.getSubproductoCategories(companyId);
+      for (const s of sellable) {
+        s.category = categories.get(s.sku);
+      }
+    } else {
+      // Cortes: se enriquece con la subcategoría (RES / CERDO / ...) del ERP
+      // para poder dividir el catálogo por categoría al tomar el pedido.
+      const categories =
+        await this.priceListsService.getCorteCategories(companyId);
       for (const s of sellable) {
         s.category = categories.get(s.sku);
       }

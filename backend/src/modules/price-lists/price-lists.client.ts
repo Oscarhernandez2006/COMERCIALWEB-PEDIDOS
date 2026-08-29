@@ -12,6 +12,10 @@ export interface PriceListRaw {
   PRODUCTO?: string;
   UM?: string;
   PRECIO?: number;
+  /** Categoría del producto (p. ej. "0001 - BIENES"). */
+  CATEGORIA?: string;
+  /** Subcategoría/especie (p. ej. "0001 - RES", "0002 - CERDO"). */
+  SUBCATEGORIA?: string;
   /** Fecha desde la que aplica el precio (ISO, p. ej. "2025-12-24T00:00:00"). */
   FECHA_ACTIVACION?: string;
   /** Fecha hasta la que aplica el precio (ISO). */
@@ -181,6 +185,12 @@ export class PriceListsClient {
   >();
   private static readonly SUBPRODUCTO_TTL_MS = 10 * 60 * 1000;
 
+  /** Caché del mapa SKU→subcategoría (RES/CERDO/...) de cortes por compañía. */
+  private readonly corteCategoryCache = new Map<
+    string,
+    { expiresAt: number; data: Map<string, string> }
+  >();
+
   constructor(
     private readonly http: HttpService,
     private readonly config: ConfigService,
@@ -212,6 +222,47 @@ export class PriceListsClient {
         'Error consultando las listas de precios en Siesa.',
       );
     }
+  }
+
+  /**
+   * Mapa `SKU -> subcategoría` (RES / CERDO / CARNES FRIAS / ...) de los cortes,
+   * tomado de la lista de precios del ERP (campo SUBCATEGORIA). Se cachea en
+   * memoria. Si el ERP falla, retorna un mapa vacío (la división es opcional).
+   */
+  async fetchCorteCategories(companyId: string): Promise<Map<string, string>> {
+    const cached = this.corteCategoryCache.get(companyId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+    const map = new Map<string, string>();
+    try {
+      const rows = await this.fetchPriceLists(companyId);
+      for (const r of rows) {
+        const sku = (r.REFERENCIA ?? '').trim();
+        const sub = (r.SUBCATEGORIA ?? '').trim();
+        if (!sku || !sub) continue;
+        // "0001 - RES" -> "RES"; si no trae el prefijo, se usa tal cual.
+        const label = (
+          sub.includes(' - ') ? sub.split(' - ').slice(1).join(' - ') : sub
+        )
+          .trim()
+          .toUpperCase();
+        if (label) map.set(sku, label);
+      }
+      this.corteCategoryCache.set(companyId, {
+        expiresAt: Date.now() + PriceListsClient.SUBPRODUCTO_TTL_MS,
+        data: map,
+      });
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? (error as { message: string }).message
+          : 'Error desconocido';
+      this.logger.error(
+        `Error consultando categorías de cortes (compañía ${companyId}): ${message}`,
+      );
+    }
+    return map;
   }
 
   /**

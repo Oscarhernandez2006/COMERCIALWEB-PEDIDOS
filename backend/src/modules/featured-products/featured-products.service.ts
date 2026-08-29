@@ -32,16 +32,15 @@ export class FeaturedProductsService {
       throw new BadRequestException('El SKU del producto es obligatorio.');
     }
     const cleanName = (name ?? '').trim() || cleanSku;
-    const existing = await this.repo.findOne({
+    // Upsert atómico: evita errores de clave duplicada si el producto ya estaba
+    // marcado (p. ej. doble clic o marca simultánea).
+    await this.repo.upsert(
+      { companyId: company, sku: cleanSku, name: cleanName },
+      ['companyId', 'sku'],
+    );
+    return this.repo.findOneOrFail({
       where: { companyId: company, sku: cleanSku },
     });
-    if (existing) {
-      existing.name = cleanName;
-      return this.repo.save(existing);
-    }
-    return this.repo.save(
-      this.repo.create({ companyId: company, sku: cleanSku, name: cleanName }),
-    );
   }
 
   /** Quita la marca de estrella de un producto. */
