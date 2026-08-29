@@ -24,6 +24,7 @@ import {
   Truck,
   BookOpen,
   Globe,
+  Sparkles,
   ChevronDown,
   Menu,
   X,
@@ -35,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { CarteraNotifications } from '@/components/CarteraNotifications';
 import { SiesaStateNotifications } from '@/components/SiesaStateNotifications';
+import { FeaturedProductNotice } from '@/components/FeaturedProductNotice';
 
 const sellerNav = [
   { to: '/', label: 'Dashboard comercial', icon: LayoutDashboard, end: true },
@@ -96,6 +98,7 @@ const adminSections: { label: string; items: typeof sellerNav }[] = [
     items: [
       { to: '/admin/inventario', label: 'Inventario', icon: Package },
       { to: '/admin/listas-precios', label: 'Listas de precios', icon: Tags },
+      { to: '/admin/productos-estrella', label: 'Productos estrella', icon: Sparkles },
       { to: '/admin/clientes', label: 'Clientes', icon: Users },
       { to: '/admin/presupuestos', label: 'Presupuestos', icon: Target },
       { to: '/admin/rentabilidad', label: 'Rentabilidad · Costos', icon: Coins },
@@ -360,6 +363,7 @@ export function AppLayout() {
 
       {user?.role === 'seller' && <CarteraNotifications />}
       {user?.role === 'seller' && <SiesaStateNotifications />}
+      {user?.role === 'seller' && <FeaturedProductNotice />}
     </div>
   );
 }

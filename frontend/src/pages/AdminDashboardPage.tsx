@@ -326,28 +326,6 @@ export function AdminDashboardPage() {
           <BarChart3 className="h-4 w-4" />
           Comparativo
         </button>
-        {companies.map((c) => {
-          const accent = accentFor(c.companyId);
-          const isActive = selectedCompanyId === c.companyId;
-          return (
-            <button
-              key={c.companyId}
-              onClick={() => setSelectedCompanyId(c.companyId)}
-              className={cn(
-                'flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors',
-                isActive
-                  ? cn(accent.ring, accent.soft, accent.text)
-                  : 'border-border text-muted-foreground hover:bg-accent',
-              )}
-            >
-              <span className={cn('h-2.5 w-2.5 rounded-full', accent.dot)} />
-              {c.name}
-              <span className="text-xs font-normal text-muted-foreground">
-                #{c.companyId}
-              </span>
-            </button>
-          );
-        })}
       </div>
 
       {/* Vista */}

@@ -31,6 +31,7 @@ import { RentabilidadPage } from '@/pages/RentabilidadPage';
 import { ControladorSubproductosPage } from '@/pages/ControladorSubproductosPage';
 import { VentasPorVendedorPage } from '@/pages/VentasPorVendedorPage';
 import { DispatchTatInvoicesPage } from '@/pages/DispatchTatInvoicesPage';
+import { FeaturedProductsPage } from '@/pages/FeaturedProductsPage';
 import { ApiDocsPage } from '@/pages/ApiDocsPage';
 
 function App() {
@@ -81,6 +82,7 @@ function App() {
           element={<DispatchTatInvoicesPage />}
         />
         <Route path="listas-precios" element={<PriceListsPage />} />
+        <Route path="productos-estrella" element={<FeaturedProductsPage />} />
         <Route path="clientes" element={<ClientsPage />} />
         <Route path="presupuestos" element={<BudgetsPage />} />
         <Route path="rentabilidad" element={<RentabilidadPage />} />

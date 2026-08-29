@@ -142,8 +142,28 @@ export class OrdersService {
       const exceedsCredit =
         cartera.creditLimit > 0 &&
         cartera.balance + total > cartera.creditLimit;
-      const needsApproval = cartera.hasOverdue || exceedsCredit;
+      let needsApproval = cartera.hasOverdue || exceedsCredit;
       const carteraBalance = cartera.balance;
+
+      // Si el cliente ya tiene un pedido de HOY que pasó la validación de
+      // cartera, los siguientes pedidos del mismo día pasan directo. La
+      // "cartera" que ahora aparece es, en la práctica, la que generó su propio
+      // primer pedido del día, así que no se debe retener por segunda vez.
+      if (needsApproval && !isSubproducto) {
+        const passedToday = await this.hasPassedOrderToday(
+          manager,
+          companyId,
+          customer.id,
+        );
+        if (passedToday) {
+          needsApproval = false;
+          this.logger.log(
+            `Cliente ${customer.code} (compañía ${companyId}) ya tiene un ` +
+              `pedido de hoy que pasó cartera; el nuevo pedido se crea sin ` +
+              `retención y sube directo a Siesa.`,
+          );
+        }
+      }
 
       // Numeración. Los subproductos que llevan RES y CERDO se dividen en dos
       // documentos en Siesa (bovino/porcino) y cada uno necesita un consecutivo
@@ -234,6 +254,38 @@ export class OrdersService {
       currency: 'COP',
       maximumFractionDigits: 0,
     }).format(value);
+  }
+
+  /**
+   * Indica si el cliente ya tiene un pedido de HOY (hora Colombia) que pasó la
+   * validación de cartera (se creó confirmado o ya se subió a Siesa). Se usa
+   * para no retener por segunda vez a un cliente cuyo saldo de cartera lo generó
+   * su propio primer pedido del día.
+   */
+  private async hasPassedOrderToday(
+    manager: EntityManager,
+    companyId: string,
+    customerId: string,
+  ): Promise<boolean> {
+    const passedStatuses = [
+      OrderStatus.CONFIRMED,
+      OrderStatus.SYNCING,
+      OrderStatus.SYNCED,
+      OrderStatus.FAILED,
+      OrderStatus.BOUNCED,
+    ];
+    const count = await manager
+      .getRepository(Order)
+      .createQueryBuilder('o')
+      .where('o.companyId = :companyId', { companyId })
+      .andWhere('o.customer_id = :customerId', { customerId })
+      .andWhere('o.status IN (:...statuses)', { statuses: passedStatuses })
+      .andWhere(
+        "(o.created_at AT TIME ZONE 'America/Bogota')::date = :today::date",
+        { today: bogotaToday() },
+      )
+      .getCount();
+    return count > 0;
   }
 
   /**

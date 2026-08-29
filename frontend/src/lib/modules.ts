@@ -36,6 +36,7 @@ export const ADMIN_MODULES: ModuleDef[] = [
   },
   { key: '/admin/despacho-drivin-tat', label: 'Despacho · Drivin TAT Facturas' },
   { key: '/admin/listas-precios', label: 'Listas de precios' },
+  { key: '/admin/productos-estrella', label: 'Productos estrella' },
   { key: '/admin/clientes', label: 'Clientes' },
   { key: '/admin/presupuestos', label: 'Presupuestos' },
   { key: '/admin/rentabilidad', label: 'Rentabilidad · Costos' },

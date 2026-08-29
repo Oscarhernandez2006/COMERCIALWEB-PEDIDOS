@@ -22,6 +22,7 @@ import { ChannelSalesModule } from './modules/channel-sales/channel-sales.module
 import { CanalOrdersModule } from './modules/canal-orders/canal-orders.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { FeaturedProductsModule } from './modules/featured-products/featured-products.module';
 import { SeederService } from './database/seeder.service';
 import { AppController } from './app.controller';
 
@@ -52,6 +53,7 @@ import { AppController } from './app.controller';
     CanalOrdersModule,
     ProvisioningModule,
     DispatchModule,
+    FeaturedProductsModule,
   ],
   controllers: [AppController],
   providers: [SeederService],

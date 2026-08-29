@@ -120,6 +120,14 @@ export interface SellableProduct {
   category?: string;
 }
 
+/** Producto marcado como estrella/favorito del día para una compañía. */
+export interface FeaturedProduct {
+  id: string;
+  companyId: string;
+  sku: string;
+  name: string;
+}
+
 export type OrderStatus =
   | 'draft'
   | 'pending_approval'

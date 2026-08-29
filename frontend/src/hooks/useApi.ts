@@ -13,6 +13,7 @@ import type {
   Customer,
   DeliverySchedule,
   DeliveryType,
+  FeaturedProduct,
   Order,
   Product,
   Quote,
@@ -116,6 +117,43 @@ export interface SellerOption {
   documentId: string;
   siesaSellerCode: string;
   role: string;
+}
+
+/** Productos estrella/favoritos de la compañía activa (vendedor y admin). */
+export function useFeaturedProducts() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['featured-products', company?.id],
+    queryFn: async () => {
+      const res = await api.get<FeaturedProduct[]>('/featured-products');
+      return res.data;
+    },
+  });
+}
+
+/** Marca un producto como estrella (solo admin). */
+export function useAddFeaturedProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { sku: string; name: string }) => {
+      const res = await api.post<FeaturedProduct>('/featured-products', input);
+      return res.data;
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['featured-products'] }),
+  });
+}
+
+/** Quita la marca de estrella de un producto (solo admin). */
+export function useRemoveFeaturedProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sku: string) => {
+      await api.delete('/featured-products', { params: { sku } });
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['featured-products'] }),
+  });
 }
 
 /** Vendedores de la compañía con código de vendedor en Siesa. */

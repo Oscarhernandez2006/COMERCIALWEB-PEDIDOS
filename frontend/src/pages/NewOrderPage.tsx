@@ -26,12 +26,14 @@ import {
   Truck,
   Clock,
   CalendarDays,
+  Star,
 } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import {
   useClients,
   useProductsForList,
   useCreateOrder,
+  useFeaturedProducts,
   downloadOrderPdf,
 } from '@/hooks/useApi';
 import { useOrderSchedule } from '@/hooks/useAdminApi';
@@ -46,6 +48,7 @@ import type {
   Client,
   DeliverySchedule,
   DeliveryType,
+  FeaturedProduct,
   Order,
   SellableProduct,
 } from '@/types';
@@ -130,6 +133,10 @@ export function NewOrderPage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [submitError, setSubmitError] = useState('');
+  // Productos estrella que faltan en el carrito (dispara el modal informativo).
+  const [featuredWarning, setFeaturedWarning] = useState<
+    FeaturedProduct[] | null
+  >(null);
   // Solo subproductos: categoría (especie) activa en el catálogo de productos.
   const [subproductoCategory, setSubproductoCategory] = useState<'CERDO' | 'RES'>(
     'CERDO',
@@ -159,13 +166,25 @@ export function NewOrderPage() {
     customer?.priceList,
     isSubproducto ? 'subproducto' : undefined,
   );
+  // Productos estrella/favoritos de la compañía (para priorizar y avisar).
+  const { data: featured = [] } = useFeaturedProducts();
+  const featuredSkus = useMemo(
+    () => new Set(featured.map((f) => f.sku)),
+    [featured],
+  );
   // Subproductos: se divide el catálogo por categoría (CERDO / RES). Los que no
-  // traen categoría se muestran en ambas pestañas para no perderlos.
-  const visibleProducts = isSubproducto
-    ? products.filter(
-        (p) => !p.category || p.category === subproductoCategory,
-      )
-    : products;
+  // traen categoría se muestran en ambas pestañas para no perderlos. Los
+  // productos estrella se muestran de primero para darles prioridad visual.
+  const visibleProducts = useMemo(() => {
+    const base = isSubproducto
+      ? products.filter((p) => !p.category || p.category === subproductoCategory)
+      : products;
+    if (featuredSkus.size === 0) return base;
+    return [...base].sort(
+      (a, b) =>
+        (featuredSkus.has(a.sku) ? 0 : 1) - (featuredSkus.has(b.sku) ? 0 : 1),
+    );
+  }, [products, isSubproducto, subproductoCategory, featuredSkus]);
   const createOrder = useCreateOrder();
 
   const totals = useMemo(() => {
@@ -258,12 +277,24 @@ export function NewOrderPage() {
     setCart((prev) => prev.filter((l) => l.product.sku !== sku));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (skipFeaturedCheck = false) => {
     if (!customer || cart.length === 0) return;
     if (!deliveryDate) {
       setSubmitError('Selecciona la fecha de entrega del pedido.');
       return;
     }
+    // Aviso de productos estrella no incluidos (solo cortes). Si faltan, se
+    // muestra el modal informativo antes de crear el pedido.
+    if (!skipFeaturedCheck && !isSubproducto) {
+      const missing = featured.filter(
+        (f) => !cart.some((l) => l.product.sku === f.sku),
+      );
+      if (missing.length > 0) {
+        setFeaturedWarning(missing);
+        return;
+      }
+    }
+    setFeaturedWarning(null);
     setSubmitError('');
     let order: Order;
     try {
@@ -810,7 +841,15 @@ export function NewOrderPage() {
                             )}
                           >
                             <div className="min-w-0">
-                              <p className="truncate font-medium">{p.name}</p>
+                              <div className="flex items-center gap-1.5">
+                                {featuredSkus.has(p.sku) && (
+                                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-950">
+                                    <Star className="h-3 w-3 fill-amber-950" />
+                                    Estrella
+                                  </span>
+                                )}
+                                <p className="truncate font-medium">{p.name}</p>
+                              </div>
                               <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs">
                                 <span className="font-mono text-muted-foreground">
                                   {p.sku}
@@ -1145,7 +1184,7 @@ export function NewOrderPage() {
                   !hoursOk ||
                   createOrder.isPending
                 }
-                onClick={handleSubmit}
+                onClick={() => handleSubmit()}
               >
                 {createOrder.isPending ? (
                   'Guardando...'
@@ -1190,6 +1229,61 @@ export function NewOrderPage() {
           </Card>
         </div>
       </div>
+
+      {/* Aviso: productos estrella no agregados al pedido */}
+      {featuredWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100">
+                <Star className="h-7 w-7 fill-amber-400 text-amber-500" />
+              </div>
+              <h3 className="text-lg font-semibold">
+                {featuredWarning.length === 1
+                  ? 'Producto estrella no agregado'
+                  : 'Productos estrella no agregados'}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                ¡Hey vendedor!{' '}
+                {featuredWarning.length === 1
+                  ? 'Este es el producto estrella/favorito del día y no lo agregaste al pedido.'
+                  : 'Estos son los productos estrella/favoritos del día y no los agregaste al pedido.'}{' '}
+                ¿Deseas agregarlo o crear el pedido así?
+              </p>
+            </div>
+            <ul className="mt-4 max-h-40 space-y-1.5 overflow-auto">
+              {featuredWarning.map((f) => (
+                <li
+                  key={f.sku}
+                  className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
+                >
+                  <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-500" />
+                  <span className="truncate font-medium text-amber-900">
+                    {f.name}
+                  </span>
+                  <span className="ml-auto shrink-0 font-mono text-xs text-amber-700">
+                    {f.sku}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setFeaturedWarning(null)}
+              >
+                <Plus className="h-4 w-4" />
+                Agregar producto
+              </Button>
+              <Button className="flex-1" onClick={() => handleSubmit(true)}>
+                <Check className="h-4 w-4" />
+                Crear pedido así
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de confirmación del pedido creado */}
       {createdOrder && (
