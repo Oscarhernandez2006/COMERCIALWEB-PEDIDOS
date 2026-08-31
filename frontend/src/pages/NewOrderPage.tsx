@@ -1242,7 +1242,6 @@ export function NewOrderPage() {
                   !customer ||
                   cart.length === 0 ||
                   !deliveryDate ||
-                  belowMinimum ||
                   !hoursOk ||
                   createOrder.isPending
                 }
