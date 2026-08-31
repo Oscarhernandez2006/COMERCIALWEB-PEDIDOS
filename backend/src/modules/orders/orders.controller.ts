@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -67,6 +68,21 @@ export class OrdersController {
     @CurrentUser('id') sellerId: string,
   ) {
     return this.ordersService.getSiesaStates(companyId, sellerId);
+  }
+
+  /**
+   * ¿El cliente ya tiene un pedido creado hoy? El monto mínimo es por día por
+   * cliente, así que el frontend usa esto para relajarlo en el segundo pedido.
+   */
+  @Get('customer-today')
+  async customerHasOrderToday(
+    @CompanyId() companyId: string,
+    @Query('customerId') customerId: string,
+  ) {
+    const hasOrder = customerId
+      ? await this.ordersService.customerHasOrderToday(companyId, customerId)
+      : false;
+    return { hasOrder };
   }
 
   /** Vendedores de la compañía (para el selector de subproductos). */

@@ -169,6 +169,25 @@ export function useSellers() {
 }
 
 /**
+ * ¿El cliente ya tiene un pedido creado hoy? El monto mínimo de pedido es por
+ * día por cliente, así que el segundo pedido del día no lo exige.
+ */
+export function useCustomerHasOrderToday(customerId?: string) {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['orders', 'customer-today', company?.id, customerId],
+    enabled: Boolean(customerId),
+    queryFn: async () => {
+      const res = await api.get<{ hasOrder: boolean }>(
+        '/orders/customer-today',
+        { params: { customerId } },
+      );
+      return res.data.hasOrder;
+    },
+  });
+}
+
+/**
  * Productos con existencias (stock > 0) de la compañía, sin importar lista de
  * precios: la disponibilidad real para la venta del día.
  */

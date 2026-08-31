@@ -120,10 +120,23 @@ export class OrdersService {
       const minTotal =
         orderType === 'subproducto' ? 0 : getMinOrderTotal(companyId);
       if (minTotal > 0 && total < minTotal) {
-        throw new BadRequestException(
-          `El pedido no alcanza el monto mínimo de ` +
-            `${this.formatCurrency(minTotal)} para esta compañía. ` +
-            `Total actual: ${this.formatCurrency(total)}.`,
+        // El pedido mínimo es POR DÍA POR CLIENTE: si el cliente ya tiene un
+        // pedido creado hoy, los siguientes pasan sin importar el valor.
+        const alreadyOrderedToday = await this.hasSubmittedOrderToday(
+          manager,
+          companyId,
+          customer.id,
+        );
+        if (!alreadyOrderedToday) {
+          throw new BadRequestException(
+            `El pedido no alcanza el monto mínimo de ` +
+              `${this.formatCurrency(minTotal)} para esta compañía. ` +
+              `Total actual: ${this.formatCurrency(total)}.`,
+          );
+        }
+        this.logger.log(
+          `Cliente ${customer.code} (compañía ${companyId}) ya tiene un ` +
+            `pedido de hoy; se omite el monto mínimo para este pedido.`,
         );
       }
 
@@ -262,30 +275,75 @@ export class OrdersService {
    * para no retener por segunda vez a un cliente cuyo saldo de cartera lo generó
    * su propio primer pedido del día.
    */
-  private async hasPassedOrderToday(
+  private hasPassedOrderToday(
     manager: EntityManager,
     companyId: string,
     customerId: string,
   ): Promise<boolean> {
-    const passedStatuses = [
+    return this.hasOrderTodayWithStatus(manager, companyId, customerId, [
       OrderStatus.CONFIRMED,
       OrderStatus.SYNCING,
       OrderStatus.SYNCED,
       OrderStatus.FAILED,
       OrderStatus.BOUNCED,
-    ];
+    ]);
+  }
+
+  /**
+   * Indica si el cliente ya tiene CUALQUIER pedido creado HOY (incluye los
+   * retenidos por cartera o el controlador). Se usa para el monto mínimo, que
+   * es por día por cliente: si ya pidió hoy, los siguientes pasan sin mínimo.
+   */
+  private hasSubmittedOrderToday(
+    manager: EntityManager,
+    companyId: string,
+    customerId: string,
+  ): Promise<boolean> {
+    return this.hasOrderTodayWithStatus(manager, companyId, customerId, [
+      OrderStatus.CONFIRMED,
+      OrderStatus.SYNCING,
+      OrderStatus.SYNCED,
+      OrderStatus.FAILED,
+      OrderStatus.BOUNCED,
+      OrderStatus.PENDING_APPROVAL,
+      OrderStatus.PENDING_CONTROL,
+    ]);
+  }
+
+  /** ¿El cliente tiene un pedido de hoy (hora Colombia) en alguno de los estados dados? */
+  private async hasOrderTodayWithStatus(
+    manager: EntityManager,
+    companyId: string,
+    customerId: string,
+    statuses: OrderStatus[],
+  ): Promise<boolean> {
     const count = await manager
       .getRepository(Order)
       .createQueryBuilder('o')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.customer_id = :customerId', { customerId })
-      .andWhere('o.status IN (:...statuses)', { statuses: passedStatuses })
+      .andWhere('o.status IN (:...statuses)', { statuses })
       .andWhere(
         "(o.created_at AT TIME ZONE 'America/Bogota')::date = :today::date",
         { today: bogotaToday() },
       )
       .getCount();
     return count > 0;
+  }
+
+  /**
+   * ¿El cliente ya tiene un pedido creado hoy? Público para que el frontend
+   * relaje el monto mínimo (que es por día por cliente).
+   */
+  customerHasOrderToday(
+    companyId: string,
+    customerId: string,
+  ): Promise<boolean> {
+    return this.hasSubmittedOrderToday(
+      this.ordersRepository.manager,
+      companyId,
+      customerId,
+    );
   }
 
   /**

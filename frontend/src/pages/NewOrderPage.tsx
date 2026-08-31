@@ -34,6 +34,7 @@ import {
   useProductsForList,
   useCreateOrder,
   useFeaturedProducts,
+  useCustomerHasOrderToday,
   downloadOrderPdf,
 } from '@/hooks/useApi';
 import { useOrderSchedule } from '@/hooks/useAdminApi';
@@ -227,7 +228,14 @@ export function NewOrderPage() {
   // monto mínimo.
   const { company } = useCompany();
   const minOrderTotal = isSubproducto ? 0 : getMinOrderTotal(company?.id);
-  const belowMinimum = minOrderTotal > 0 && totals.subtotal < minOrderTotal;
+  // El mínimo es por día por cliente: si el cliente ya pidió hoy, no se exige.
+  const { data: customerOrderedToday = false } = useCustomerHasOrderToday(
+    customer?.id,
+  );
+  const belowMinimum =
+    minOrderTotal > 0 &&
+    totals.subtotal < minOrderTotal &&
+    !customerOrderedToday;
   // MONTERIA TAT AGROPECUARIA: se pueden montar pedidos a cualquier hora.
   const hoursOk = withinHours || company?.id === 'MTAT';
 
