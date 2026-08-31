@@ -142,12 +142,10 @@ export class OrdersService {
 
       // 2) Con el stock ya confirmado, se evalúa la cartera del cliente para
       // decidir si el pedido pasa directo o queda retenido para aprobación.
-      // Regla: solo se retiene si el cliente está EN MORA (tiene documentos
-      // vencidos con saldo) o si el pedido superaría su cupo de crédito
-      // (saldo actual + total del pedido > cupo). Un cliente al día y con cupo
-      // disponible pasa automático, aunque tenga saldo pendiente. Si el ERP no
-      // provee el cupo (creditLimit = 0), solo se aplica la regla de mora. Los
-      // subproductos no pasan por cartera: van al controlador de subproductos.
+      // Regla: se retiene si el cliente tiene CUALQUIER saldo pendiente en
+      // cartera (aunque no esté vencido) o si el pedido superaría su cupo de
+      // crédito. Es decir, todo cliente que deba algo pasa por aprobación de
+      // cartera. Los subproductos no pasan por cartera: van al controlador.
       const isSubproducto = orderType === 'subproducto';
       const cartera = isSubproducto
         ? { balance: 0, hasOverdue: false, creditLimit: 0 }
@@ -155,7 +153,7 @@ export class OrdersService {
       const exceedsCredit =
         cartera.creditLimit > 0 &&
         cartera.balance + total > cartera.creditLimit;
-      let needsApproval = cartera.hasOverdue || exceedsCredit;
+      let needsApproval = cartera.balance > 0 || exceedsCredit;
       const carteraBalance = cartera.balance;
 
       // Si el cliente ya tiene un pedido de HOY que pasó la validación de
@@ -310,19 +308,27 @@ export class OrdersService {
     ]);
   }
 
-  /** ¿El cliente tiene un pedido de hoy (hora Colombia) en alguno de los estados dados? */
+  /**
+   * ¿El cliente tiene un pedido de CORTE de hoy (hora Colombia) que superó el
+   * tope mínimo, en alguno de los estados dados? Solo esos pedidos habilitan el
+   * bypass de cartera/mínimo: deben ser cortes que ya superaron el tope límite
+   * (los subproductos y los pedidos por debajo del mínimo no cuentan).
+   */
   private async hasOrderTodayWithStatus(
     manager: EntityManager,
     companyId: string,
     customerId: string,
     statuses: OrderStatus[],
   ): Promise<boolean> {
+    const minTotal = getMinOrderTotal(companyId);
     const count = await manager
       .getRepository(Order)
       .createQueryBuilder('o')
       .where('o.companyId = :companyId', { companyId })
       .andWhere('o.customer_id = :customerId', { customerId })
+      .andWhere('o.type = :type', { type: 'corte' })
       .andWhere('o.status IN (:...statuses)', { statuses })
+      .andWhere('o.total >= :minTotal', { minTotal })
       .andWhere(
         "(o.created_at AT TIME ZONE 'America/Bogota')::date = :today::date",
         { today: bogotaToday() },
@@ -805,8 +811,8 @@ export class OrdersService {
     }
 
     // Evalúa la cartera del cliente (el controlador ya revisó el pedido).
-    // Misma regla que en la creación: solo se retiene por mora o por superar el
-    // cupo de crédito con este pedido; si está al día y con cupo, pasa directo.
+    // Misma regla que en la creación: se retiene si el cliente tiene cualquier
+    // saldo pendiente en cartera o si el pedido supera el cupo de crédito.
     const cartera = await this.resolveCarteraStatus(
       order.companyId,
       order.customer.code,
@@ -814,7 +820,7 @@ export class OrdersService {
     const exceedsCredit =
       cartera.creditLimit > 0 &&
       cartera.balance + Number(order.total) > cartera.creditLimit;
-    const needsApproval = cartera.hasOverdue || exceedsCredit;
+    const needsApproval = cartera.balance > 0 || exceedsCredit;
 
     if (needsApproval) {
       // Queda retenido para aprobación en cartera (ventana de 2 horas). El
