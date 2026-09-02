@@ -204,14 +204,18 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
   }, [sellerOptions, sellerSearch]);
   const effectiveSellerId = isAdmin ? sellerId : undefined;
 
-  const selected = new Date(`${dateStr}T12:00:00`);
-  const month = selected.getMonth() + 1;
-  const year = selected.getFullYear();
-  const day = view === 'day' ? selected.getDate() : 0;
   // En modo rango se envían desde/hasta; en mes/día se usan mes/año/día.
   const isRange = view === 'range';
   const rangeFrom = isRange ? (fromStr <= toStr ? fromStr : toStr) : undefined;
   const rangeTo = isRange ? (fromStr <= toStr ? toStr : fromStr) : undefined;
+  // El mes/año (presupuesto, período y comparativo) se anclan al INICIO del
+  // rango: así, si el vendedor se regresa a un mes pasado, ve el presupuesto de
+  // ese mes y no el del mes en curso.
+  const anchorDateStr = isRange ? (rangeFrom as string) : dateStr;
+  const selected = new Date(`${anchorDateStr}T12:00:00`);
+  const month = selected.getMonth() + 1;
+  const year = selected.getFullYear();
+  const day = view === 'day' ? selected.getDate() : 0;
 
   const { data, isLoading, isFetching, refetch } = useSellerDashboard(
     month,
@@ -562,31 +566,33 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           icon={Coins}
           accent="bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-300"
         />
-        <KpiCard
-          label="Rentabilidad (Pesos)"
-          value={
-            isLoading ? (
-              '…'
-            ) : profitability != null ? (
-              formatCurrency(profitability.margin)
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                <Info className="h-3 w-3" />
-                Sin costos cargados
-              </span>
-            )
-          }
-          icon={Coins}
-          accent="bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-300"
-          subLabel="Margen"
-          subValue={
-            isLoading
-              ? '…'
-              : profitability?.marginPct != null
-                ? `${profitability.marginPct.toFixed(1)}%`
-                : '—'
-          }
-        />
+        {user?.role === 'admin' && (
+          <KpiCard
+            label="Rentabilidad (Pesos)"
+            value={
+              isLoading ? (
+                '…'
+              ) : profitability != null ? (
+                formatCurrency(profitability.margin)
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  <Info className="h-3 w-3" />
+                  Sin costos cargados
+                </span>
+              )
+            }
+            icon={Coins}
+            accent="bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-300"
+            subLabel="Margen"
+            subValue={
+              isLoading
+                ? '…'
+                : profitability?.marginPct != null
+                  ? `${profitability.marginPct.toFixed(1)}%`
+                  : '—'
+            }
+          />
+        )}
       </div>
 
       {/* Presupuesto por tienda/cliente (solo vendedores "por cliente", p. ej.

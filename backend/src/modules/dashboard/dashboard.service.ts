@@ -547,6 +547,12 @@ export class DashboardService {
       const len = this.daysBetween(from, to) + 1;
       prevTo = this.shiftDate(from, -1);
       prevFrom = this.shiftDate(prevTo, -(len - 1));
+      // El presupuesto/proyección son mensuales: se anclan al mes/año del
+      // INICIO del rango (el front, en modo rango, solo envía desde/hasta y el
+      // mes por defecto sería el actual). Así, al regresarse a un mes pasado, se
+      // ve el presupuesto de ESE mes.
+      month = Number(from.slice(5, 7));
+      year = Number(from.slice(0, 4));
     } else {
       singleDay = !!day && day >= 1 && day <= 31;
       if (singleDay) {
