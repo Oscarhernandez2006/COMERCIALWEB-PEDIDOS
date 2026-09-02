@@ -80,6 +80,7 @@ export function DispatchTatInvoicesPage() {
             i.invoiceNumber.toLowerCase().includes(q) ||
             i.clientName.toLowerCase().includes(q) ||
             i.clientCode.toLowerCase().includes(q) ||
+            (i.branchName ?? '').toLowerCase().includes(q) ||
             (i.tipoComercial ?? '').toLowerCase().includes(q),
         );
     // Las seleccionadas van al inicio; el resto conserva el orden por fecha.
@@ -380,6 +381,7 @@ export function DispatchTatInvoicesPage() {
                       <th className="px-3 py-2">Consecutivo</th>
                       <th className="px-3 py-2">Fecha</th>
                       <th className="px-3 py-2">Cliente</th>
+                      <th className="px-3 py-2">Sucursal</th>
                       <th className="px-3 py-2">Tipo</th>
                       <th className="px-3 py-2 text-right">Kilos</th>
                       <th className="px-3 py-2 text-right">Valor</th>
@@ -414,6 +416,16 @@ export function DispatchTatInvoicesPage() {
                             <div className="font-medium">{inv.clientName}</div>
                             <div className="text-xs text-muted-foreground">
                               {inv.clientCode}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="text-xs font-medium">
+                              {inv.branchName || '—'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {[inv.branchCode, inv.branchAddress]
+                                .filter(Boolean)
+                                .join(' · ') || '—'}
                             </div>
                           </td>
                           <td className="px-3 py-2 text-xs">

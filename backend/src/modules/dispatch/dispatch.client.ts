@@ -14,6 +14,9 @@ export interface TatInvoiceRaw {
   tipo_comercial?: string;
   cliente_factura?: string;
   razon_social_cliente?: string;
+  codigo_sucursal?: string;
+  descripcion_sucursal?: string;
+  direccion_sucursal?: string;
   cantidad_inv?: number;
   valor_subtotal?: number;
 }
@@ -34,6 +37,10 @@ export interface TatInvoiceLine {
   documentDate: string;
   clientCode: string;
   clientName: string;
+  /** Sucursal del cliente. */
+  branchCode: string;
+  branchName: string;
+  branchAddress: string;
   /** Tipo comercial normalizado (CORTE / CANAL / SUBPRODUCTO / …). */
   tipo: string;
   quantity: number;
@@ -138,6 +145,9 @@ export class DispatchClient {
       documentDate: (r.fecha_documento ?? '').slice(0, 10),
       clientCode: (r.cliente_factura ?? '').trim(),
       clientName: (r.razon_social_cliente ?? '').trim(),
+      branchCode: (r.codigo_sucursal ?? '').trim(),
+      branchName: (r.descripcion_sucursal ?? '').trim(),
+      branchAddress: (r.direccion_sucursal ?? '').trim(),
       tipo,
       quantity: Number(r.cantidad_inv) || 0,
       subtotal: Number(r.valor_subtotal) || 0,

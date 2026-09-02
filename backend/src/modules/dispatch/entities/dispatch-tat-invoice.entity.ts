@@ -31,6 +31,18 @@ export class DispatchTatInvoice extends BaseEntity {
   @Column({ name: 'client_name' })
   clientName: string;
 
+  /** Código de la sucursal del cliente (codigo_sucursal). */
+  @Column({ name: 'branch_code', type: 'varchar', nullable: true })
+  branchCode: string | null;
+
+  /** Descripción/nombre de la sucursal (descripcion_sucursal). */
+  @Column({ name: 'branch_name', type: 'varchar', nullable: true })
+  branchName: string | null;
+
+  /** Dirección de la sucursal (direccion_sucursal). */
+  @Column({ name: 'branch_address', type: 'varchar', nullable: true })
+  branchAddress: string | null;
+
   /** Tipos comerciales presentes en la factura (p. ej. "CORTE, SUBPRODUCTO"). */
   @Column({ name: 'tipo_comercial', type: 'varchar', nullable: true })
   tipoComercial: string | null;

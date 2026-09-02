@@ -14,6 +14,9 @@ interface GroupedInvoice {
   documentDate: string;
   clientCode: string;
   clientName: string;
+  branchCode: string;
+  branchName: string;
+  branchAddress: string;
   tipoComercial: string;
   quantity: number;
   subtotal: number;
@@ -45,6 +48,9 @@ export class DispatchService {
       fecha_documento: string;
       cliente_factura: string;
       razon_social_cliente: string;
+      codigo_sucursal: string | null;
+      descripcion_sucursal: string | null;
+      direccion_sucursal: string | null;
       tipo_comercial: string | null;
       cantidad_inv: number;
       valor_subtotal: number;
@@ -59,6 +65,9 @@ export class DispatchService {
       fecha_documento: r.documentDate,
       cliente_factura: r.clientCode,
       razon_social_cliente: r.clientName,
+      codigo_sucursal: r.branchCode,
+      descripcion_sucursal: r.branchName,
+      direccion_sucursal: r.branchAddress,
       tipo_comercial: r.tipoComercial,
       cantidad_inv: Number(r.quantity),
       valor_subtotal: Number(r.subtotal),
@@ -105,6 +114,9 @@ export class DispatchService {
       documentDate: inv.documentDate,
       clientCode: inv.clientCode,
       clientName: inv.clientName,
+      branchCode: inv.branchCode,
+      branchName: inv.branchName,
+      branchAddress: inv.branchAddress,
       tipoComercial: inv.tipoComercial,
       quantity: inv.quantity,
       subtotal: inv.subtotal,
@@ -174,6 +186,9 @@ export class DispatchService {
           documentDate: l.documentDate,
           clientCode: l.clientCode,
           clientName: l.clientName,
+          branchCode: l.branchCode,
+          branchName: l.branchName,
+          branchAddress: l.branchAddress,
           tipoComercial: '',
           quantity: 0,
           subtotal: 0,

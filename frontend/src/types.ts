@@ -381,6 +381,10 @@ export interface TatInvoice {
   documentDate: string;
   clientCode: string;
   clientName: string;
+  /** Sucursal del cliente (codigo/descripcion/direccion). */
+  branchCode: string | null;
+  branchName: string | null;
+  branchAddress: string | null;
   /** Tipos comerciales de la factura (p. ej. "CORTE, SUBPRODUCTO"). */
   tipoComercial: string | null;
   /** Cantidad total (kilos). */
