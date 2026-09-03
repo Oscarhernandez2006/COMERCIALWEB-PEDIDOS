@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { baseCompanyId } from '../../common/companies';
-import { DispatchTatInvoice } from './entities/dispatch-tat-invoice.entity';
+import {
+  DispatchTatInvoice,
+  TatInvoiceProduct,
+} from './entities/dispatch-tat-invoice.entity';
 import { DispatchClient, TatInvoiceLine } from './dispatch.client';
 import { SaveDispatchSelectionDto } from './dto/save-dispatch-selection.dto';
 
@@ -20,15 +23,23 @@ interface GroupedInvoice {
   tipoComercial: string;
   quantity: number;
   subtotal: number;
+  products: TatInvoiceProduct[];
 }
 
 @Injectable()
-export class DispatchService {
+export class DispatchService implements OnModuleInit {
   constructor(
     @InjectRepository(DispatchTatInvoice)
     private readonly invoiceRepository: Repository<DispatchTatInvoice>,
     private readonly client: DispatchClient,
   ) {}
+
+  async onModuleInit() {
+    // Garantiza la columna de detalle aunque DB_SYNCHRONIZE esté desactivado.
+    await this.invoiceRepository.query(
+      `ALTER TABLE dispatch_tat_invoice ADD COLUMN IF NOT EXISTS products jsonb`,
+    );
+  }
 
   /** Facturas TAT guardadas de la compañía, ordenadas por fecha y consecutivo. */
   list(companyId: string): Promise<DispatchTatInvoice[]> {
@@ -54,6 +65,11 @@ export class DispatchService {
       tipo_comercial: string | null;
       cantidad_inv: number;
       valor_subtotal: number;
+      productos: {
+        tipo_comercial: string;
+        cantidad_inv: number;
+        valor_subtotal: number;
+      }[];
     }[]
   > {
     const rows = await this.invoiceRepository.find({
@@ -71,6 +87,12 @@ export class DispatchService {
       tipo_comercial: r.tipoComercial,
       cantidad_inv: Number(r.quantity),
       valor_subtotal: Number(r.subtotal),
+      // Desglose por producto (una entrada por tipo comercial de la factura).
+      productos: (r.products ?? []).map((p) => ({
+        tipo_comercial: p.tipo,
+        cantidad_inv: Number(p.quantity),
+        valor_subtotal: Number(p.subtotal),
+      })),
     }));
   }
 
@@ -120,6 +142,7 @@ export class DispatchService {
       tipoComercial: inv.tipoComercial,
       quantity: inv.quantity,
       subtotal: inv.subtotal,
+      products: inv.products,
       selected: prevSelected.has(inv.invoiceNumber),
       published: prevPublished.has(inv.invoiceNumber),
     }));
@@ -177,7 +200,10 @@ export class DispatchService {
 
   /** Agrupa las líneas por consecutivo, sumando cantidad y valor. */
   private groupByInvoice(lines: TatInvoiceLine[]): Map<string, GroupedInvoice> {
-    const map = new Map<string, GroupedInvoice & { tipos: Set<string> }>();
+    const map = new Map<
+      string,
+      GroupedInvoice & { tipos: Map<string, TatInvoiceProduct> }
+    >();
     for (const l of lines) {
       let g = map.get(l.invoiceNumber);
       if (!g) {
@@ -192,16 +218,28 @@ export class DispatchService {
           tipoComercial: '',
           quantity: 0,
           subtotal: 0,
-          tipos: new Set<string>(),
+          products: [],
+          tipos: new Map<string, TatInvoiceProduct>(),
         };
         map.set(l.invoiceNumber, g);
       }
-      if (l.tipo) g.tipos.add(l.tipo);
+      // Detalle por producto: acumula kg y valor por tipo comercial.
+      const tipo = l.tipo || 'SIN PRODUCTO';
+      const prev = g.tipos.get(tipo);
+      if (prev) {
+        prev.quantity += l.quantity;
+        prev.subtotal += l.subtotal;
+      } else {
+        g.tipos.set(tipo, { tipo, quantity: l.quantity, subtotal: l.subtotal });
+      }
       g.quantity += l.quantity;
       g.subtotal += l.subtotal;
     }
     for (const g of map.values()) {
-      g.tipoComercial = [...g.tipos].sort().join(', ');
+      g.products = [...g.tipos.values()].sort((a, b) =>
+        a.tipo.localeCompare(b.tipo),
+      );
+      g.tipoComercial = g.products.map((p) => p.tipo).join(', ');
     }
     return map;
   }

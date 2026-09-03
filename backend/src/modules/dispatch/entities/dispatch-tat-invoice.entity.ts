@@ -1,6 +1,13 @@
 import { Column, Entity, Index, Unique } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
+/** Detalle de un producto (tipo comercial) dentro de una factura TAT. */
+export interface TatInvoiceProduct {
+  tipo: string;
+  quantity: number;
+  subtotal: number;
+}
+
 /**
  * Factura TAT (Siesa) descargada para despacho en Drivin. Una fila por
  * CONSECUTIVO (nro_documento), agregando sus líneas (corte/canal/subproducto).
@@ -54,6 +61,10 @@ export class DispatchTatInvoice extends BaseEntity {
   /** Valor subtotal total de la factura (pesos). */
   @Column({ name: 'subtotal', type: 'numeric', precision: 16, scale: 2, default: 0 })
   subtotal: number;
+
+  /** Detalle por producto (tipo comercial) con su kg y valor. */
+  @Column({ name: 'products', type: 'jsonb', nullable: true })
+  products: TatInvoiceProduct[] | null;
 
   /** Si la factura está marcada para despacho (borrador, autoguardado). */
   @Column({ name: 'selected', type: 'boolean', default: false })
