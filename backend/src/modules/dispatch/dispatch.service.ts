@@ -35,9 +35,13 @@ export class DispatchService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Garantiza la columna de detalle aunque DB_SYNCHRONIZE esté desactivado.
+    // Garantiza las columnas nuevas aunque DB_SYNCHRONIZE esté desactivado.
     await this.invoiceRepository.query(
-      `ALTER TABLE dispatch_tat_invoice ADD COLUMN IF NOT EXISTS products jsonb`,
+      `ALTER TABLE dispatch_tat_invoice
+         ADD COLUMN IF NOT EXISTS products jsonb,
+         ADD COLUMN IF NOT EXISTS branch_code varchar,
+         ADD COLUMN IF NOT EXISTS branch_name varchar,
+         ADD COLUMN IF NOT EXISTS branch_address varchar`,
     );
   }
 
