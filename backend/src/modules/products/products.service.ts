@@ -221,15 +221,56 @@ export class ProductsService {
     companyId: string,
     rows: InventoryRow[],
     type = 'corte',
+    species?: string,
   ): Promise<{ total: number; created: number; updated: number; removed: number }> {
     const inventoryType = this.normalizeInventoryType(type);
     await this.validateInventoryImport(companyId, rows, inventoryType);
+
+    // Subproductos por especie: el cargue de Bovino/Porcino reemplaza SOLO su
+    // propia especie (no todo el inventario de subproductos). La especie se
+    // guarda en `category` de cada fila para poder reemplazar por separado.
+    const speciesTag = this.normalizeSpecies(inventoryType, species);
+    let categoryMap: Map<string, string> | null = null;
+    if (speciesTag) {
+      categoryMap =
+        await this.priceListsService.getSubproductoCategories(companyId);
+      // Se rechaza el archivo si trae referencias que el ERP clasifica como la
+      // especie contraria (p. ej. una referencia porcina en el archivo bovino).
+      const opposite = speciesTag === 'RES' ? 'CERDO' : 'RES';
+      const wrong = rows
+        .filter(
+          (r) =>
+            (categoryMap!.get(r.reference.trim()) ?? '').toUpperCase() ===
+            opposite,
+        )
+        .map((r) => `${r.reference} (fila ${r.rowNumber})`);
+      if (wrong.length > 0) {
+        const label = speciesTag === 'RES' ? 'Bovino (Res)' : 'Porcino (Cerdo)';
+        throw new BadRequestException(
+          `El archivo de ${label} contiene referencias que son del otro tipo ` +
+            `según el ERP. Revisa: ${this.firstSamples(wrong)}.`,
+        );
+      }
+    }
 
     return this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(Product);
       const existing = await repo.find({ where: { companyId, type: inventoryType } });
       const existingBySku = new Map(existing.map((p) => [p.sku, p]));
       const incomingSkus = new Set(rows.map((r) => r.reference));
+
+      // Alcance del reemplazo: para subproductos por especie, solo las filas de
+      // esa especie (por su categoría guardada o, en filas legado sin categoría,
+      // por la clasificación del ERP). Así la otra especie no se toca.
+      const scopeExisting = speciesTag
+        ? existing.filter((p) => {
+            const stored = (p.category ?? '').trim().toUpperCase();
+            if (stored) return stored === speciesTag;
+            return (
+              (categoryMap!.get(p.sku.trim()) ?? '').toUpperCase() === speciesTag
+            );
+          })
+        : existing;
 
       let created = 0;
       let updated = 0;
@@ -240,6 +281,7 @@ export class ProductsService {
           prev.name = row.description;
           prev.stock = row.stock;
           prev.active = true;
+          if (speciesTag) prev.category = speciesTag;
           await repo.save(prev);
           updated++;
         } else {
@@ -253,14 +295,15 @@ export class ProductsService {
             basePrice: 0,
             taxRate: 0,
             active: true,
+            ...(speciesTag ? { category: speciesTag } : {}),
           });
           await repo.save(product);
           created++;
         }
       }
 
-      // Productos que ya no vienen en la plantilla.
-      const obsolete = existing.filter((p) => !incomingSkus.has(p.sku));
+      // Productos que ya no vienen en la plantilla (solo dentro del alcance).
+      const obsolete = scopeExisting.filter((p) => !incomingSkus.has(p.sku));
       let removed = 0;
       for (const product of obsolete) {
         const refRows: Array<{ count: string }> = await manager.query(
@@ -280,12 +323,25 @@ export class ProductsService {
       }
 
       this.logger.log(
-        `Inventario reemplazado (compañía ${companyId}): ` +
+        `Inventario reemplazado (compañía ${companyId}` +
+          `${speciesTag ? `, especie ${speciesTag}` : ''}): ` +
           `${created} nuevos, ${updated} actualizados, ${removed} retirados.`,
       );
 
       return { total: rows.length, created, updated, removed };
     });
+  }
+
+  /** Normaliza la especie de subproducto seleccionada al cargar (RES/CERDO). */
+  private normalizeSpecies(
+    inventoryType: 'corte' | 'subproducto',
+    species?: string,
+  ): 'RES' | 'CERDO' | null {
+    if (inventoryType !== 'subproducto' || !species) return null;
+    const s = species.trim().toUpperCase();
+    if (s === 'CERDO' || s === 'PORCINO') return 'CERDO';
+    if (s === 'RES' || s === 'BOVINO') return 'RES';
+    return null;
   }
 
   private normalizeSku(value: string): string {

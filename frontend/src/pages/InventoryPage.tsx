@@ -53,6 +53,10 @@ export function InventoryPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   // Archivo seleccionado pendiente de confirmar el cargue.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  // Solo subproductos: especie del archivo a cargar (Bovino=RES / Porcino=CERDO).
+  const [pendingSpecies, setPendingSpecies] = useState<'RES' | 'CERDO' | null>(
+    null,
+  );
   // Tipo de inventario a gestionar/cargar: cortes o subproductos.
   const [invType, setInvType] = useState<'corte' | 'subproducto'>('corte');
 
@@ -125,12 +129,18 @@ export function InventoryPage() {
 
   function confirmImport() {
     if (!pendingFile) return;
+    // Subproductos: se debe elegir la especie (Bovino/Porcino) antes de cargar.
+    if (effectiveType === 'subproducto' && !pendingSpecies) return;
     importInventory.mutate({
       companyId,
       file: pendingFile,
       type: effectiveType,
+      ...(effectiveType === 'subproducto' && pendingSpecies
+        ? { species: pendingSpecies }
+        : {}),
     });
     setPendingFile(null);
+    setPendingSpecies(null);
   }
 
   function createProductManually() {
@@ -462,18 +472,58 @@ export function InventoryPage() {
               </div>
               <div className="min-w-0">
                 <h3 className="text-lg font-semibold">Confirmar cargue de inventario</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Este es un <strong className="text-foreground">cargue nuevo</strong>{' '}
-                  que <strong className="text-foreground">reemplaza por completo</strong>{' '}
-                  el inventario de{' '}
-                  <strong className="text-foreground">{company?.name}</strong>.{' '}
-                  <strong className="text-amber-600 dark:text-amber-500">
-                    No se suma
-                  </strong>{' '}
-                  al stock actual.
-                </p>
+                {effectiveType === 'subproducto' ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Elige qué estás cargando. El cargue{' '}
+                    <strong className="text-foreground">
+                      reemplaza solo esa especie
+                    </strong>{' '}
+                    (Bovino o Porcino) en{' '}
+                    <strong className="text-foreground">{company?.name}</strong>;
+                    la otra especie no se toca.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Este es un <strong className="text-foreground">cargue nuevo</strong>{' '}
+                    que <strong className="text-foreground">reemplaza por completo</strong>{' '}
+                    el inventario de{' '}
+                    <strong className="text-foreground">{company?.name}</strong>.{' '}
+                    <strong className="text-amber-600 dark:text-amber-500">
+                      No se suma
+                    </strong>{' '}
+                    al stock actual.
+                  </p>
+                )}
               </div>
             </div>
+
+            {effectiveType === 'subproducto' && (
+              <div className="mt-4">
+                <p className="mb-2 text-sm font-medium">¿Qué estás cargando?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      { key: 'RES', label: 'Bovino (Res)' },
+                      { key: 'CERDO', label: 'Porcino (Cerdo)' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setPendingSpecies(opt.key)}
+                      className={cn(
+                        'rounded-lg border px-3 py-2 text-sm font-semibold transition-colors',
+                        pendingSpecies === opt.key
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:bg-accent',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3 text-sm">
               <p className="flex items-center gap-2">
@@ -485,13 +535,26 @@ export function InventoryPage() {
             <div className="mt-6 flex justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => setPendingFile(null)}
+                onClick={() => {
+                  setPendingFile(null);
+                  setPendingSpecies(null);
+                }}
                 disabled={importInventory.isPending}
               >
                 Cancelar
               </Button>
-              <Button onClick={confirmImport} disabled={importInventory.isPending}>
-                {importInventory.isPending ? 'Cargando...' : 'Sí, reemplazar inventario'}
+              <Button
+                onClick={confirmImport}
+                disabled={
+                  importInventory.isPending ||
+                  (effectiveType === 'subproducto' && !pendingSpecies)
+                }
+              >
+                {importInventory.isPending
+                  ? 'Cargando...'
+                  : effectiveType === 'subproducto'
+                    ? 'Sí, cargar esta especie'
+                    : 'Sí, reemplazar inventario'}
               </Button>
             </div>
           </div>

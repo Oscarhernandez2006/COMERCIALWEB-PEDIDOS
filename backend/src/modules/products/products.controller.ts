@@ -124,12 +124,13 @@ export class ProductsController {
     @CompanyId() companyId: string,
     @UploadedFile() file: Express.Multer.File,
     @Query('type') type = 'corte',
+    @Query('species') species?: string,
   ) {
     if (!file) {
       throw new UnsupportedMediaTypeException('No se recibió ningún archivo.');
     }
     const rows = parseInventoryExcel(file.buffer);
-    return this.productsService.replaceInventory(companyId, rows, type);
+    return this.productsService.replaceInventory(companyId, rows, type, species);
   }
 
   /**

@@ -588,6 +588,7 @@ export function useImportInventory() {
       companyId: string;
       file: File;
       type?: 'corte' | 'subproducto';
+      species?: 'RES' | 'CERDO';
     }) => {
       const form = new FormData();
       form.append('file', input.file);
@@ -596,7 +597,10 @@ export function useImportInventory() {
         form,
         {
           headers: { 'X-Company-Id': input.companyId },
-          params: input.type ? { type: input.type } : undefined,
+          params: {
+            ...(input.type ? { type: input.type } : {}),
+            ...(input.species ? { species: input.species } : {}),
+          },
         },
       );
       return res.data;
