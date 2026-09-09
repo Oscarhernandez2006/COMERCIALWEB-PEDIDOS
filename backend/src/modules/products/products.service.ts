@@ -465,9 +465,18 @@ export class ProductsService {
       where: { companyId, sku, type: inventoryType },
     });
     if (existingByType) {
-      throw new ConflictException(
-        `La referencia ${sku} ya existe en ${inventoryType}.`,
-      );
+      if (existingByType.active) {
+        throw new ConflictException(
+          `La referencia ${sku} ya existe en ${inventoryType}.`,
+        );
+      }
+      // Existía pero estaba INACTIVA (p. ej. desactivada por un cargue anterior
+      // al no venir en el Excel). En vez de bloquear, se reactiva y se
+      // actualizan nombre y stock, para que vuelva a aparecer en el inventario.
+      existingByType.name = name;
+      existingByType.stock = stock;
+      existingByType.active = true;
+      return this.productsRepository.save(existingByType);
     }
 
     const oppositeType = inventoryType === 'corte' ? 'subproducto' : 'corte';
