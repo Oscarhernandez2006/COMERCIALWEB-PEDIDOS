@@ -27,6 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SalesTrendChart } from '@/components/SalesTrendChart';
+import { useCompany } from '@/company/useCompany';
 import type { ManagerialCompanyStats } from '@/types';
 
 const COMPANY_ACCENT: Record<
@@ -433,7 +434,7 @@ function CompanyColumn({ company }: { company: ManagerialCompanyStats }) {
 
       {/* Ventas por vendedor y productos, lado a lado */}
       <div className="grid gap-4 xl:grid-cols-2">
-        <SellersCard company={company} />
+        <SellersCard company={company} sideBySide={!!company.margin} />
         <ProductsCard company={company} />
       </div>
 
@@ -1009,6 +1010,8 @@ function RankingColumn({
  * canales). La suma de todos los vendedores es la venta acumulada del período.
  */
 function VentaAcumuladaSection() {
+  const { company } = useCompany();
+  const companyId = company?.id;
   const [monthStr, setMonthStr] = useState(currentMonthStr());
   // Día opcional (YYYY-MM-DD). Si está vacío se muestra el mes completo.
   const [dayStr, setDayStr] = useState('');
@@ -1019,9 +1022,10 @@ function VentaAcumuladaSection() {
     periodo,
     dayStr || undefined,
     true,
+    companyId,
   );
   // Pedidos por vendedor (de la BD), para comparar contra la venta del ERP.
-  const ordersQuery = useOrdersBySellerReport(periodo, dayStr || undefined, true);
+  const ordersQuery = useOrdersBySellerReport(periodo, dayStr || undefined, true, companyId);
 
   const sellers = data?.sellers ?? [];
   const orderSellers = ordersQuery.data?.sellers ?? [];

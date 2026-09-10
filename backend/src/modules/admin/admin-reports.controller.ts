@@ -496,8 +496,13 @@ export class AdminReportsController {
   vendorProductSalesData(
     @Query('periodo') periodo: string,
     @Query('fecha') fecha?: string,
+    @Query('companyId') companyId?: string,
   ) {
-    return this.reportsService.getVendorProductSalesReport(periodo, fecha);
+    return this.reportsService.getVendorProductSalesReport(
+      periodo,
+      fecha,
+      companyId?.trim() || '3',
+    );
   }
 
   /**
@@ -523,9 +528,14 @@ export class AdminReportsController {
     @Query('periodo') periodo: string,
     @Query('fecha') fecha: string,
     @Res() res: Response,
+    @Query('companyId') companyId?: string,
   ) {
     const { buffer, periodo: p } =
-      await this.reportsService.getVendorProductSalesReportPdf(periodo, fecha);
+      await this.reportsService.getVendorProductSalesReportPdf(
+        periodo,
+        fecha,
+        companyId?.trim() || '3',
+      );
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
@@ -540,9 +550,14 @@ export class AdminReportsController {
     @Query('periodo') periodo: string,
     @Query('fecha') fecha: string,
     @Res() res: Response,
+    @Query('companyId') companyId?: string,
   ) {
     const { buffer, periodo: p } =
-      await this.reportsService.getVendorProductSalesReportExcel(periodo, fecha);
+      await this.reportsService.getVendorProductSalesReportExcel(
+        periodo,
+        fecha,
+        companyId?.trim() || '3',
+      );
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -15,6 +15,7 @@ import {
   ArrowDownRight,
 } from 'lucide-react';
 import { useAuth } from '@/auth/useAuth';
+import { useCompany } from '@/company/useCompany';
 import { useSellerDashboard, useSellers } from '@/hooks/useApi';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { isDashboardExcludedSellerDoc } from '@/lib/companies';
@@ -161,6 +162,13 @@ function KpiCard({ label, value, icon: Icon, accent, subLabel, subValue }: KpiPr
 
 export function DashboardPage({ national = false }: { national?: boolean }) {
   const { user } = useAuth();
+  // CARNES FRIAS (cía 8) se mide en UNIDADES; las demás en KILOS.
+  const { company } = useCompany();
+  const isUnitCompany = company?.id === '8';
+  const unitLong = isUnitCompany ? 'Unidades' : 'Kilos';
+  const unitShort = isUnitCompany ? 'und' : 'kg';
+  // CARNES FRIAS (8) y MONTERIA TAT (MTAT) no manejan ventas por canal.
+  const hideChannels = company?.id === '8' || company?.id === 'MTAT';
   // Fecha seleccionada y modo de vista: mes completo, un día, o un rango de
   // fechas (desde/hasta). De la fecha se derivan mes, año y día.
   const [dateStr, setDateStr] = useState(() => todayISO());
@@ -471,12 +479,12 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           }
           icon={Wallet}
           accent="bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300"
-          subLabel="Ppto (Kilos)"
+          subLabel={isUnitCompany ? undefined : `Ppto (${unitLong})`}
           subValue={
-            isLoading ? (
+            isUnitCompany ? undefined : isLoading ? (
               '…'
             ) : pptoKilos != null ? (
-              `${pptoKilos.toLocaleString('es-CO')} kg`
+              `${pptoKilos.toLocaleString('es-CO')} ${unitShort}`
             ) : (
               <SinPresupuesto />
             )
@@ -487,9 +495,9 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           value={isLoading ? '…' : formatCurrency(totals?.revenue ?? 0)}
           icon={DollarSign}
           accent="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300"
-          subLabel="Kilos Vendidos"
+          subLabel={isUnitCompany ? 'Unidades Vendidas' : 'Kilos Vendidos'}
           subValue={
-            isLoading ? '…' : `${kilosSold.toLocaleString('es-CO')} kg`
+            isLoading ? '…' : `${kilosSold.toLocaleString('es-CO')} ${unitShort}`
           }
         />
         <KpiCard
@@ -505,9 +513,9 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           }
           icon={Gauge}
           accent="bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300"
-          subLabel="Cumplimiento (Kilos)"
+          subLabel={isUnitCompany ? undefined : `Cumplimiento (${unitLong})`}
           subValue={
-            isLoading ? (
+            isUnitCompany ? undefined : isLoading ? (
               '…'
             ) : cumplimientoKilos != null ? (
               `${cumplimientoKilos.toFixed(1)}%`
@@ -531,12 +539,12 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           accent="bg-violet-100 text-violet-600 dark:bg-violet-900/40 dark:text-violet-300"
         />
         <KpiCard
-          label="Proyección (Kilos)"
+          label={`Proyección (${unitLong})`}
           value={
             isLoading ? (
               '…'
             ) : projection != null ? (
-              `${projection.kilos.toLocaleString('es-CO')} kg`
+              `${projection.kilos.toLocaleString('es-CO')} ${unitShort}`
             ) : (
               <SinProyeccion />
             )
@@ -551,11 +559,11 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           accent="bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300"
         />
         <KpiCard
-          label="Pedidos (Kilos)"
+          label={`Pedidos (${unitLong})`}
           value={
             isLoading
               ? '…'
-              : `${(totals?.orderKilos ?? 0).toLocaleString('es-CO')} kg`
+              : `${(totals?.orderKilos ?? 0).toLocaleString('es-CO')} ${unitShort}`
           }
           icon={Scale}
           accent="bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-900/40 dark:text-fuchsia-300"
@@ -566,7 +574,7 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           icon={Coins}
           accent="bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-300"
         />
-        {user?.role === 'admin' && (
+        {user?.role === 'admin' && !isUnitCompany && (
           <KpiCard
             label="Rentabilidad (Pesos)"
             value={
@@ -708,12 +716,12 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
               </div>
             )}
             {cumplimientoKilos != null ? (
-              <RingGauge pct={cumplimientoKilos} label="Kilos" />
+              <RingGauge pct={cumplimientoKilos} label={unitLong} />
             ) : (
               <div className="flex flex-col items-center gap-2 text-center">
                 <Gauge className="h-9 w-9 text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">
-                  Kilos
+                  {unitLong}
                 </span>
                 <SinPresupuesto />
               </div>
@@ -949,7 +957,8 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className={`grid gap-4 ${hideChannels ? '' : 'lg:grid-cols-3'}`}>
+          {!hideChannels && (
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-base">Ventas por Canal</CardTitle>
@@ -968,7 +977,7 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
                           <tr>
                             <th className="px-3 py-2 font-medium">Canal</th>
                             <th className="px-3 py-2 text-right font-medium">
-                              Kg
+                              {isUnitCompany ? 'Und' : 'Kg'}
                             </th>
                             <th className="px-3 py-2 text-right font-medium">
                               Venta
@@ -1018,6 +1027,7 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
               </div>
             </CardContent>
           </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -1203,7 +1213,7 @@ export function DashboardPage({ national = false }: { national?: boolean }) {
             hint="Vs. mes anterior"
           />
           <RankItem
-            label="Crecimiento Kilos (Kg)"
+            label={`Crecimiento ${unitLong} (${unitShort})`}
             value={
               growthKilos === null ? (
                 <span className="text-muted-foreground">—</span>

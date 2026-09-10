@@ -449,10 +449,13 @@ export class AdminStatsService {
         this.getCompanyTopSellers(companyId, from, to),
       ]);
 
-    // Solo AGROPECUARIA (cía 3) tiene facturación con costo en el ERP; para las
-    // demás compañías no hay fuente de costo, así que no se calcula margen.
+    // AGROPECUARIA (3) y CARNES FRIAS (8) tienen facturación con costo en el
+    // ERP; para las demás compañías no hay fuente de costo, así que no se
+    // calcula margen.
     const margin =
-      companyId === '3' ? await this.getErpMargin(from, to) : undefined;
+      companyId === '3' || companyId === '8'
+        ? await this.getErpMargin(companyId, from, to)
+        : undefined;
 
     return {
       companyId,
@@ -502,6 +505,7 @@ export class AdminStatsService {
    * `undefined` para no romper el resto del tablero.
    */
   private async getErpMargin(
+    companyId: string,
     from: string,
     to: string,
   ): Promise<ManagerialCompanyStats['margin']> {
@@ -524,7 +528,7 @@ export class AdminStatsService {
 
       for (const periodo of this.periodsBetween(from, to)) {
         const grows = await this.priceListsService.getVendorProductSales(
-          '3',
+          companyId,
           periodo,
         );
         for (const g of grows) {
@@ -569,7 +573,7 @@ export class AdminStatsService {
       >();
       for (const periodo of this.periodsBetween(from, to)) {
         const rows = await this.priceListsService.getVendorProductSales(
-          '3',
+          companyId,
           periodo,
         );
         for (const row of rows) {
@@ -591,7 +595,10 @@ export class AdminStatsService {
           const esCanal =
             crit === 'CANAL' || name.toUpperCase().startsWith('CANAL');
           const esAgro = esCanal || crit === 'CORTE' || crit === 'SUBPRODUCTO';
-          if (!esAgro) continue;
+          // CARNES FRIAS (8) factura categoría PRODUCTO TERMINADO.
+          const incluir =
+            esAgro || (companyId === '8' && crit === 'PRODUCTO TERMINADO');
+          if (!incluir) continue;
           const bruto = Number(row.valor_bruto) || 0;
           const costo = Number(row.costo_total) || 0;
           const qty = Number(row.cantidad_base) || 0;

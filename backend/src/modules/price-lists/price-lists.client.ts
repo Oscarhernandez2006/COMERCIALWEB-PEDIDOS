@@ -351,6 +351,11 @@ export class PriceListsClient {
     const timeout = this.config.get<number>('priceLists.timeoutMs');
     const PAGE = 5000;
     const MAX_PAGES = 20;
+    // CARNES FRIAS (cía 8) tiene su propio endpoint de facturación.
+    const path =
+      compania === '8'
+        ? '/ventas/vendedor-productos-carnesfrias'
+        : '/ventas/vendedor-productos-mes';
     try {
       const out: VendorProductSaleRaw[] = [];
       let offset = 0;
@@ -358,7 +363,7 @@ export class PriceListsClient {
       while (page < MAX_PAGES) {
         const response = await firstValueFrom(
           this.http.get<VendorProductAggResponse>(
-            `${baseUrl}/ventas/vendedor-productos-mes`,
+            `${baseUrl}${path}`,
             {
               params: {
                 compania,

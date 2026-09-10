@@ -33,6 +33,7 @@ export const BUDGET_APART_SELLER_DOCS: string[] = [
  */
 export const DASHBOARD_EXCLUDED_SELLER_DOCS: string[] = [
   '72004911', // Juan Sierra
+  '900391505', // INVERSIONES SERRANO MILLAN (CARNES FRIAS)
 ];
 
 /** Indica si la cédula del vendedor está excluida del tablero comercial. */

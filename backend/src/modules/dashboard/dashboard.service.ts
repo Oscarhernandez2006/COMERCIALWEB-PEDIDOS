@@ -414,6 +414,65 @@ export class DashboardService {
   }
 
   /**
+   * Facturación real del ERP para CARNES FRIAS (cía 8): venta (total_facturas) y
+   * UNIDADES (cantidad). Filtra por NIT del vendedor, excluye servicios y a los
+   * vendedores excluidos del tablero (Juan Sierra, INVERSIONES SERRANO MILLAN).
+   * Devuelve además la venta por día para la tendencia.
+   */
+  private async getErpFacturado(
+    companyId: string,
+    nits: Set<string>,
+    from: string,
+    to: string,
+    exclude?: { nits: Set<string>; codes: Set<string>; names: Set<string> },
+  ): Promise<{ revenue: number; units: number; byDay: Map<string, number> }> {
+    let revenue = 0;
+    let units = 0;
+    const byDay = new Map<string, number>();
+    const filterByNit = nits.size > 0;
+    for (const periodo of this.periodsBetween(from, to)) {
+      const rows = await this.priceListsService.getVendorProductSales(
+        companyId,
+        periodo,
+      );
+      for (const row of rows) {
+        const nit = (row.nit_vendedor ?? '').trim();
+        if (filterByNit && !nits.has(nit)) continue;
+        if (isDashboardExcludedSellerDoc(nit)) continue;
+        if (exclude) {
+          const code = (row.codigo_vendedor ?? '').trim();
+          const razon = (row.razon_social_vendedor ?? '').trim().toUpperCase();
+          if (
+            (nit && exclude.nits.has(nit)) ||
+            (code && exclude.codes.has(code)) ||
+            (razon && exclude.names.has(razon))
+          ) {
+            continue;
+          }
+        }
+        const ref = (row.referencia ?? '').trim();
+        const name = (row.descripcion ?? '').trim();
+        const crit = (row.criterio_producto ?? '').trim().toUpperCase();
+        if (
+          crit === 'SERVICIO' ||
+          ref.startsWith('99') ||
+          name.toUpperCase().startsWith('SERVICIO')
+        ) {
+          continue;
+        }
+        const day = (row.dia ?? row.fecha ?? '').slice(0, 10);
+        if (!day) continue;
+        const bruto = Number(row.valor_bruto) || 0;
+        byDay.set(day, (byDay.get(day) ?? 0) + bruto);
+        if (day < from || day > to) continue;
+        revenue += bruto;
+        units += Number(row.cantidad_base) || 0;
+      }
+    }
+    return { revenue, units, byDay };
+  }
+
+  /**
    * Totales (venta, kilos, costo) por vendedor desde la consulta GENERAL del
    * ERP (`dashboard-comercial`). Filtra por NIT del vendedor cuando aplica y
    * descuenta los vendedores excluidos del consolidado (p. ej. Juan Sierra).
@@ -775,6 +834,33 @@ export class DashboardService {
           : null;
     }
 
+    // CARNES FRIAS (cía 8): la venta acumulada y las UNIDADES vendidas se toman
+    // de lo FACTURADO en el ERP (no de los pedidos de la app). Los pedidos se
+    // mantienen aparte (orderRevenue/orderKilos).
+    if (companyId === '8') {
+      const [fact, factPrev] = await Promise.all([
+        this.getErpFacturado(companyId, nitSet, from, to, erpExclude),
+        this.getErpFacturado(companyId, nitSet, prevFrom, prevTo, erpExclude),
+      ]);
+      revenue = fact.revenue;
+      totalKilos = fact.units;
+      revenuePct =
+        factPrev.revenue > 0
+          ? Number(
+              (((fact.revenue - factPrev.revenue) / factPrev.revenue) * 100).toFixed(1),
+            )
+          : null;
+      kilosPct =
+        factPrev.units > 0
+          ? Number(
+              (((fact.units - factPrev.units) / factPrev.units) * 100).toFixed(1),
+            )
+          : null;
+      const trendFrom = singleDay ? `${from.slice(0, 7)}-01` : from;
+      const trendTo = singleDay ? this.endOfMonth(from) : to;
+      salesTrend = this.buildErpTrend(trendFrom, trendTo, fact.byDay);
+    }
+
     // Proyección AUTOMÁTICA del mes según el ritmo de ventas sobre los días
     // hábiles marcados. Solo aplica en la vista mensual (no por día/rango).
     const projection = this.computeProjection(
@@ -1006,7 +1092,11 @@ export class DashboardService {
     return { revenue, kilos, byChannel, byDay };
   }
 
-  /** Kilos vendidos en el mes: suma de cantidades de ítems medidos en KG. */
+  /**
+   * Kilos vendidos en el mes: suma de cantidades de ítems medidos en KG. En
+   * CARNES FRIAS (cía 8) se mide en UNIDADES, así que se suman TODAS las
+   * cantidades (packs/unidades/kg), no solo las de KG.
+   */
   private async getKilosSold(
     companyId: string,
     sellerIds: string[] | null,
@@ -1014,16 +1104,18 @@ export class DashboardService {
     to: string,
   ): Promise<number> {
     const [sellerCond, sellerParams] = this.sellerFilterSql(sellerIds);
-    const row = await this.orderItemsRepository
+    const qb = this.orderItemsRepository
       .createQueryBuilder('it')
       .innerJoin('it.order', 'o')
       .select('COALESCE(SUM(it.quantity), 0)', 'kilos')
       .where('o.companyId = :companyId', { companyId })
       .andWhere(sellerCond, sellerParams)
       .andWhere('o.status IN (:...statuses)', { statuses: SALE_STATUSES })
-      .andWhere(this.bogotaDateFilter, { from, to })
-      .andWhere("UPPER(TRIM(it.unit_of_measure)) = 'KG'")
-      .getRawOne<{ kilos: string }>();
+      .andWhere(this.bogotaDateFilter, { from, to });
+    if (companyId !== '8') {
+      qb.andWhere("UPPER(TRIM(it.unit_of_measure)) = 'KG'");
+    }
+    const row = await qb.getRawOne<{ kilos: string }>();
     return Number(row?.kilos ?? 0);
   }
 

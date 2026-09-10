@@ -31,6 +31,7 @@ export function getMinOrderTotal(companyId?: string): number {
  */
 export const DASHBOARD_EXCLUDED_SELLER_DOCS: string[] = [
   '72004911', // Juan Sierra
+  '900391505', // INVERSIONES SERRANO MILLAN (CARNES FRIAS)
 ];
 
 /** Indica si el vendedor está excluido del tablero comercial por su cédula. */

@@ -1101,6 +1101,7 @@ export class AdminReportsService {
   async getVendorProductSalesReport(
     periodo: string,
     fecha?: string,
+    companyId = '3',
   ): Promise<VendorProductSalesReportData> {
     const clean = (periodo ?? '').trim();
     if (!/^\d{6}$/.test(clean)) {
@@ -1112,7 +1113,7 @@ export class AdminReportsService {
     }
 
     const allRows = await this.priceListsService.getVendorProductSales(
-      '3',
+      companyId,
       clean,
     );
     // Si se pide un día concreto, se filtra por la parte de fecha (YYYY-MM-DD).
@@ -1308,8 +1309,9 @@ export class AdminReportsService {
   async getVendorProductSalesReportPdf(
     periodo: string,
     fecha?: string,
+    companyId = '3',
   ): Promise<{ buffer: Buffer; periodo: string }> {
-    const data = await this.getVendorProductSalesReport(periodo, fecha);
+    const data = await this.getVendorProductSalesReport(periodo, fecha, companyId);
     const buffer = await buildVendorProductSalesReportPdf(data);
     return { buffer, periodo: data.periodo };
   }
@@ -1318,8 +1320,9 @@ export class AdminReportsService {
   async getVendorProductSalesReportExcel(
     periodo: string,
     fecha?: string,
+    companyId = '3',
   ): Promise<{ buffer: Buffer; periodo: string }> {
-    const data = await this.getVendorProductSalesReport(periodo, fecha);
+    const data = await this.getVendorProductSalesReport(periodo, fecha, companyId);
     const buffer = buildVendorProductSalesReportExcel(data);
     return { buffer, periodo: data.periodo };
   }

@@ -505,7 +505,7 @@ export function BudgetsPage() {
                   <th className="px-4 py-2 font-medium">Vendedor</th>
                   <th className="px-4 py-2 font-medium">Código</th>
                   <th className="px-4 py-2 text-right font-medium">
-                    Ppto Kilos
+                    {companyId === '8' ? 'Ppto Unidades' : 'Ppto Kilos'}
                   </th>
                   <th className="px-4 py-2 text-right font-medium">
                     Venta Esperada
@@ -609,7 +609,7 @@ export function BudgetsPage() {
                       {totals.kilos.toLocaleString('en-US', {
                         maximumFractionDigits: 2,
                       })}{' '}
-                      kg
+                      {companyId === '8' ? 'und' : 'kg'}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {formatSigcom(totals.revenue)}
@@ -774,7 +774,9 @@ function ClientBudgetModal({
               <tr>
                 <th className="px-4 py-2 font-medium">Cliente / Razón social</th>
                 <th className="px-4 py-2 font-medium">Tienda</th>
-                <th className="px-4 py-2 text-right font-medium">Ppto Kilos</th>
+                <th className="px-4 py-2 text-right font-medium">
+                  {companyId === '8' ? 'Ppto Unidades' : 'Ppto Kilos'}
+                </th>
                 <th className="px-4 py-2 text-right font-medium">
                   Venta Esperada
                 </th>
@@ -853,7 +855,7 @@ function ClientBudgetModal({
                     {totals.kilos.toLocaleString('en-US', {
                       maximumFractionDigits: 2,
                     })}{' '}
-                    kg
+                    {companyId === '8' ? 'und' : 'kg'}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">
                     {formatSigcom(totals.revenue)}

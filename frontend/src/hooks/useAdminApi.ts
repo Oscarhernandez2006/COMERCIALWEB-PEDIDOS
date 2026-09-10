@@ -1077,14 +1077,15 @@ export function useVendorProductSalesReport(
   periodo: string | undefined,
   fecha: string | undefined,
   enabled: boolean,
+  companyId?: string,
 ) {
   return useQuery({
-    queryKey: ['admin', 'reports', 'vendor-product-sales', periodo, fecha],
+    queryKey: ['admin', 'reports', 'vendor-product-sales', periodo, fecha, companyId],
     enabled: enabled && !!periodo,
     queryFn: async () => {
       const res = await api.get<VendorProductSalesReportData>(
         '/admin/reports/vendor-product-sales/data',
-        { params: { periodo, ...(fecha ? { fecha } : {}) } },
+        { params: { periodo, ...(fecha ? { fecha } : {}), ...(companyId ? { companyId } : {}) } },
       );
       return res.data;
     },
@@ -1096,14 +1097,15 @@ export function useOrdersBySellerReport(
   periodo: string | undefined,
   fecha: string | undefined,
   enabled: boolean,
+  companyId?: string,
 ) {
   return useQuery({
-    queryKey: ['admin', 'reports', 'orders-by-seller', periodo, fecha],
+    queryKey: ['admin', 'reports', 'orders-by-seller', periodo, fecha, companyId],
     enabled: enabled && !!periodo,
     queryFn: async () => {
       const res = await api.get<OrdersBySellerReportData>(
         '/admin/reports/orders-by-seller/data',
-        { params: { periodo, ...(fecha ? { fecha } : {}) } },
+        { params: { periodo, ...(fecha ? { fecha } : {}), ...(companyId ? { companyId } : {}) } },
       );
       return res.data;
     },
