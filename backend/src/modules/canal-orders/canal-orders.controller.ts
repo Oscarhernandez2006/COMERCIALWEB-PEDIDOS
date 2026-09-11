@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CanalOrdersService } from './canal-orders.service';
 import { CreateCanalOrderDto } from './dto/create-canal-order.dto';
@@ -32,5 +40,43 @@ export class CanalOrdersController {
     @Query('to') to?: string,
   ) {
     return this.canalOrdersService.findAll(companyId, from, to);
+  }
+
+  /** Pedidos del vendedor autenticado (para ver el estado de su flujo). */
+  @Get('mine')
+  findMine(
+    @CompanyId() companyId: string,
+    @CurrentUser('id') sellerId: string,
+  ) {
+    return this.canalOrdersService.findAllForSeller(companyId, sellerId);
+  }
+
+  /** Pedidos del vendedor con novedad de cartera/despacho. */
+  @Get('notifications')
+  notifications(
+    @CompanyId() companyId: string,
+    @CurrentUser('id') sellerId: string,
+  ) {
+    return this.canalOrdersService.findSellerNotifications(companyId, sellerId);
+  }
+
+  /** Marca como visto el aviso de cartera de un pedido. */
+  @Post(':id/acknowledge')
+  acknowledge(
+    @CompanyId() companyId: string,
+    @Param('id') id: string,
+    @CurrentUser('id') sellerId: string,
+  ) {
+    return this.canalOrdersService.acknowledgeNotification(
+      companyId,
+      sellerId,
+      id,
+    );
+  }
+
+  /** Detalle de un pedido de canales. */
+  @Get(':id')
+  findOne(@CompanyId() companyId: string, @Param('id') id: string) {
+    return this.canalOrdersService.findOne(companyId, id);
   }
 }

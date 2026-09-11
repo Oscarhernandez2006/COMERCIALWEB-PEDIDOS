@@ -401,25 +401,56 @@ export interface CanalItemDef {
   ref: string;
   name: string;
   especie: string;
+  /** Peso aproximado por unidad (kg), para sugerir unidades desde los kg. */
+  approxWeightKg: number;
   /** Rangos de kilos disponibles para este ítem (selección). */
   specs: string[];
 }
+
+/** Estados del flujo de un pedido de canales. */
+export type CanalOrderStatus =
+  | 'pending_control'
+  | 'pending_cartera'
+  | 'rejected'
+  | 'pending_dispatch'
+  | 'dispatched'
+  | 'syncing'
+  | 'synced'
+  | 'failed'
+  | 'cancelled';
 
 /** Línea (ítem) de un pedido de canales. */
 export interface CanalOrderItem {
   itemRef: string;
   itemName: string;
   especie: string;
+  /** Unidades (animales). */
   quantity: number;
+  /** Peso aproximado por unidad (kg). */
+  approxWeightKg: number;
+  /** Kilos estimados de la línea. Se factura por kg. */
+  estimatedKg: number;
   specifications: string;
+  /** Precio por kilo. */
   price: number;
   freight: number;
 }
 
-/** Pedido de canales (recepción manual, no sube al ERP). */
+/** Información de cupo del cliente (validación de cartera). */
+export interface CanalCupoInfo {
+  creditLimit: number;
+  invoicedBalance: number;
+  pendingOrdersTotal: number;
+  available: number;
+  exceeds: boolean;
+  hasOverdue: boolean;
+}
+
+/** Pedido de canales (flujo: vendedor → control → cartera → despacho → Siesa). */
 export interface CanalOrder {
   id: string;
   orderNumber: number;
+  status: CanalOrderStatus;
   sellerId: string;
   sellerName: string;
   dispatchDate: string;
@@ -427,8 +458,35 @@ export interface CanalOrder {
   clientName: string;
   clientAddress?: string;
   clientCity?: string;
+  clientBranch?: string;
+  clientPaymentTerm?: string;
   items: CanalOrderItem[];
+  totalKg: number;
+  totalValue: number;
+  controlNote?: string;
+  controlledBy?: string;
+  controlledAt?: string;
+  carteraNote?: string;
+  carteraBy?: string;
+  carteraAt?: string;
+  creditLimit: number;
+  invoicedBalance: number;
+  pendingOrdersTotal: number;
+  rejectionReason?: string;
+  remisionNumber?: string;
+  frigoAppId?: string;
+  frigoKg?: number;
+  frigoGanchos?: number;
+  frigoPdfName?: string;
+  dispatchedBy?: string;
+  dispatchedAt?: string;
+  siesaDocumentId?: string;
+  syncedAt?: string;
+  syncError?: string;
   createdAt: string;
+  updatedAt?: string;
+  /** Cupo calculado (solo en el listado de cartera). */
+  cupo?: CanalCupoInfo;
 }
 
 /** Modo de asignación de la proyección de ventas de una compañía. */

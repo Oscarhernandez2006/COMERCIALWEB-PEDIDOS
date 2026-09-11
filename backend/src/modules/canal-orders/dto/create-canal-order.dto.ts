@@ -20,14 +20,28 @@ export class CanalOrderItemDto {
   @IsString()
   especie: string;
 
+  /** Cantidad de unidades (animales). */
   @IsNumber()
   @Min(0.001)
   quantity: number;
+
+  /** Peso aproximado por unidad (kg). */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  approxWeightKg?: number;
+
+  /** Kilos estimados de la línea (quantity * approxWeightKg). */
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  estimatedKg?: number;
 
   @IsString()
   @IsOptional()
   specifications?: string;
 
+  /** Precio POR KILO. */
   @IsNumber()
   @Min(0)
   price: number;
@@ -57,6 +71,14 @@ export class CreateCanalOrderDto {
   @IsString()
   @IsOptional()
   clientCity?: string;
+
+  @IsString()
+  @IsOptional()
+  clientBranch?: string;
+
+  @IsString()
+  @IsOptional()
+  clientPaymentTerm?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

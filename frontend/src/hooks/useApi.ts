@@ -381,11 +381,15 @@ export interface CreateCanalOrderInput {
   clientName: string;
   clientAddress?: string;
   clientCity?: string;
+  clientBranch?: string;
+  clientPaymentTerm?: string;
   items: {
     itemRef: string;
     itemName: string;
     especie: string;
     quantity: number;
+    approxWeightKg?: number;
+    estimatedKg?: number;
     specifications?: string;
     price: number;
     freight?: number;
@@ -400,6 +404,190 @@ export function useCreateCanalOrder() {
       return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['canal-orders'] }),
+  });
+}
+
+/* ---- Control de canales (Zulma) ---- */
+
+export function useCanalControlOrders() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['canal-control', company?.id],
+    queryFn: async () => {
+      const res = await api.get<CanalOrder[]>('/admin/canal-orders/control');
+      return res.data;
+    },
+  });
+}
+
+export interface UpdateCanalOrderInput {
+  id: string;
+  dispatchDate?: string;
+  clientCode?: string;
+  clientName?: string;
+  clientAddress?: string;
+  clientCity?: string;
+  clientBranch?: string;
+  clientPaymentTerm?: string;
+  controlNote?: string;
+  items?: CreateCanalOrderInput['items'];
+}
+
+export function useUpdateCanalOrderByControl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: UpdateCanalOrderInput) => {
+      const res = await api.patch<CanalOrder>(
+        `/admin/canal-orders/control/${id}`,
+        body,
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['canal-control'] }),
+  });
+}
+
+export function useApproveCanalOrderByControl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post<CanalOrder>(
+        `/admin/canal-orders/control/${id}/approve`,
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['canal-control'] });
+      qc.invalidateQueries({ queryKey: ['canal-cartera'] });
+    },
+  });
+}
+
+/* ---- Cartera de canales (validación de cupo) ---- */
+
+export function useCanalCarteraOrders() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['canal-cartera', company?.id],
+    queryFn: async () => {
+      const res = await api.get<CanalOrder[]>('/cartera/canal-orders');
+      return res.data;
+    },
+  });
+}
+
+export function useCanalCarteraDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      action,
+      note,
+      reason,
+    }: {
+      id: string;
+      action: 'approve' | 'reject';
+      note?: string;
+      reason?: string;
+    }) => {
+      const res = await api.post<CanalOrder>(
+        `/cartera/canal-orders/${id}/${action}`,
+        { note, reason },
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['canal-cartera'] });
+      qc.invalidateQueries({ queryKey: ['canal-dispatch'] });
+    },
+  });
+}
+
+/* ---- Despacho de canales (remisión + Frigo App + Siesa) ---- */
+
+export function useCanalDispatchOrders() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['canal-dispatch', company?.id],
+    queryFn: async () => {
+      const res = await api.get<CanalOrder[]>('/admin/canal-orders/dispatch');
+      return res.data;
+    },
+  });
+}
+
+export function useDispatchCanalOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      remisionNumber,
+      frigoAppId,
+      frigoKg,
+      frigoGanchos,
+      file,
+      sendToSiesa,
+    }: {
+      id: string;
+      remisionNumber: string;
+      frigoAppId: string;
+      frigoKg: number;
+      frigoGanchos: number;
+      file?: File | null;
+      sendToSiesa?: boolean;
+    }) => {
+      const form = new FormData();
+      form.append('remisionNumber', remisionNumber);
+      form.append('frigoAppId', frigoAppId);
+      form.append('frigoKg', String(frigoKg));
+      form.append('frigoGanchos', String(frigoGanchos));
+      if (sendToSiesa) form.append('sendToSiesa', 'true');
+      if (file) form.append('file', file);
+      const res = await api.post<CanalOrder>(
+        `/admin/canal-orders/dispatch/${id}`,
+        form,
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['canal-dispatch'] }),
+  });
+}
+
+export function useSendCanalOrderToSiesa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post<CanalOrder>(
+        `/admin/canal-orders/dispatch/${id}/siesa`,
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['canal-dispatch'] }),
+  });
+}
+
+/* ---- Avisos de cartera de canales para el vendedor ---- */
+
+export function useCanalOrderNotifications() {
+  const { company } = useCompany();
+  return useQuery({
+    queryKey: ['canal-orders', 'notifications', company?.id],
+    queryFn: async () => {
+      const res = await api.get<CanalOrder[]>('/canal-orders/notifications');
+      return res.data;
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAcknowledgeCanalNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.post(`/canal-orders/${id}/acknowledge`);
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['canal-orders', 'notifications'] }),
   });
 }
 

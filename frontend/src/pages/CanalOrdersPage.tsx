@@ -16,6 +16,7 @@ import { formatCurrency, formatDate, cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { CanalStatusBadge } from '@/components/CanalStatusBadge';
 
 /** Tarjeta de resumen para el consolidado. */
 function StatCard({
@@ -193,13 +194,14 @@ export function CanalOrdersPage() {
                   <th className="px-3 py-2 text-right font-medium">Precio</th>
                   <th className="px-3 py-2 text-right font-medium">Flete</th>
                   <th className="px-3 py-2 font-medium">Vendedor</th>
+                  <th className="px-3 py-2 font-medium">Estado</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="px-3 py-10 text-center text-muted-foreground"
                     >
                       Cargando…
@@ -208,7 +210,7 @@ export function CanalOrdersPage() {
                 ) : rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="px-3 py-10 text-center text-muted-foreground"
                     >
                       {search
@@ -245,6 +247,9 @@ export function CanalOrdersPage() {
                         {item.freight ? formatCurrency(item.freight) : '—'}
                       </td>
                       <td className="px-3 py-2">{order.sellerName}</td>
+                      <td className="px-3 py-2">
+                        <CanalStatusBadge status={order.status} />
+                      </td>
                     </tr>
                   ))
                 )}

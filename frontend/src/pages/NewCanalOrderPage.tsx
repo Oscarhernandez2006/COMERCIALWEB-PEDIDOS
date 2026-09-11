@@ -41,8 +41,12 @@ function cleanNumeric(value: string): string {
 interface Line {
   id: number;
   itemRef: string;
+  /** Kilos requeridos por el comprador (de aquí se sugieren las unidades). */
+  kg: string;
+  /** Unidades (animales); se autocalcula desde los kg pero es editable. */
   quantity: string;
   specifications: string;
+  /** Precio por kilo. */
   price: string;
   freight: string;
 }
@@ -51,6 +55,7 @@ function emptyLine(id: number): Line {
   return {
     id,
     itemRef: CANAL_ITEMS[0].ref,
+    kg: '',
     quantity: '',
     specifications: '',
     price: '',
@@ -85,6 +90,21 @@ export function NewCanalOrderPage() {
     setError('');
   };
 
+  /** Peso aproximado por unidad del ítem de una línea. */
+  const approxOf = (itemRef: string) =>
+    CANAL_ITEMS.find((i) => i.ref === itemRef)?.approxWeightKg ?? 0;
+
+  /** Kilos estimados de una línea (unidades × peso aprox). */
+  const estimatedKgOf = (l: Line) =>
+    Number(l.quantity || 0) * approxOf(l.itemRef);
+
+  /** Al cambiar los kg requeridos se sugieren las unidades (round(kg/peso)). */
+  const setKg = (l: Line, kg: string) => {
+    const approx = approxOf(l.itemRef);
+    const units = approx > 0 && Number(kg) > 0 ? Math.round(Number(kg) / approx) : 0;
+    setLine(l.id, { kg, quantity: units ? String(units) : '' });
+  };
+
   const addLine = () => {
     setLines((prev) => [...prev, emptyLine(nextId)]);
     setNextId((n) => n + 1);
@@ -96,6 +116,23 @@ export function NewCanalOrderPage() {
 
   const totalQuantity = useMemo(
     () => lines.reduce((acc, l) => acc + Number(l.quantity || 0), 0),
+    [lines],
+  );
+
+  const totalKg = useMemo(
+    () => lines.reduce((acc, l) => acc + estimatedKgOf(l), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines],
+  );
+
+  const totalValue = useMemo(
+    () =>
+      lines.reduce(
+        (acc, l) =>
+          acc + estimatedKgOf(l) * Number(l.price || 0) + Number(l.freight || 0),
+        0,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [lines],
   );
 
@@ -126,14 +163,19 @@ export function NewCanalOrderPage() {
         clientName: customer.name,
         clientAddress: customer.address,
         clientCity: customer.city,
+        clientBranch: customer.branch,
+        clientPaymentTerm: customer.paymentTerm,
         items: validLines.map((l) => {
           const def =
             CANAL_ITEMS.find((i) => i.ref === l.itemRef) ?? CANAL_ITEMS[0];
+          const quantity = Number(l.quantity || 0);
           return {
             itemRef: def.ref,
             itemName: def.name,
             especie: def.especie,
-            quantity: Number(l.quantity || 0),
+            quantity,
+            approxWeightKg: def.approxWeightKg,
+            estimatedKg: Number((quantity * def.approxWeightKg).toFixed(3)),
             specifications: l.specifications.trim(),
             price: Number(l.price || 0),
             freight: Number(l.freight || 0),
@@ -164,7 +206,8 @@ export function NewCanalOrderPage() {
             <CheckCircle2 className="h-12 w-12 text-[var(--success)]" />
             <h2 className="text-xl font-bold">Pedido de canales registrado</h2>
             <p className="text-sm text-muted-foreground">
-              El pedido quedó guardado en el consolidado de canales.
+              El pedido pasó a revisión del controlador. Podrás seguir su estado
+              en el consolidado de canales.
             </p>
             <div className="mt-2 flex flex-wrap justify-center gap-2">
               <Button variant="outline" onClick={resetForm}>
@@ -301,21 +344,24 @@ export function NewCanalOrderPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead className="border-b border-border text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="w-44 px-2 py-2 font-medium">Ítem</th>
-                  <th className="w-20 px-2 py-2 font-medium">Especie</th>
+                  <th className="w-40 px-2 py-2 font-medium">Ítem</th>
+                  <th className="w-16 px-2 py-2 font-medium">Especie</th>
                   <th className="w-24 px-2 py-2 text-right font-medium">
-                    Cantidad
+                    Kg requeridos
+                  </th>
+                  <th className="w-24 px-2 py-2 text-right font-medium">
+                    Unidades
                   </th>
                   <th className="px-2 py-2 font-medium">
                     Especificaciones / Novedades
                   </th>
-                  <th className="w-28 px-2 py-2 text-right font-medium">
-                    Precio
+                  <th className="w-24 px-2 py-2 text-right font-medium">
+                    Precio/kg
                   </th>
-                  <th className="w-24 px-2 py-2 text-right font-medium">Flete</th>
+                  <th className="w-20 px-2 py-2 text-right font-medium">Flete</th>
                   <th className="w-10 px-2 py-2" />
                 </tr>
               </thead>
@@ -327,14 +373,21 @@ export function NewCanalOrderPage() {
                       <td className="px-2 py-2">
                         <select
                           value={l.itemRef}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const ref = e.target.value;
+                            const approx = approxOf(ref);
+                            const units =
+                              approx > 0 && Number(l.kg) > 0
+                                ? Math.round(Number(l.kg) / approx)
+                                : 0;
                             setLine(l.id, {
-                              itemRef: e.target.value,
+                              itemRef: ref,
                               // Al cambiar de ítem se limpia el rango elegido
                               // porque las opciones dependen del ítem.
                               specifications: '',
-                            })
-                          }
+                              quantity: units ? String(units) : l.quantity,
+                            });
+                          }}
                           className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                         >
                           {CANAL_ITEMS.map((i) => (
@@ -352,6 +405,18 @@ export function NewCanalOrderPage() {
                       <td className="px-2 py-2">
                         <input
                           inputMode="decimal"
+                          value={l.kg}
+                          onChange={(e) => setKg(l, cleanNumeric(e.target.value))}
+                          placeholder="0"
+                          className="w-full rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
+                        />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          ≈ {approxOf(l.itemRef).toLocaleString('es-CO')} kg/u
+                        </p>
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          inputMode="numeric"
                           value={l.quantity}
                           onChange={(e) =>
                             setLine(l.id, {
@@ -361,6 +426,9 @@ export function NewCanalOrderPage() {
                           placeholder="0"
                           className="w-full rounded-md border border-input bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
                         />
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          {estimatedKgOf(l).toLocaleString('es-CO')} kg estimados
+                        </p>
                       </td>
                       <td className="px-2 py-2">
                         <select
@@ -421,12 +489,24 @@ export function NewCanalOrderPage() {
               <tfoot className="border-t border-border font-semibold">
                 <tr>
                   <td className="px-2 py-2" colSpan={2}>
-                    Total canales
+                    Totales
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums">
-                    {totalQuantity.toLocaleString('es-CO')}
+                    {totalKg.toLocaleString('es-CO')} kg
                   </td>
-                  <td colSpan={4} />
+                  <td className="px-2 py-2 text-right tabular-nums">
+                    {totalQuantity.toLocaleString('es-CO')} u
+                  </td>
+                  <td className="px-2 py-2 text-right text-muted-foreground">
+                    Valor (kg × precio)
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums" colSpan={2}>
+                    {totalValue.toLocaleString('es-CO', {
+                      style: 'currency',
+                      currency: 'COP',
+                      maximumFractionDigits: 0,
+                    })}
+                  </td>
                 </tr>
               </tfoot>
             </table>
