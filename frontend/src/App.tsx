@@ -8,7 +8,6 @@ import { SsoCallbackPage } from '@/pages/SsoCallbackPage';
 import { CompanySelectPage } from '@/pages/CompanySelectPage';
 import { NewOrderPage } from '@/pages/NewOrderPage';
 import { OrdersPage } from '@/pages/OrdersPage';
-import { NewCanalOrderPage } from '@/pages/NewCanalOrderPage';
 import { CanalOrdersPage } from '@/pages/CanalOrdersPage';
 import { CanalControlPage } from '@/pages/CanalControlPage';
 import { CanalCarteraPage } from '@/pages/CanalCarteraPage';
@@ -130,7 +129,6 @@ function App() {
         <Route path="pedidos/nuevo" element={<NewOrderPage />} />
         <Route path="pedidos" element={<OrdersPage />} />
         <Route path="pedidos/canales" element={<CanalOrdersPage />} />
-        <Route path="pedidos/canales/nuevo" element={<NewCanalOrderPage />} />
         <Route path="cotizaciones/nueva" element={<NewQuotePage />} />
         <Route path="cotizaciones" element={<QuotesPage />} />
         <Route path="disponibilidad" element={<StockPage />} />

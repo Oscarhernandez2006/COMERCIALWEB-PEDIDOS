@@ -1,5 +1,5 @@
-import { useMemo, useState, type ComponentType } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Beef,
   Plus,
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CanalStatusBadge } from '@/components/CanalStatusBadge';
+import { NewCanalOrderModal } from '@/components/NewCanalOrderModal';
 
 /** Tarjeta de resumen para el consolidado. */
 function StatCard({
@@ -53,11 +54,22 @@ function StatCard({
 }
 
 export function CanalOrdersPage() {
-  const navigate = useNavigate();
   const { company } = useCompany();
   const { data: orders = [], isLoading, isFetching, refetch } =
     useCanalOrders();
   const [search, setSearch] = useState('');
+  const [showNew, setShowNew] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Permite abrir el modal directamente desde el selector de tipo de pedido
+  // (navegando a /pedidos/canales?nuevo=1).
+  useEffect(() => {
+    if (searchParams.get('nuevo') === '1') {
+      setShowNew(true);
+      searchParams.delete('nuevo');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Pedidos filtrados por búsqueda (cliente, NIT o vendedor).
   const filtered = useMemo(() => {
@@ -129,7 +141,7 @@ export function CanalOrdersPage() {
             <FileDown className="h-4 w-4" />
             Descargar PDF
           </Button>
-          <Button onClick={() => navigate('/pedidos/canales/nuevo')}>
+          <Button onClick={() => setShowNew(true)}>
             <Plus className="h-4 w-4" />
             Nuevo
           </Button>
@@ -258,6 +270,13 @@ export function CanalOrdersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {showNew && (
+        <NewCanalOrderModal
+          onClose={() => setShowNew(false)}
+          onCreated={() => refetch()}
+        />
+      )}
     </div>
   );
 }

@@ -634,7 +634,7 @@ export function OrdersPage() {
           onClose={() => setShowTypeModal(false)}
           onSelect={(tipo) => {
             setShowTypeModal(false);
-            if (tipo === 'canales') navigate('/pedidos/canales/nuevo');
+            if (tipo === 'canales') navigate('/pedidos/canales?nuevo=1');
             else navigate(`/pedidos/nuevo?tipo=${tipo}`);
           }}
         />
