@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Not, Repository } from 'typeorm';
@@ -48,7 +49,7 @@ export interface CupoInfo {
 }
 
 @Injectable()
-export class CanalOrdersService {
+export class CanalOrdersService implements OnModuleInit {
   private readonly logger = new Logger(CanalOrdersService.name);
 
   constructor(
@@ -58,6 +59,51 @@ export class CanalOrdersService {
     private readonly clientsService: ClientsService,
     private readonly erpClient: OrdersErpClient,
   ) {}
+
+  /**
+   * Garantiza el estado y las columnas del flujo aunque DB_SYNCHRONIZE esté
+   * desactivado (la tabla canal_orders ya existía con el esquema anterior).
+   */
+  async onModuleInit(): Promise<void> {
+    await this.canalOrdersRepository.query(`
+      DO $$ BEGIN
+        CREATE TYPE canal_orders_status_enum AS ENUM (
+          'pending_control','pending_cartera','rejected','pending_dispatch',
+          'dispatched','syncing','synced','failed','cancelled'
+        );
+      EXCEPTION WHEN duplicate_object THEN null; END $$;
+    `);
+    await this.canalOrdersRepository.query(`
+      ALTER TABLE canal_orders
+        ADD COLUMN IF NOT EXISTS status canal_orders_status_enum NOT NULL DEFAULT 'pending_control',
+        ADD COLUMN IF NOT EXISTS client_branch varchar,
+        ADD COLUMN IF NOT EXISTS client_payment_term varchar,
+        ADD COLUMN IF NOT EXISTS total_kg numeric(14,3) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS total_value numeric(14,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS control_note varchar,
+        ADD COLUMN IF NOT EXISTS controlled_by varchar,
+        ADD COLUMN IF NOT EXISTS controlled_at timestamptz,
+        ADD COLUMN IF NOT EXISTS cartera_note varchar,
+        ADD COLUMN IF NOT EXISTS cartera_by varchar,
+        ADD COLUMN IF NOT EXISTS cartera_at timestamptz,
+        ADD COLUMN IF NOT EXISTS credit_limit numeric(14,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS invoiced_balance numeric(14,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS pending_orders_total numeric(14,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS rejection_reason varchar,
+        ADD COLUMN IF NOT EXISTS remision_number varchar,
+        ADD COLUMN IF NOT EXISTS frigo_app_id varchar,
+        ADD COLUMN IF NOT EXISTS frigo_kg numeric(14,3),
+        ADD COLUMN IF NOT EXISTS frigo_ganchos int,
+        ADD COLUMN IF NOT EXISTS frigo_pdf_base64 text,
+        ADD COLUMN IF NOT EXISTS frigo_pdf_name varchar,
+        ADD COLUMN IF NOT EXISTS dispatched_by varchar,
+        ADD COLUMN IF NOT EXISTS dispatched_at timestamptz,
+        ADD COLUMN IF NOT EXISTS siesa_document_id varchar,
+        ADD COLUMN IF NOT EXISTS synced_at timestamptz,
+        ADD COLUMN IF NOT EXISTS sync_error varchar,
+        ADD COLUMN IF NOT EXISTS seller_notification_pending boolean NOT NULL DEFAULT false
+    `);
+  }
 
   /* ==================== Creación (vendedor) ==================== */
 
